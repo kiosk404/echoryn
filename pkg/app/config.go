@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/gosuri/uitable"
-	"github.com/kiosk404/ultronix/pkg/utils/homedir"
+	"github.com/kiosk404/eidolon/pkg/utils/homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"

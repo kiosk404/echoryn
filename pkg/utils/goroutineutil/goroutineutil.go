@@ -4,7 +4,7 @@ import (
 	"context"
 	"runtime"
 
-	"github.com/kiosk404/ultronix/pkg/logger"
+	"github.com/kiosk404/eidolon/pkg/logger"
 )
 
 func GoWithDeferFunc(ctx context.Context, f func()) {

@@ -3,7 +3,7 @@ package options
 import (
 	"fmt"
 
-	"github.com/kiosk404/ultronix/internal/pkg/server"
+	"github.com/kiosk404/eidolon/internal/pkg/server"
 	"github.com/spf13/pflag"
 )
 

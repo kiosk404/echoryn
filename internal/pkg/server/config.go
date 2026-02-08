@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kiosk404/ultronix/pkg/logger"
-	"github.com/kiosk404/ultronix/pkg/utils/homedir"
+	"github.com/kiosk404/eidolon/pkg/logger"
+	"github.com/kiosk404/eidolon/pkg/utils/homedir"
 	"github.com/spf13/viper"
 )
 

@@ -1,10 +1,10 @@
 package options
 
 import (
-	genericoptions "github.com/kiosk404/ultronix/internal/pkg/options"
-	"github.com/kiosk404/ultronix/internal/pkg/server"
-	"github.com/kiosk404/ultronix/pkg/utils/cliflag"
-	"github.com/kiosk404/ultronix/pkg/utils/json"
+	genericoptions "github.com/kiosk404/eidolon/internal/pkg/options"
+	"github.com/kiosk404/eidolon/internal/pkg/server"
+	"github.com/kiosk404/eidolon/pkg/utils/cliflag"
+	"github.com/kiosk404/eidolon/pkg/utils/json"
 )
 
 type Options struct {

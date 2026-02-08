@@ -35,7 +35,7 @@ _testmain.go
 /.vscode
 /output
 node_modules/
-/backend/output
+./output/
 *.local.yml
 /oldimpl
 /vendor
@@ -49,3 +49,4 @@ frontend/common
 .qwen
 # Storage
 BIZ_BOT_ICON/
+*_SPEC.md

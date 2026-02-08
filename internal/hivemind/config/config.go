@@ -1,7 +1,7 @@
 package config
 
 import (
-	"github.com/kiosk404/ultronix/internal/hivemind/options"
+	"github.com/kiosk404/eidolon/internal/hivemind/options"
 )
 
 // Config is the running configuration structure of the Ultronix service.

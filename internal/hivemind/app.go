@@ -3,10 +3,10 @@ package hivemind
 import (
 	"fmt"
 
-	"github.com/kiosk404/ultronix/internal/hivemind/config"
-	"github.com/kiosk404/ultronix/internal/hivemind/options"
-	"github.com/kiosk404/ultronix/pkg/app"
-	"github.com/kiosk404/ultronix/pkg/logger"
+	"github.com/kiosk404/eidolon/internal/hivemind/config"
+	"github.com/kiosk404/eidolon/internal/hivemind/options"
+	"github.com/kiosk404/eidolon/pkg/app"
+	"github.com/kiosk404/eidolon/pkg/logger"
 )
 
 const (

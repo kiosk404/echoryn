@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/kiosk404/ultronix/internal/hivemind/config"
-	genericapiserver "github.com/kiosk404/ultronix/internal/pkg/server"
-	"github.com/kiosk404/ultronix/pkg/http/shutdown"
-	"github.com/kiosk404/ultronix/pkg/http/shutdown/posixsignal"
+	"github.com/kiosk404/eidolon/internal/hivemind/config"
+	genericapiserver "github.com/kiosk404/eidolon/internal/pkg/server"
+	"github.com/kiosk404/eidolon/pkg/http/shutdown"
+	"github.com/kiosk404/eidolon/pkg/http/shutdown/posixsignal"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )

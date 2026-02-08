@@ -5,7 +5,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/kiosk404/ultronix/pkg/http/shutdown"
+	"github.com/kiosk404/eidolon/pkg/http/shutdown"
 )
 
 // Name defines shutdown manager name.

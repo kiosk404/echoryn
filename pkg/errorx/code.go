@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	unknownCoder defaultCoder = defaultCoder{1, http.StatusInternalServerError, "An internal server error occurred", "http://github.com/kiosk404/ultronix/pkg/errorx/README.md"}
+	unknownCoder defaultCoder = defaultCoder{1, http.StatusInternalServerError, "An internal server error occurred", "http://github.com/kiosk404/eidolon/pkg/errorx/README.md"}
 )
 
 // Coder defines an interface for an error code detail information.

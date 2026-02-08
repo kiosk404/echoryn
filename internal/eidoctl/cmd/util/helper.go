@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/bytedance/gopkg/util/logger"
-	"github.com/kiosk404/ultronix/pkg/errorx"
+	"github.com/kiosk404/eidolon/pkg/errorx"
 )
 
 const (
@@ -62,7 +62,7 @@ func CheckErr(err error) {
 }
 
 // checkErr formats a given error as a string and calls the passed handleErr
-// func with that string and an iamctl exit code.
+// func with that string and an eidoctl exit code.
 func checkErr(err error, handleErr func(string, int)) {
 	// unwrap aggregates of 1
 	var agg errorx.Aggregate

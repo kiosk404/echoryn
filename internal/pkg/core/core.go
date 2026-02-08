@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kiosk404/ultronix/pkg/errorx"
-	"github.com/kiosk404/ultronix/pkg/logger"
+	"github.com/kiosk404/eidolon/pkg/errorx"
+	"github.com/kiosk404/eidolon/pkg/logger"
 )
 
 // ErrResponse defines the return messages when an error occurred.

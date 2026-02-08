@@ -4,7 +4,7 @@ import (
 	goflag "flag"
 	"strings"
 
-	"github.com/kiosk404/ultronix/pkg/logger"
+	"github.com/kiosk404/eidolon/pkg/logger"
 	"github.com/spf13/pflag"
 )
 

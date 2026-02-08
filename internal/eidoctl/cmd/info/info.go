@@ -1,18 +1,24 @@
 package info
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"strconv"
 
-	cmdutil "github.com/kiosk404/ultronix/internal/hivctl/cmd/util"
-	"github.com/kiosk404/ultronix/pkg/cli/genericclioptions"
-	"github.com/kiosk404/ultronix/pkg/utils/iputil"
-	"github.com/kiosk404/ultronix/pkg/utils/templates"
+	cmdutil "github.com/kiosk404/eidolon/internal/eidoctl/cmd/util"
+	"github.com/kiosk404/eidolon/pkg/cli/genericclioptions"
+	"github.com/kiosk404/eidolon/pkg/utils/iputil"
+	"github.com/kiosk404/eidolon/pkg/utils/templates"
 	hoststat "github.com/likexian/host-stat-go"
 	"github.com/spf13/cobra"
 )
 
+var infoExample = templates.Examples(`
+		# Print the host information
+		eidoctl info`)
+
+// Info is an options struct to support 'info' sub command.
 type Info struct {
 	HostName  string
 	IPAddress string
@@ -20,20 +26,12 @@ type Info struct {
 	CPUCore   uint64
 	MemTotal  string
 	MemFree   string
-}
-
-var infoExample = templates.Examples(`
-		# Print the host information
-		iamctl info`)
-
-// InfoOptions is an options struct to support 'info' sub command.
-type InfoOptions struct {
 	genericclioptions.IOStreams
 }
 
 // NewInfoOptions returns an initialized InfoOptions instance.
-func NewInfoOptions(ioStreams genericclioptions.IOStreams) *InfoOptions {
-	return &InfoOptions{
+func NewInfoOptions(ioStreams genericclioptions.IOStreams) *Info {
+	return &Info{
 		IOStreams: ioStreams,
 	}
 }
@@ -50,7 +48,7 @@ func NewCmdInfo(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra
 		Long:                  "Print the host information.",
 		Example:               infoExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			cmdutil.CheckErr(o.Run(args))
+			cmdutil.CheckErr(o.Run(cmd.Context(), args))
 		},
 		SuggestFor: []string{},
 	}
@@ -59,7 +57,7 @@ func NewCmdInfo(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra
 }
 
 // Run executes an info sub command using the specified options.
-func (o *InfoOptions) Run(args []string) error {
+func (o *Info) Run(ctx context.Context, args []string) error {
 	var info Info
 
 	hostInfo, err := hoststat.GetHostInfo()

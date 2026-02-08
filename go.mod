@@ -1,4 +1,4 @@
-module github.com/kiosk404/ultronix
+module github.com/kiosk404/eidolon
 
 go 1.25.0
 

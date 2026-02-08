@@ -1,4 +1,4 @@
-package hivctl
+package eidoctl
 
 import (
 	"fmt"

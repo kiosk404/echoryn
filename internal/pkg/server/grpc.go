@@ -3,7 +3,7 @@ package server
 import (
 	"net"
 
-	"github.com/kiosk404/ultronix/pkg/logger"
+	"github.com/kiosk404/eidolon/pkg/logger"
 	"google.golang.org/grpc"
 )
 
