@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package app.common;
+
+option go_package = "github.com/kiosk404/eidolon/api/model/app/common";
+
+// UserLabel 用户标签
+message UserLabel {
+  string label_id = 1;
+  string label_name = 2;
+  string icon_uri = 3;
+  string icon_url = 4;
+  string jump_link = 5;
+}
+
+// User 用户信息
+message User {
+  int64 user_id = 1;
+  string nickname = 2;         // 用户昵称
+  string avatar_url = 3;       // 用户头像
+  string user_unique_name = 4; // 用户名
+  UserLabel user_label = 5;    // 用户标签
+}
+
+// ConnectorDynamicStatus 连接器动态状态
+enum ConnectorDynamicStatus {
+  CONNECTOR_DYNAMIC_STATUS_UNSPECIFIED = 0;
+  NORMAL = 1;
+  OFFLINE = 2;
+  TOKEN_DISCONNECT = 3;
+}
+
+// ConnectorInfo 连接器信息
+message ConnectorInfo {
+  string id = 1;
+  string name = 2;
+  string icon = 3;
+  ConnectorDynamicStatus connector_status = 4;
+  string share_link = 5;
+}
+
+// IntelligencePublishInfo 智能体发布信息 (common_struct 版本)
+message IntelligencePublishInfoCommon {
+  string publish_time = 1;
+  bool has_published = 2;
+  repeated ConnectorInfo connectors = 3;
+}
+
+// ResourceType 资源类型
+enum ResourceType {
+  RESOURCE_TYPE_UNSPECIFIED = 0;
+  PLUGIN = 1;
+  WORKFLOW = 2;
+  IMAGEFLOW = 3;
+  KNOWLEDGE = 4;
+  UI = 5;
+  PROMPT = 6;
+  DATABASE = 7;
+  VARIABLE = 8;
+}
+
+// OrderByType 排序类型
+enum OrderByType {
+  ORDER_BY_TYPE_UNSPECIFIED = 0;
+  ASC = 1;
+  DESC = 2;
+}
+
+// PermissionType 权限类型
+enum PermissionType {
+  PERMISSION_TYPE_UNSPECIFIED = 0;
+  NO_DETAIL = 1;  // 无法查看详情
+  DETAIL = 2;     // 可以查看详情
+  OPERATE = 3;    // 可以查看和操作
+}
+
+// SpaceStatus 空间状态
+enum SpaceStatus {
+  SPACE_STATUS_UNSPECIFIED = 0;
+  VALID = 1;
+  INVALID = 2;
+}
+
+// Space 空间信息
+message Space {
+  int64 id = 1;
+  int64 owner_id = 2;
+  SpaceStatus status = 3;
+  string name = 4;
+}
+
+// VariableType 变量类型
+enum VariableType {
+  VARIABLE_TYPE_UNSPECIFIED = 0;
+  KV_VARIABLE = 1;      // 对应 "KVVariable"
+  LIST_VARIABLE = 2;    // 对应 "ListVariable"
+}
+
+// VariableChannel 变量渠道
+enum VariableChannel {
+  VARIABLE_CHANNEL_UNSPECIFIED = 0;
+  TELEGRAM = 1;     // 对应 "telegram"
+  FEISHU = 2;      // 对应 "feishu"
+}
+
+// Variable 变量
+message Variable {
+  string keyword = 1;
+  string default_value = 2;
+  VariableType variable_type = 3;
+  VariableChannel channel = 4;
+  string description = 5;
+  bool enable = 6;
+  bool prompt_enable = 7;
+}

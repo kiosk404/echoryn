@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package app.common;
+
+option go_package = "github.com/kiosk404/eidolon/api/model/app/common";
+
+// IntelligenceStatus 智能体状态
+enum IntelligenceStatus {
+  INTELLIGENCE_STATUS_UNSPECIFIED = 0;
+  USING = 1;
+  DELETED = 2;
+  BANNED = 3;
+  MOVE_FAILED = 4;    // 迁移失败
+  COPYING = 5;        // 复制中
+  COPY_FAILED = 6;    // 复制失败
+}
+
+// IntelligenceType 智能体类型
+enum IntelligenceType {
+  INTELLIGENCE_TYPE_UNSPECIFIED = 0;
+  BOT = 1;
+  PROJECT = 2;
+}
+
+// IntelligenceBasicInfo 智能体基础信息
+message IntelligenceBasicInfo {
+  int64 id = 1;
+  string name = 2;
+  string description = 3;
+  string icon_uri = 4;
+  string icon_url = 5;
+  int64 owner_id = 6;
+  int64 create_time = 7;
+  int64 update_time = 8;
+  IntelligenceStatus status = 9;
+  int64 publish_time = 10;
+  string enterprise_id = 11;
+  int64 organization_id = 12;
+}

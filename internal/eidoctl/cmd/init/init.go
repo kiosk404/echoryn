@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	cmdutil "github.com/kiosk404/eidolon/internal/eidoctl/cmd/util"
+	"github.com/kiosk404/eidolon/internal/eidoctl/utils/templates"
 	"github.com/kiosk404/eidolon/pkg/cli/genericclioptions"
 	"github.com/kiosk404/eidolon/pkg/utils/homedir"
-	"github.com/kiosk404/eidolon/pkg/utils/templates"
 	"github.com/spf13/cobra"
 )
 

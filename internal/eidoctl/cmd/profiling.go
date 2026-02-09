@@ -1,4 +1,4 @@
-package eidoctl
+package cmd
 
 import (
 	"fmt"

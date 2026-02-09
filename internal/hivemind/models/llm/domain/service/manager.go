@@ -1,0 +1,16 @@
+package service
+
+import (
+	"context"
+
+	"github.com/kiosk404/eidolon/internal/hivemind/models/llm/domain/entity"
+)
+
+type ModelManager interface {
+	CreateLLMModel(ctx context.Context, modelClass entity.ModelClass, modelShowName string, conn *entity.Connection, extra *entity.ModelExtra) (int64, error)
+	GetModelByID(ctx context.Context, id int64) (*entity.ModelInstance, error)
+	GetDefaultModel(ctx context.Context) (*entity.ModelInstance, error)
+	SetDefaultModel(ctx context.Context, id int64) error
+	ListModelByType(ctx context.Context, modelType entity.ModelType, limit int) ([]*entity.ModelInstance, error)
+	ListAllModelList(ctx context.Context) ([]*entity.ModelInstance, error)
+}

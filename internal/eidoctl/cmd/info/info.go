@@ -7,9 +7,9 @@ import (
 	"strconv"
 
 	cmdutil "github.com/kiosk404/eidolon/internal/eidoctl/cmd/util"
+	"github.com/kiosk404/eidolon/internal/eidoctl/utils/templates"
 	"github.com/kiosk404/eidolon/pkg/cli/genericclioptions"
 	"github.com/kiosk404/eidolon/pkg/utils/iputil"
-	"github.com/kiosk404/eidolon/pkg/utils/templates"
 	hoststat "github.com/likexian/host-stat-go"
 	"github.com/spf13/cobra"
 )

@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package base;
+
+option go_package = "github.com/kiosk404/eidolon/api/model/base";
+
+// TrafficEnv 流量环境配置
+message TrafficEnv {
+  bool open = 1;
+  string env = 2;
+}
+
+// Base 基础请求信息
+message Base {
+  string log_id = 1;
+  string caller = 2;
+  string addr = 3;
+  string client = 4;
+  TrafficEnv traffic_env = 5;
+  map<string, string> extra = 6;
+}
+
+// BaseResp 基础响应信息
+message BaseResp {
+  string status_message = 1;
+  int32 status_code = 2;
+  map<string, string> extra = 3;
+}
+
+// EmptyReq 空请求
+message EmptyReq {}
+
+// EmptyData 空数据
+message EmptyData {}
+
+// EmptyResp 空响应
+message EmptyResp {
+  int64 code = 1;
+  string msg = 2;
+  EmptyData data = 3;
+}
+
+// EmptyRpcReq RPC 空请求
+message EmptyRpcReq {
+  Base base = 255;
+}
+
+// EmptyRpcResp RPC 空响应
+message EmptyRpcResp {
+  BaseResp base_resp = 255;
+}

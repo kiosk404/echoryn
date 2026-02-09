@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/MakeNowJust/heredoc/v2 v2.0.1
+	github.com/bytedance/gg v1.1.0
 	github.com/bytedance/gopkg v0.1.3
 	github.com/bytedance/sonic v1.15.0
 	github.com/fatih/color v1.18.0
@@ -11,6 +12,7 @@ require (
 	github.com/gin-contrib/sse v1.1.0
 	github.com/gin-gonic/gin v1.11.0
 	github.com/gosuri/uitable v0.0.4
+	github.com/jinzhu/copier v0.4.0
 	github.com/likexian/host-stat-go v0.0.0-20190516151207-c9cf36dd6ce9
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/moby/term v0.5.2

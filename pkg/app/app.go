@@ -5,11 +5,11 @@ import (
 	"os"
 
 	"github.com/fatih/color"
+	"github.com/kiosk404/eidolon/internal/eidoctl/utils/term"
 	"github.com/kiosk404/eidolon/pkg/errorx"
 	"github.com/kiosk404/eidolon/pkg/logger"
 	"github.com/kiosk404/eidolon/pkg/utils/cliflag"
 	globalflag "github.com/kiosk404/eidolon/pkg/utils/cliflag/global"
-	"github.com/kiosk404/eidolon/pkg/utils/term"
 	"github.com/kiosk404/eidolon/pkg/version"
 	"github.com/kiosk404/eidolon/pkg/version/verflag"
 	"github.com/spf13/cobra"

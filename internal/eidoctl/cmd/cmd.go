@@ -1,4 +1,4 @@
-package eidoctl
+package cmd
 
 import (
 	"flag"
@@ -10,10 +10,11 @@ import (
 	"github.com/kiosk404/eidolon/internal/eidoctl/cmd/init"
 	"github.com/kiosk404/eidolon/internal/eidoctl/cmd/join"
 	cmdutil "github.com/kiosk404/eidolon/internal/eidoctl/cmd/util"
+	"github.com/kiosk404/eidolon/internal/eidoctl/types"
+	"github.com/kiosk404/eidolon/internal/eidoctl/utils/templates"
 	genericapiserver "github.com/kiosk404/eidolon/internal/pkg/server"
 	"github.com/kiosk404/eidolon/pkg/cli/genericclioptions"
 	"github.com/kiosk404/eidolon/pkg/utils/cliflag"
-	"github.com/kiosk404/eidolon/pkg/utils/templates"
 	"github.com/kiosk404/eidolon/pkg/version/verflag"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -58,7 +59,7 @@ func NewHivCtlCommand(in io.Reader, out, err io.Writer) *cobra.Command {
 
 	_ = viper.BindPFlags(cmds.PersistentFlags())
 	cobra.OnInitialize(func() {
-		// genericapiserver.LoadConfig(viper.GetString(genericclioptions.FlagIAMConfig), "eidoctl")
+		genericapiserver.LoadConfig(viper.GetString(types.FlagEidolonConfig), "eidoctl")
 	})
 	cmds.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 
