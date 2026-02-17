@@ -2,22 +2,23 @@ package server
 
 import (
 	"net"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/kiosk404/eidolon/pkg/logger"
-	"github.com/kiosk404/eidolon/pkg/utils/homedir"
+	"github.com/kiosk404/echoryn/pkg/logger"
+	"github.com/kiosk404/echoryn/pkg/utils/homedir"
 	"github.com/spf13/viper"
 )
 
 const (
 	// RecommendedHomeDir defines the default directory used to place all generic service configurations.
-	RecommendedHomeDir = ".ultronix"
+	RecommendedHomeDir = ".echoryn"
 
 	// RecommendedEnvPrefix defines the ENV prefix used by all generic service.
-	RecommendedEnvPrefix = "ultronix"
+	RecommendedEnvPrefix = "echoryn"
 )
 
 // Config is a structure used to configure a GenericAPIServer.
@@ -72,6 +73,8 @@ func (c CompletedConfig) New() (*GenericAPIServer, error) {
 	// setMode before gin.New()
 	gin.SetMode(c.Mode)
 
+	engine := gin.New()
+
 	s := &GenericAPIServer{
 		ServingInfo:     c.Serving,
 		healthz:         c.Healthz,
@@ -79,6 +82,10 @@ func (c CompletedConfig) New() (*GenericAPIServer, error) {
 		enableProfiling: c.EnableProfiling,
 		middlewares:     c.Middlewares,
 		Engine:          gin.New(),
+		Server: &http.Server{
+			Addr:    c.Serving.Address(),
+			Handler: engine,
+		},
 	}
 
 	initGenericAPIServer(s)
@@ -93,14 +100,14 @@ func LoadConfig(cfg string, defaultName string) {
 	} else {
 		viper.AddConfigPath(".")
 		viper.AddConfigPath(filepath.Join(homedir.HomeDir(), RecommendedHomeDir))
-		viper.AddConfigPath("/etc/ultronix")
+		viper.AddConfigPath("/etc/echoryn")
 		viper.SetConfigName(defaultName)
 	}
 
 	// Use config file from the flag.
 	viper.SetConfigType("json")              // set the type of the configuration to yaml.
 	viper.AutomaticEnv()                     // read in environment variables that match.
-	viper.SetEnvPrefix(RecommendedEnvPrefix) // set ENVIRONMENT variables prefix to ultronix.
+	viper.SetEnvPrefix(RecommendedEnvPrefix) // set ENVIRONMENT variables prefix to echoryn.
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
 	// If a config file is found, read it in.

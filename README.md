@@ -1,4 +1,4 @@
-<h1 align="center">Project Eidolon</h1>
+<h1 align="center">Project Echoryn</h1>
 
 <p align="center">Re-creating Openclaw, a soul container of AI virtual characters to bring them into our world.</p>
 

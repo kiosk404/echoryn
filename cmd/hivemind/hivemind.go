@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/kiosk404/eidolon/internal/hivemind"
+	"github.com/kiosk404/echoryn/internal/hivemind"
 	_ "go.uber.org/automaxprocs"
 )
 

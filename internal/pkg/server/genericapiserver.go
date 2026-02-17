@@ -7,9 +7,9 @@ import (
 
 	"github.com/gin-contrib/pprof"
 	"github.com/gin-gonic/gin"
-	"github.com/kiosk404/eidolon/internal/pkg/core"
-	"github.com/kiosk404/eidolon/pkg/logger"
-	"github.com/kiosk404/eidolon/pkg/version"
+	"github.com/kiosk404/echoryn/internal/pkg/core"
+	"github.com/kiosk404/echoryn/pkg/logger"
+	"github.com/kiosk404/echoryn/pkg/version"
 )
 
 // GenericAPIServer contains state for a generic api server.

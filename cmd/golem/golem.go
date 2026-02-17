@@ -4,7 +4,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/kiosk404/eidolon/internal/golem"
+	"github.com/kiosk404/echoryn/internal/golem"
 )
 
 func main() {

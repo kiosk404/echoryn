@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	utilversion "github.com/kiosk404/eidolon/pkg/version/util"
+	utilversion "github.com/kiosk404/echoryn/pkg/version/util"
 )
 
 var dynamicGitVersion atomic.Value

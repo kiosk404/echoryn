@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kiosk404/eidolon/pkg/version"
+	"github.com/kiosk404/echoryn/pkg/version"
 	flag "github.com/spf13/pflag"
 )
 

@@ -1,7 +1,7 @@
 package app
 
 import (
-	"github.com/kiosk404/eidolon/pkg/utils/cliflag"
+	"github.com/kiosk404/echoryn/pkg/utils/cliflag"
 )
 
 // CliOptions abstracts configuration options for reading parameters from the

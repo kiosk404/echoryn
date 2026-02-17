@@ -1,7 +1,7 @@
 package hivemind
 
 import (
-	"github.com/kiosk404/eidolon/internal/hivemind/config"
+	"github.com/kiosk404/echoryn/internal/hivemind/config"
 )
 
 func Run(cfg *config.Config) error {

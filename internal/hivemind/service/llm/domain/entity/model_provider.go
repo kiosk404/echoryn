@@ -1,9 +1,44 @@
 package entity
 
+import (
+	"fmt"
+)
+
 type ModelProvider struct {
-	Name        *I18nText  `thrift:"name,1" form:"name" json:"name" query:"name"`
-	IconURI     string     `thrift:"icon_uri,2" form:"icon_uri" json:"icon_uri" query:"icon_uri"`
-	IconURL     string     `thrift:"icon_url,3" form:"icon_url" json:"icon_url" query:"icon_url"`
-	Description *I18nText  `thrift:"description,4" form:"description" json:"description" query:"description"`
-	ModelClass  ModelClass `thrift:"model_class,5" form:"model_class" json:"model_class" query:"model_class"`
+	ID          string            `json:"id"`
+	Name        *I18nText         `json:"name"`
+	BaseURL     string            `json:"base_url"`
+	Description *I18nText         `json:"description"`
+	ModelClass  ModelClass        `json:"model_class"`
+	APIKey      string            `json:"api_key"`
+	API         ModelAPI          `json:"api"`
+	AuthHeader  bool              `json:"auth_header"`
+	Headers     map[string]string `json:"headers"`
+	Enabled     bool              `json:"enabled"`
+}
+
+type ModelAPI string
+
+const (
+	ModelAPI_OpenAICompletions  ModelAPI = "openai-completions"
+	ModelAPI_OpenAIResponses    ModelAPI = "openai-responses"
+	ModelAPI_AnthropicMessages  ModelAPI = "anthropic-messages"
+	ModelAPI_GoogleGenerativeAI ModelAPI = "google-generative-ai"
+	ModelAPI_OllamaGenerative   ModelAPI = "ollama-generate"
+)
+
+func (a ModelAPI) String() string {
+	return string(a)
+}
+
+func ModelAPIFromString(s string) (ModelAPI, error) {
+	switch ModelAPI(s) {
+	case ModelAPI_AnthropicMessages, ModelAPI_OpenAICompletions, ModelAPI_OpenAIResponses,
+		ModelAPI_OllamaGenerative, ModelAPI_GoogleGenerativeAI:
+		return ModelAPI(s), nil
+	}
+	if s == "" {
+		return ModelAPI_OpenAICompletions, nil
+	}
+	return "", fmt.Errorf("unknown model API: %q", s)
 }

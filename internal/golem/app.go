@@ -3,9 +3,9 @@ package golem
 import (
 	"fmt"
 
-	"github.com/kiosk404/eidolon/internal/hivemind/options"
-	"github.com/kiosk404/eidolon/pkg/app"
-	"github.com/kiosk404/eidolon/pkg/logger"
+	"github.com/kiosk404/echoryn/internal/hivemind/options"
+	"github.com/kiosk404/echoryn/pkg/app"
+	"github.com/kiosk404/echoryn/pkg/logger"
 )
 
 const (
@@ -17,7 +17,7 @@ func NewApp(basename string) *app.App {
 	application := app.NewApp("golem",
 		basename,
 		app.WithOptions(opts),
-		app.WithDescription(`The golem is a worker node in the eidolon realm.`),
+		app.WithDescription(`The golem is a worker node in the echoryn realm.`),
 		app.WithDefaultValidArgs(),
 		app.WithRunFunc(run(opts)),
 	)

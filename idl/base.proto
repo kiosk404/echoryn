@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package base;
 
-option go_package = "github.com/kiosk404/eidolon/api/model/base";
+option go_package = "github.com/kiosk404/echoryn/api/model/base";
 
 // TrafficEnv 流量环境配置
 message TrafficEnv {

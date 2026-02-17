@@ -26,7 +26,8 @@ ifeq ($(origin GOBIN), undefined)
 	GOBIN := $(GOPATH)/bin
 endif
 
-COMMANDS ?= $(filter-out %.md, $(wildcard ${ROOT_DIR}/*))
+# Discover binaries from cmd/ directory
+COMMANDS ?= $(filter-out %.md, $(wildcard ${ROOT_DIR}/cmd/*))
 BINS ?= $(foreach cmd,${COMMANDS},$(notdir ${cmd}))
 
 ifeq (${COMMANDS},)
@@ -35,6 +36,10 @@ endif
 ifeq (${BINS},)
   $(error Could not determine BINS, set ROOT_DIR or run in source dir)
 endif
+
+# CGO is required for sqlite3 (mattn/go-sqlite3).
+# Set CGO_ENABLED=1 by default; override with CGO_ENABLED=0 if not needed.
+CGO_ENABLED ?= 1
 
 .PHONY: go.build.verify
 go.build.verify:
@@ -50,10 +55,15 @@ go.build.%:
 	$(eval ARCH := $(word 2,$(subst _, ,$(PLATFORM))))
 	@echo "===========> Building binary $(COMMAND) $(VERSION) for $(OS) $(ARCH)"
 	@mkdir -p $(OUTPUT_DIR)/platforms/$(OS)/$(ARCH)
-	@CGO_ENABLED=0 GOOS=$(OS) GOARCH=$(ARCH) $(GO) build $(GO_BUILD_FLAGS) -o $(OUTPUT_DIR)/platforms/$(OS)/$(ARCH)/$(COMMAND)$(GO_OUT_EXT) $(ROOT_PACKAGE)/cmd/$(COMMAND)
+	@CGO_ENABLED=$(CGO_ENABLED) GOOS=$(OS) GOARCH=$(ARCH) $(GO) build $(GO_BUILD_FLAGS) -o $(OUTPUT_DIR)/platforms/$(OS)/$(ARCH)/$(COMMAND)$(GO_OUT_EXT) $(ROOT_PACKAGE)/cmd/$(COMMAND)
 
 .PHONY: go.build
 go.build: go.build.verify $(addprefix go.build., $(addprefix $(PLATFORM)., $(BINS)))
+
+.PHONY: go.tidy
+go.tidy:
+	@echo "===========> Running go mod tidy"
+	@$(GO) mod tidy
 
 .PHONY: go.lint
 go.lint: tools.verify.golangci-lint
@@ -72,3 +82,8 @@ go.test:
 go.test.cover: go.test
 	@$(GO) tool cover -func=$(OUTPUT_DIR)/coverage.out | \
 		awk -v target=$(COVERAGE) -f $(ROOT_DIR)/scripts/coverage.awk
+
+.PHONY: go.run.%
+go.run.%:
+	@echo "===========> Running $*"
+	@CGO_ENABLED=$(CGO_ENABLED) $(GO) run $(GO_BUILD_FLAGS) $(ROOT_PACKAGE)/cmd/$*

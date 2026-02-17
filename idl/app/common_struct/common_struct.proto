@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package app.common;
 
-option go_package = "github.com/kiosk404/eidolon/api/model/app/common";
+option go_package = "github.com/kiosk404/echoryn/api/model/app/common";
 
 // UserLabel 用户标签
 message UserLabel {

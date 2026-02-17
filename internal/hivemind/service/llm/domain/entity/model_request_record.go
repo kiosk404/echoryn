@@ -4,6 +4,7 @@ import (
 	"time"
 )
 
+// ModelRequestRecord represents a record of a model request.
 type ModelRequestRecord struct {
 	ID                  int64     `json:"id"`
 	UsageScene          string    `json:"usage_scene"`

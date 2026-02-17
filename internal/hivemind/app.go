@@ -3,10 +3,10 @@ package hivemind
 import (
 	"fmt"
 
-	"github.com/kiosk404/eidolon/internal/hivemind/config"
-	"github.com/kiosk404/eidolon/internal/hivemind/options"
-	"github.com/kiosk404/eidolon/pkg/app"
-	"github.com/kiosk404/eidolon/pkg/logger"
+	"github.com/kiosk404/echoryn/internal/hivemind/config"
+	"github.com/kiosk404/echoryn/internal/hivemind/options"
+	"github.com/kiosk404/echoryn/pkg/app"
+	"github.com/kiosk404/echoryn/pkg/logger"
 )
 
 const (
@@ -14,12 +14,12 @@ const (
 	recommendedLogDir = "./output/"
 )
 
-const commandDesc = `The Ultronix Hivemind server`
+const commandDesc = `The Echoryn Hivemind server`
 
 // NewApp creates an App object with default parameters.
 func NewApp(basename string) *app.App {
 	opts := options.NewOptions()
-	application := app.NewApp("Ultronix Hivemind Server",
+	application := app.NewApp("Echoryn Hivemind Server",
 		basename,
 		app.WithOptions(opts),
 		app.WithDescription(commandDesc),

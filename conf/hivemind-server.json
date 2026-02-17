@@ -10,5 +10,64 @@
     "middlewares": [],
     "bind-address": "0.0.0.0",
     "bind-port": 11789
+  },
+  "models": {
+    "mode": "merge",
+    "default-provider": "deepseek",
+    "default-model": "deepseek-chat",
+    "providers": {
+      "deepseek": {
+        "base-url": "https://api.deepseek.com/v1",
+        "api-key": "${DEEPSEEK_API_KEY}",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "deepseek-chat",
+            "name": "DeepSeek V3",
+            "reasoning": false,
+            "input": ["text"],
+            "context-window": 65536,
+            "max-tokens": 8192,
+            "cost": { "input": 0.27, "output": 1.1, "cache-read": 0.07, "cache-write": 0 }
+          },
+          {
+            "id": "deepseek-reasoner",
+            "name": "DeepSeek R1",
+            "reasoning": true,
+            "input": ["text"],
+            "context-window": 65536,
+            "max-tokens": 8192,
+            "cost": { "input": 0.55, "output": 2.19, "cache-read": 0.14, "cache-write": 0 }
+          }
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "enabled": false,
+    "slots": {
+      "memory": "memory-core"
+    },
+    "entries": {
+      "memory-core": {
+        "config": {
+          "enabled": true,
+          "workspace_dir": ".",
+          "db_path": ".eidolon/memory/index.db",
+          "embedding_provider": "openai",
+          "embedding_model": "text-embedding-3-small"
+        }
+      },
+      "diagnostics": {
+        "config": {
+          "enabled": false
+        }
+      },
+      "llm-task": {
+        "config": {
+          "enabled": true
+        }
+      }
+    }
   }
 }
