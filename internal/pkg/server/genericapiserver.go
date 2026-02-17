@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -68,6 +69,16 @@ func (s *GenericAPIServer) InstallAPIs() {
 	s.GET("/version", func(c *gin.Context) {
 		core.WriteResponse(c, nil, version.Get())
 	})
+}
+
+func (s *GenericAPIServer) Run() error {
+	logger.Info("Start to listening the incoming requests on http address : %s", s.Server.Addr)
+
+	if err := s.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Fatal("ListenAndServe(): %s", err.Error())
+		return err
+	}
+	return nil
 }
 
 // Close graceful shutdown the api server.

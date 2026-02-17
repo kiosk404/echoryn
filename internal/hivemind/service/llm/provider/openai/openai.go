@@ -31,7 +31,7 @@ func (p *Plugin) BuildChatModel(ctx context.Context, instance *entity.ModelInsta
 func (p *Plugin) DefaultConfig() *options.ProviderConfig {
 	return &options.ProviderConfig{
 		BaseURL: "https://api.openai.com/v1",
-		APIKey:  "{OPENAI_API_KEY}",
+		APIKey:  "${OPENAI_API_KEY}",
 		API:     "openai-completions",
 		Models: []options.ModelDefinition{
 			{ID: "gpt-4o", Name: "GPT-4o", Reasoning: false, Input: []string{"text"}, ContextWindow: 131072, MaxTokens: 8192, Cost: options.ModelCost{Input: 0.27, Output: 1.1, CacheRead: 0.07}},

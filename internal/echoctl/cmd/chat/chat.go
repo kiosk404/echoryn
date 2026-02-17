@@ -23,7 +23,7 @@ var initExample = templates.Examples(`
 		echoctl chat --session=my-session "Hello, introduce yourself"
 
 		# Connect to a specific hivemind server
-		echoctl chat --server-addr=http://localhost:8080 "Hello, introduce yourself"
+		echoctl chat --server-addr=http://localhost:11780 "Hello, introduce yourself"
 `)
 
 type ChatOptions struct {

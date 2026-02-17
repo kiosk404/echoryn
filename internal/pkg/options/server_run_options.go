@@ -24,6 +24,8 @@ func NewServerRunOptions() *ServerRunOptions {
 		Mode:        defaults.Mode,
 		Healthz:     defaults.Healthz,
 		Middlewares: defaults.Middlewares,
+		BindAddress: defaults.Serving.BindAddress,
+		BindPort:    defaults.Serving.BindPort,
 	}
 }
 
@@ -32,6 +34,8 @@ func (s *ServerRunOptions) ApplyTo(c *server.Config) error {
 	c.Mode = s.Mode
 	c.Healthz = s.Healthz
 	c.Middlewares = s.Middlewares
+	c.Serving.BindAddress = s.BindAddress
+	c.Serving.BindPort = s.BindPort
 
 	return nil
 }

@@ -29,7 +29,7 @@ func (p *ProviderStore) Save(ctx context.Context, provider *entity.ModelProvider
 		return fmt.Errorf("provider ID is required")
 	}
 	p.mu.Lock()
-	defer p.mu.Lock()
+	defer p.mu.Unlock()
 
 	p.providers[provider.ID] = provider
 	return nil

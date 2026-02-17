@@ -67,7 +67,7 @@ func applyParamsToClaudeConfig(conf *einoClaude.Config, params *entity.LLMParams
 func (p *Plugin) DefaultConfig() *options.ProviderConfig {
 	return &options.ProviderConfig{
 		BaseURL: "https://api.anthropic.com/v1",
-		APIKey:  "{ANTHROPIC_API_KEY}",
+		APIKey:  "${ANTHROPIC_API_KEY}",
 		API:     "anthropic-messages",
 		Models: []options.ModelDefinition{
 			{

@@ -81,7 +81,7 @@ func (c CompletedConfig) New() (*GenericAPIServer, error) {
 		enableMetrics:   c.EnableMetrics,
 		enableProfiling: c.EnableProfiling,
 		middlewares:     c.Middlewares,
-		Engine:          gin.New(),
+		Engine:          engine,
 		Server: &http.Server{
 			Addr:    c.Serving.Address(),
 			Handler: engine,
@@ -101,7 +101,7 @@ func LoadConfig(cfg string, defaultName string) {
 		viper.AddConfigPath(".")
 		viper.AddConfigPath(filepath.Join(homedir.HomeDir(), RecommendedHomeDir))
 		viper.AddConfigPath("/etc/echoryn")
-		viper.SetConfigName(defaultName)
+		viper.SetConfigName(defaultName + ".json")
 	}
 
 	// Use config file from the flag.

@@ -53,6 +53,8 @@ func (p *Plugin) BuildChatModel(ctx context.Context, instance *entity.ModelInsta
 		}
 	}
 
+	applyParamsToOllamaConfig(conf, params)
+
 	return einoOllama.NewChatModel(ctx, conf)
 }
 
@@ -87,7 +89,7 @@ func applyParamsToOllamaConfig(conf *einoOllama.ChatModelConfig, params *entity.
 func (p *Plugin) DefaultConfig() *options.ProviderConfig {
 	return &options.ProviderConfig{
 		BaseURL: "http://127.0.0.1:11434/v1",
-		APIKey:  "{OLLAMA_API_KEY}",
+		APIKey:  "${OLLAMA_API_KEY}",
 		API:     "openai-completions",
 		Models:  []options.ModelDefinition{},
 	}
