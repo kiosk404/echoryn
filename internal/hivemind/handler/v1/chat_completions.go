@@ -23,7 +23,7 @@ import (
 // ChatCompletionsHandler handles POST /v1/chat/completions (OpenAI-compatible).
 //
 // Modeled after OpenClaw's openai-http.ts:
-//   - Resolves agent from model field (e.g., "eidolon/agent-id")
+//   - Resolves agent from model field (e.g., "echoryn/agent-id")
 //   - Resolves session from X-Session-Key header or user field
 //   - Maps messages to RunRequest
 //   - Supports both stream=true (SSE) and stream=false (JSON)
@@ -40,7 +40,7 @@ func NewChatCompletionsHandler(svc service.AgentService, llmManager llmService.M
 		defaultAgentID = "main"
 	}
 	if defaultModel == "" {
-		defaultModel = "eidolon"
+		defaultModel = "echoryn"
 	}
 	return &ChatCompletionsHandler{
 		svc:            svc,
@@ -326,7 +326,7 @@ func (h *ChatCompletionsHandler) writeSSEChunk(
 // resolveAgentID extracts agent ID from the model field or X-Agent-Id header.
 //
 // Parsing rules (aligned with OpenClaw http-utils.ts):
-//   - "eidolon/<agent-id>" → agent-id
+//   - "echoryn/<agent-id>" → agent-id
 //   - "agent:<agent-id>" → agent-id
 //   - X-Agent-Id header takes priority
 //   - Otherwise: default agent
@@ -338,9 +338,9 @@ func (h *ChatCompletionsHandler) resolveAgentID(c *gin.Context, model string) st
 
 	// Priority 2: Parse from model field.
 	if model != "" {
-		// "eidolon/<agent-id>"
-		if strings.HasPrefix(model, "eidolon/") {
-			return strings.TrimPrefix(model, "eidolon/")
+		// "echoryn/<agent-id>"
+		if strings.HasPrefix(model, "echoryn/") {
+			return strings.TrimPrefix(model, "echoryn/")
 		}
 		// "agent:<agent-id>"
 		if strings.HasPrefix(model, "agent:") {

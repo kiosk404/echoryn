@@ -17,7 +17,7 @@ type AuthConfig struct {
 	Enabled bool `json:"enabled"`
 
 	// Token is the expected Bearer token value.
-	// Can also be set via EIDOLON_GATEWAY_TOKEN environment variable.
+	// Can also be set via ECHORYN_GATEWAY_TOKEN environment variable.
 	Token string `json:"token"`
 }
 
@@ -26,7 +26,7 @@ func (c *AuthConfig) ResolveToken() string {
 	if c.Token != "" {
 		return c.Token
 	}
-	return os.Getenv("EIDOLON_GATEWAY_TOKEN")
+	return os.Getenv("ECHORYN_GATEWAY_TOKEN")
 }
 
 // BearerAuth returns a Gin middleware that enforces Bearer token authentication.

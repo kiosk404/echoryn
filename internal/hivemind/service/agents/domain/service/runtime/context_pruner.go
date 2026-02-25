@@ -12,7 +12,7 @@ import (
 // a context window budget. It does NOT modify the persisted session
 // history — only the copy sent to the LLM.
 //
-// This is the Eidolon equivalent of OpenClaw's context-pruning/pruner.ts,
+// This is the Echoryn equivalent of OpenClaw's context-pruning/pruner.ts,
 // implementing a two-stage strategy:
 //
 //  1. Soft-trim: Truncate large tool results to head+tail with "..." in between.

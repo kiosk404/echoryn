@@ -9,7 +9,7 @@ import (
 
 // ChatCompletionRequest is the OpenAI-compatible request body for /v1/chat/completions.
 type ChatCompletionRequest struct {
-	// Model can be "eidolon", "eidolon/<agent-id>", or "agent:<agent-id>".
+	// Model can be "echoryn", "echoryn/<agent-id>", or "agent:<agent-id>".
 	Model string `json:"model"`
 
 	// Messages is the conversation history.

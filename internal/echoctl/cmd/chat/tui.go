@@ -42,7 +42,7 @@ func printWelcomeBanner(client *HivemindClient) {
 
 	sep := colorOrangeANSI + strings.Repeat("-", w) + colorReset
 	fmt.Println(sep)
-	fmt.Printf("%s%s Eidolon Chat %s %s\n", colorBold, colorOrangeANSI, version.GitVersion, colorReset)
+	fmt.Printf("%s%s Echoryn Chat %s %s\n", colorBold, colorOrangeANSI, version.GitVersion, colorReset)
 	fmt.Println()
 	fmt.Printf("  Model:   %s\n", client.Model)
 	fmt.Printf("  Server:  %s\n", client.BaseURL)
@@ -79,7 +79,7 @@ func printUserMessage(msg string) {
 // printAssistantLabel outputs the assistant name label.
 func printAssistantLabel() {
 	printSeparator()
-	fmt.Printf("%s%seidolon%s\n", colorBold, colorPinkANSI, colorReset)
+	fmt.Printf("%s%sechoryn%s\n", colorBold, colorPinkANSI, colorReset)
 }
 
 // printError outputs an error message.

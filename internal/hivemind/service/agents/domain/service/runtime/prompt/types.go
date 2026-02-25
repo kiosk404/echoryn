@@ -117,7 +117,7 @@ type ClusterInfo struct {
 	// HivemindID is the identifier of the current Hivemind instance.
 	HivemindID string `json:"hivemind_id"`
 
-	// Version is the Eidolon software version.
+	// Version is the Echoryn software version.
 	Version string `json:"version"`
 
 	// Golems lists the connected Golem worker nodes.

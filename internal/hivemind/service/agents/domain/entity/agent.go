@@ -29,7 +29,7 @@ type Agent struct {
 	SystemPrompt string `json:"system_prompt"`
 
 	// Persona defines the agent's identity and prompt assembly configuration.
-	// This is the Eidolon equivalent of OpenClaw's IdentityConfig + workspace files.
+	// This is the Echoryn equivalent of OpenClaw's IdentityConfig + workspace files.
 	//
 	// When nil, the Pipeline uses default identity and the raw SystemPrompt.
 	// When set, the Pipeline renders identity from Persona.Identity and
@@ -73,7 +73,7 @@ type Agent struct {
 
 // AgentPersona defines the agent's identity and prompt assembly configuration.
 //
-// This is the Eidolon equivalent of OpenClaw's IdentityConfig + workspace file system.
+// This is the Echoryn equivalent of OpenClaw's IdentityConfig + workspace file system.
 // Follows K8s CRD Spec pattern — declarative definition of desired state.
 //
 //   - Identity: core identity attributes (name, emoji, vibe, etc.)

@@ -32,7 +32,7 @@ func installMiddleware(g *gin.Engine, deps *routerDeps) {
 
 func installController(g *gin.Engine, deps *routerDeps) {
 	defaultAgentID := "main"
-	defaultModel := "eidolon"
+	defaultModel := "echoryn"
 	if deps.gatewayConfig != nil {
 		if deps.gatewayConfig.Defaults.AgentID != "" {
 			defaultAgentID = deps.gatewayConfig.Defaults.AgentID

@@ -50,7 +50,7 @@ type Config struct {
 	StoreType string `json:"store_type,omitempty"`
 
 	// BoltDBPath is the file path for BoltDB storage (when StoreType="boltdb").
-	// Default: "data/eidolon.db".
+	// Default: "data/echoryn.db".
 	BoltDBPath string `json:"boltdb_path,omitempty"`
 }
 
@@ -83,7 +83,7 @@ func (c *Config) Complete() CompletedConfig {
 		c.StoreType = "inmemory"
 	}
 	if c.BoltDBPath == "" {
-		c.BoltDBPath = "data/eidolon.db"
+		c.BoltDBPath = "data/echoryn.db"
 	}
 	return CompletedConfig{c}
 }
@@ -101,9 +101,10 @@ type Dependencies struct {
 //   - Service: Agent CRUD + session management + run execution
 //   - Runner: direct access to the AgentRunner for advanced usage
 type Module struct {
-	Service service.AgentService
-	Runner  *runtime.AgentRunner
-	boltDB  *boltdbStore.DB // nil when using inmemory store
+	Service         service.AgentService
+	Runner          *runtime.AgentRunner
+	SubAgentManager service.SubAgentManager
+	boltDB          *boltdbStore.DB // nil when using inmemory store
 }
 
 // Close releases resources held by the module (e.g., BoltDB handle).
@@ -122,15 +123,16 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 		return nil, fmt.Errorf("LLM module dependency is required")
 	}
 	if deps.Plugins == nil {
-		return nil, fmt.Errorf("Plugin framework dependency is required")
+		return nil, fmt.Errorf("plugin framework dependency is required")
 	}
 
 	// Infrastructure layer: select store backend.
 	var (
-		agentStore   repo.AgentRepository
-		sessionStore repo.SessionRepository
-		runStore     repo.RunRepository
-		boltDB       *boltdbStore.DB
+		agentStore    repo.AgentRepository
+		sessionStore  repo.SessionRepository
+		runStore      repo.RunRepository
+		subAgentStore runtime.SubAgentRegistry
+		boltDB        *boltdbStore.DB
 	)
 
 	switch c.StoreType {
@@ -143,11 +145,13 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 		agentStore = boltdbStore.NewAgentStore(boltDB)
 		sessionStore = boltdbStore.NewSessionStore(boltDB)
 		runStore = boltdbStore.NewRunStore(boltDB)
+		subAgentStore = boltdbStore.NewSubAgentStore(boltDB)
 		logger.Info("[Agents] using BoltDB store at %s", c.BoltDBPath)
 	default:
 		agentStore = inmemory.NewAgentStore()
 		sessionStore = inmemory.NewSessionStore()
 		runStore = inmemory.NewRunStore()
+		subAgentStore = inmemory.NewSubAgentStore()
 		logger.Info("[Agents] using in-memory store")
 	}
 
@@ -171,13 +175,16 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 
 	// Application service layer.
 	svc := service.NewAgentService(agentStore, sessionStore, runStore, runner)
+	// SubAgent manager (Controller pattern)
+	subAgentMgr := runtime.NewSubAgentManager(subAgentStore, agentStore, sessionStore, runner, runtime.DefaultSubAgentManagerConfig())
 
 	logger.Info("[Agents] Agents module initialized (store=%s, max_turns=%d, timeout=%s, retries=%d, history_limit=%d, compaction_threshold=%.1f)",
 		c.StoreType, c.DefaultMaxTurns, c.RunTimeout, c.MaxRetries, c.MaxHistoryTurns, c.CompactionThreshold)
 
 	return &Module{
-		Service: svc,
-		Runner:  runner,
-		boltDB:  boltDB,
+		Service:         svc,
+		Runner:          runner,
+		SubAgentManager: subAgentMgr,
+		boltDB:          boltDB,
 	}, nil
 }

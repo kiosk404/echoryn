@@ -14,4 +14,10 @@ var (
 	ErrAborted             = errors.New("run aborted")
 	ErrContextOverflow     = errors.New("context overflow")
 	ErrModelNotToolCapable = errors.New("model not tool capable")
+
+	// SubAgent errors.
+	ErrSubAgentNotFound    = errors.New("sub-agent record not found")
+	ErrMaxDepthExceeded    = errors.New("sub-agents cannot spawn further sub-agents (max depth = 1)")
+	ErrConcurrencyLimit    = errors.New("max concurrent sub-agents limit reached")
+	ErrSubAgentAlreadyDone = errors.New("sub-agent already in terminal state")
 )

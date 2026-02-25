@@ -36,7 +36,7 @@ type RunRequest struct {
 
 // AgentRunner is the top-level orchestrator for agent execution.
 //
-// This is the Eidolon equivalent of:
+// This is the Echoryn equivalent of:
 //   - airi-go: agent_run_impl.go + singleagent_run.go
 //   - OpenClaw: agent-runner.ts (7-layer pipeline)
 //
@@ -482,4 +482,53 @@ func (r *AgentRunner) buildPromptContext(
 	}
 
 	return pc
+}
+
+// RunSubAgent executes a sub-agent run with minimal prompt mode.
+//
+// This is a variant of Run specifically for sub-agent execution:
+//   - Forces PromptMode to "minimal" (only essential sections)
+//   - The input is the sub-agent system prompt+task (already formatted by SubAgentManager)
+//   - The agent's original SystemPrompt is Not used (replaced by sub-agent instructions)
+//
+// Modeled after OpenClaw's sub-agent execution with promptMode='minimal'.
+func (r *AgentRunner) RunSubAgent(ctx context.Context, req *RunRequest) (*schema.StreamReader[*entity.AgentEvent], error) {
+	// Mark request as subagent run (using a context value)
+	ctx = context.WithValue(ctx, ctxKeySubAgent, true)
+	return r.Run(ctx, req)
+}
+
+// ctxKey is a private type for context keys to avoid collisions.
+type ctxKey string
+
+const (
+	ctxKeySubAgent        ctxKey = "subagent"
+	ctxKeyParentSessionID ctxKey = "parent_session_id"
+	ctxKeyParentRunID     ctxKey = "parent_run_id"
+)
+
+// isSubAgentRun checks if this run is a sub-agent execution.
+func isSubAgentRun(ctx context.Context) bool {
+	v, _ := ctx.Value(ctxKeySubAgent).(bool)
+	return v
+}
+
+// WithParentContext returns a context with parent session and run ids,
+// Called during executeRun to propagate session/run info to plugin tool handlers
+func WithParentContext(ctx context.Context, sessionID, runID string) context.Context {
+	ctx = context.WithValue(ctx, ctxKeyParentSessionID, sessionID)
+	ctx = context.WithValue(ctx, ctxKeyParentRunID, runID)
+	return ctx
+}
+
+// ParentSessionIDFromContext extracts the parent sessionID from context
+func ParentSessionIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyParentSessionID).(string)
+	return v
+}
+
+// ParentRunIDFromContext extracts the parent runID from context.
+func ParentRunIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(ctxKeyParentRunID).(string)
+	return v
 }

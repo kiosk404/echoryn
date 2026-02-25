@@ -16,7 +16,7 @@ import (
 
 // AgentFlowBuilder constructs an Eino execution graph for agent execution.
 //
-// This is the Eidolon equivalent of agentflow/agent_flow_builder.go,
+// This is the Echoryn equivalent of agentflow/agent_flow_builder.go,
 // building compose.Runnable that wires together:
 //   - ReAct Agent (when tools are available): handles LLM → tool_call → execute → result loop
 //   - Simple ChatModel chain (when no tools): direct LLM generation
@@ -80,7 +80,7 @@ func (b *AgentFlowBuilder) buildWithTools(
 	}
 	chain.AppendLambda(agentLambda)
 
-	runnable, err := chain.Compile(ctx, compose.WithGraphName("eidolon_react_agent"))
+	runnable, err := chain.Compile(ctx, compose.WithGraphName("echoryn_react_agent"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile ReAct agent chain: %w", err)
 	}
@@ -117,7 +117,7 @@ func (b *AgentFlowBuilder) buildWithoutTools(
 	}
 	chain.AppendLambda(chatLambda)
 
-	runnable, err := chain.Compile(ctx, compose.WithGraphName("eidolon_agent_simple"))
+	runnable, err := chain.Compile(ctx, compose.WithGraphName("echoryn_agent_simple"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile simple agent chain: %w", err)
 	}

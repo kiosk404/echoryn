@@ -53,7 +53,7 @@
         "config": {
           "enabled": true,
           "workspace_dir": ".",
-          "db_path": ".eidolon/memory/index.db",
+          "db_path": ".echoryn/memory/index.db",
           "embedding_provider": "openai",
           "embedding_model": "text-embedding-3-small"
         }

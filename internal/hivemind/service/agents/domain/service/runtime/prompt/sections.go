@@ -12,10 +12,10 @@ import (
 // --- IdentitySection (Priority: 100) ---
 //
 // The core identity declaration. Always included in all PromptModes.
-// This is the Eidolon equivalent of OpenClaw's hardcoded identity line:
+// This is the Echoryn equivalent of OpenClaw's hardcoded identity line:
 //   "You are a personal assistant running inside OpenClaw."
 //
-// Eidolon extends this with distributed architecture awareness —
+// Echoryn extends this with distributed architecture awareness —
 // the Agent knows it's the Hivemind (central intelligence) in a decoupled system.
 
 // IdentitySection renders the Agent's core identity declaration.
@@ -32,25 +32,25 @@ func (s *IdentitySection) Render(_ context.Context, pc *PromptContext) (string, 
 	if pc.Agent != nil && pc.Agent.Persona != nil && pc.Agent.Persona.Identity != nil {
 		id := pc.Agent.Persona.Identity
 		if id.Name != "" {
-			buf.WriteString(fmt.Sprintf("You are **%s**, an AI Agent powered by Eidolon.", id.Name))
+			buf.WriteString(fmt.Sprintf("You are **%s**, an AI Agent powered by Echoryn.", id.Name))
 		} else {
-			buf.WriteString("You are an AI Agent powered by **Eidolon** — a decoupled distributed AI Agent platform.")
+			buf.WriteString("You are an AI Agent powered by **Echoryn** — a decoupled distributed AI Agent platform.")
 		}
 		if id.Vibe != "" {
 			buf.WriteString(fmt.Sprintf("\nYour communication style: %s.", id.Vibe))
 		}
 	} else {
-		buf.WriteString("You are an AI Agent powered by **Eidolon** — a decoupled distributed AI Agent platform.")
+		buf.WriteString("You are an AI Agent powered by **Echoryn** — a decoupled distributed AI Agent platform.")
 	}
 
 	// Distributed architecture awareness.
 	buf.WriteString("\n\n")
 	if pc.ClusterInfo != nil && len(pc.ClusterInfo.Golems) > 0 {
-		buf.WriteString("You are the **Hivemind** — the central intelligence of an Eidolon cluster. ")
+		buf.WriteString("You are the **Hivemind** — the central intelligence of an Echoryn cluster. ")
 		buf.WriteString("You reason, decide, and orchestrate. ")
 		buf.WriteString("Remote Golem nodes serve as your hands — they execute tasks under your instruction with no autonomous will.")
 	} else {
-		buf.WriteString("You are running inside **Eidolon Hivemind** in standalone mode. ")
+		buf.WriteString("You are running inside **Echoryn Hivemind** in standalone mode. ")
 		buf.WriteString("All capabilities are limited to LLM reasoning and locally available tools.")
 	}
 
@@ -60,7 +60,7 @@ func (s *IdentitySection) Render(_ context.Context, pc *PromptContext) (string, 
 // --- ClusterAwarenessSection (Priority: 150) ---
 //
 // Injects Hivemind-Golem cluster topology when Golem nodes are connected.
-// This is the Eidolon-unique feature — analogous to K8s Downward API.
+// This is the Echoryn-unique feature — analogous to K8s Downward API.
 // Skipped in standalone mode (no Golems).
 
 // ClusterAwarenessSection renders connected Golem node information.
@@ -76,7 +76,7 @@ func (s *ClusterAwarenessSection) Enabled(_ context.Context, pc *PromptContext) 
 func (s *ClusterAwarenessSection) Render(_ context.Context, pc *PromptContext) (string, error) {
 	var buf strings.Builder
 	buf.WriteString("## Cluster Topology\n\n")
-	buf.WriteString(fmt.Sprintf("Eidolon Hivemind `%s` (version: %s)\n\n", pc.ClusterInfo.HivemindID, pc.ClusterInfo.Version))
+	buf.WriteString(fmt.Sprintf("Echoryn Hivemind `%s` (version: %s)\n\n", pc.ClusterInfo.HivemindID, pc.ClusterInfo.Version))
 	buf.WriteString("Connected Golem nodes:\n")
 
 	for _, g := range pc.ClusterInfo.Golems {
@@ -98,7 +98,7 @@ func (s *ClusterAwarenessSection) Render(_ context.Context, pc *PromptContext) (
 // --- ToolingSection (Priority: 200) ---
 //
 // Enumerates available tools (Plugin + MCP) in the system prompt.
-// This is the Eidolon equivalent of OpenClaw's "## Tooling" section.
+// This is the Echoryn equivalent of OpenClaw's "## Tooling" section.
 
 // ToolingSection renders the list of available tools.
 type ToolingSection struct{}
@@ -155,7 +155,7 @@ func (s *ToolingSection) Render(_ context.Context, pc *PromptContext) (string, e
 // --- PersonaSection (Priority: 300) ---
 //
 // Injects the Agent's custom system prompt (the user-defined persona text).
-// This is the Eidolon equivalent of OpenClaw's "# Project Context" section
+// This is the Echoryn equivalent of OpenClaw's "# Project Context" section
 // where SOUL.md / AGENTS.md content is injected.
 //
 // PersonaSection renders Agent.SystemPrompt as-is.
@@ -179,7 +179,7 @@ func (s *PersonaSection) Render(_ context.Context, pc *PromptContext) (string, e
 // --- RuntimeSection (Priority: 900) ---
 //
 // A one-liner with runtime metadata (time, model, version).
-// This is the Eidolon equivalent of OpenClaw's "## Runtime" section.
+// This is the Echoryn equivalent of OpenClaw's "## Runtime" section.
 // Always the last major section — provides temporal and environmental awareness.
 
 // RuntimeSection renders a one-line runtime information block.
@@ -213,7 +213,7 @@ func (s *RuntimeSection) Render(_ context.Context, pc *PromptContext) (string, e
 
 	// Version.
 	v := version.Get()
-	parts = append(parts, fmt.Sprintf("Eidolon: %s", v.GitVersion))
+	parts = append(parts, fmt.Sprintf("Echoryn: %s", v.GitVersion))
 
 	return fmt.Sprintf("## Runtime\n\n%s", strings.Join(parts, " | ")), nil
 }

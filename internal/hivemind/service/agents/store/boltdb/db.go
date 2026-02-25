@@ -12,6 +12,7 @@ var (
 	bucketAgentStore   = []byte("agents")
 	bucketSessionStore = []byte("sessions")
 	bucketRunStore     = []byte("runs")
+	bucketSubAgents    = []byte("subagents")
 )
 
 // DB wraps a BoltDB instance and manages its lifecycle.

@@ -22,7 +22,7 @@ import (
 //
 // After assembly, the message list is pruned to fit within the context window.
 //
-// This is the Eidolon equivalent of OpenClaw's context building pipeline
+// This is the Echoryn equivalent of OpenClaw's context building pipeline
 // combined with airi-go's prompt template assembly.
 type ContextBuilder struct {
 	estimator       *TokenEstimator
@@ -145,7 +145,7 @@ func (cb *ContextBuilder) Build(
 // limitHistoryTurns returns the last N user turns (and all associated messages
 // between them, including assistant replies and tool calls/results).
 //
-// This is the Eidolon equivalent of OpenClaw's limitHistoryTurns().
+// This is the Echoryn equivalent of OpenClaw's limitHistoryTurns().
 func (cb *ContextBuilder) limitHistoryTurns(messages []*entity.Message) ([]*entity.Message, bool) {
 	if cb.maxHistoryTurns <= 0 {
 		return messages, false
