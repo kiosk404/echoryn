@@ -41,6 +41,7 @@ node_modules/
 /vendor
 log
 openclaw/
+airi-go/
 *gen_test.go
 .env.dev
 .env.local
