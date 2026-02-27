@@ -61,15 +61,23 @@ func (r *ReplayChunkCallback) OnEnd(ctx context.Context, info *callbacks.RunInfo
 // For ToolsNode: collects tool results and emits ToolCallEnd events.
 func (r *ReplayChunkCallback) OnEndWithStreamOutput(ctx context.Context, info *callbacks.RunInfo, output *schema.StreamReader[callbacks.CallbackOutput]) context.Context {
 	switch info.Component {
-	case compose.ComponentOfGraph, components.ComponentOfChatModel:
+	case components.ComponentOfChatModel:
 		go r.consumeChatModelStream(ctx, output)
 
 	case compose.ComponentOfToolsNode:
 		go r.consumeToolsNodeStream(ctx, output)
 
 	default:
+		// Graph-level and other component stream outputs are duplicates of
+		// inner node streams. Drain and discard them to avoid resource leaks.
 		if output != nil {
-			(*output).Close()
+			go func() {
+				for {
+					if _, err := (*output).Recv(); err != nil {
+						break
+					}
+				}
+			}()
 		}
 	}
 	return ctx
