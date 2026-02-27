@@ -1,0 +1,295 @@
+syntax = "proto3";
+
+package golem;
+
+option go_package = "github.com/kiosk404/echoryn/pkg/proto/golem";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// ==========================================================================
+// Golem Node — 核心通信结构
+// 参考: airi-go IDL 风格 + Echoryn Hivemind-Golem 分布式架构
+// ==========================================================================
+
+// NodeStatus 节点状态枚举
+enum NodeStatus {
+  NODE_STATUS_UNSPECIFIED = 0;
+  NODE_STATUS_ONLINE      = 1;  // 在线可调度
+  NODE_STATUS_OFFLINE     = 2;  // 离线
+  NODE_STATUS_DRAINING    = 3;  // 排水中 (不接受新任务, 等待现有任务完成)
+  NODE_STATUS_CORDONED    = 4;  // 已隔离 (手动标记不可调度)
+}
+
+// TaskStatus 任务状态枚举
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_PENDING     = 1;  // 等待调度
+  TASK_STATUS_ASSIGNED    = 2;  // 已分配到节点
+  TASK_STATUS_RUNNING     = 3;  // 正在执行
+  TASK_STATUS_COMPLETED   = 4;  // 成功完成
+  TASK_STATUS_FAILED      = 5;  // 失败
+  TASK_STATUS_CANCELLED   = 6;  // 已取消
+  TASK_STATUS_TIMED_OUT   = 7;  // 超时
+}
+
+// TaskPriority 任务优先级
+enum TaskPriority {
+  TASK_PRIORITY_UNSPECIFIED = 0;
+  TASK_PRIORITY_LOW         = 1;
+  TASK_PRIORITY_NORMAL      = 5;
+  TASK_PRIORITY_HIGH        = 8;
+  TASK_PRIORITY_CRITICAL    = 10;
+}
+
+// HeartbeatAction 心跳响应中 Hivemind 可下发的控制指令
+enum HeartbeatAction {
+  HEARTBEAT_ACTION_UNSPECIFIED = 0;
+  HEARTBEAT_ACTION_NONE        = 1;  // 无操作
+  HEARTBEAT_ACTION_DRAIN       = 2;  // 开始排水
+  HEARTBEAT_ACTION_SHUTDOWN    = 3;  // 要求关闭
+}
+
+// Capability 节点能力描述
+message Capability {
+  string name        = 1;  // 能力名称 (e.g. "browser_automation", "code_execution")
+  string version     = 2;  // 能力版本
+  string description = 3;  // 能力描述
+}
+
+// SystemInfo 节点系统信息 (静态, 注册时上报)
+message SystemInfo {
+  int32  cpu_cores    = 1;  // CPU 核心数
+  int64  memory_mb    = 2;  // 总内存 (MB)
+  int64  disk_free_mb = 3;  // 可用磁盘空间 (MB)
+  string os           = 4;  // 操作系统 (e.g. "linux", "darwin")
+  string arch         = 5;  // 架构 (e.g. "amd64", "arm64")
+  string hostname     = 6;  // 主机名
+}
+
+// NodeInfo 节点注册信息 (静态 + 半静态)
+message NodeInfo {
+  string              id           = 1;   // 节点唯一 ID
+  string              name         = 2;   // 节点可读名称
+  string              address      = 3;   // 节点地址 (ip:port)
+  NodeStatus          status       = 4;   // 节点状态
+  SystemInfo          system_info  = 5;   // 系统信息
+  repeated Capability capabilities = 6;   // 已注册的能力列表
+  map<string, string> labels       = 7;   // 用户自定义标签
+  string              version      = 8;   // Golem 版本号
+  google.protobuf.Timestamp registered_at = 9;
+  google.protobuf.Timestamp last_seen_at  = 10;
+}
+
+// NodeLoadInfo 节点负载信息 (动态, 心跳上报)
+message NodeLoadInfo {
+  double cpu_percent    = 1;
+  double memory_percent = 2;
+  int64  disk_free_mb   = 3;
+  int32  active_tasks   = 4;
+  int32  queued_tasks   = 5;
+}
+
+// Task 任务定义
+message Task {
+  string       id               = 1;
+  string       name             = 2;
+  string       skill_name       = 3;
+  bytes        payload          = 4;   // JSON-encoded skill parameters
+  TaskStatus   status           = 5;
+  TaskPriority priority         = 6;
+  string       assigned_node_id = 7;
+  string       session_id       = 8;
+  string       agent_id         = 9;
+  bytes        result           = 10;
+  string       error            = 11;
+  google.protobuf.Duration  timeout      = 12;
+  google.protobuf.Timestamp created_at   = 13;
+  google.protobuf.Timestamp started_at   = 14;
+  google.protobuf.Timestamp completed_at = 15;
+  map<string, string> metadata = 16;
+}
+
+// TaskProgress 任务进度上报
+message TaskProgress {
+  string task_id          = 1;
+  double progress_percent = 2;
+  string status_message   = 3;
+  bytes  partial_result   = 4;
+}
+
+// TaskResult 任务最终结果
+message TaskResult {
+  string task_id = 1;
+  bool   success = 2;
+  bytes  output  = 3;
+  string error   = 4;
+}
+
+// ==========================================================================
+// Base Response (轻量版, 避免跨 package 依赖)
+// ==========================================================================
+
+message BaseResp {
+  string status_message = 1;
+  int32  status_code    = 2;
+}
+
+// ==========================================================================
+// GolemNodeService — Golem 节点向 Hivemind 注册 / 心跳 / 上报结果
+// ==========================================================================
+service GolemNodeService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+  rpc ReportTaskResult(ReportTaskResultRequest) returns (ReportTaskResultResponse);
+  rpc ReportTaskProgress(ReportTaskProgressRequest) returns (ReportTaskProgressResponse);
+}
+
+// ==========================================================================
+// HivemindControlService — Hivemind 向 Golem 下发任务和管控指令
+// ==========================================================================
+service HivemindControlService {
+  rpc DispatchTask(DispatchTaskRequest) returns (DispatchTaskResponse);
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
+}
+
+// ==========================================================================
+// HivemindAdminService — 管理面 API, 供 echoctl / echadm 使用
+// ==========================================================================
+service HivemindAdminService {
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+  rpc CordonNode(CordonNodeRequest) returns (CordonNodeResponse);
+  rpc UncordonNode(UncordonNodeRequest) returns (UncordonNodeResponse);
+}
+
+// ==========================================================================
+// Request / Response Messages
+// ==========================================================================
+
+message RegisterRequest {
+  string       join_token = 1;
+  NodeInfo     node_info  = 2;
+  NodeLoadInfo load_info  = 3;
+}
+
+message RegisterResponse {
+  bool     accepted      = 1;
+  string   node_id       = 2;
+  string   reject_reason = 3;
+  BaseResp base_resp     = 255;
+}
+
+message HeartbeatRequest {
+  string                        node_id   = 1;
+  NodeLoadInfo                  load_info = 2;
+  google.protobuf.Timestamp     timestamp = 3;
+}
+
+message HeartbeatResponse {
+  bool            acknowledged = 1;
+  HeartbeatAction action       = 2;
+}
+
+message DeregisterRequest {
+  string node_id = 1;
+  string reason  = 2;
+}
+
+message DeregisterResponse {
+  bool     success   = 1;
+  BaseResp base_resp = 255;
+}
+
+message ReportTaskResultRequest {
+  string     node_id     = 1;
+  TaskResult task_result = 2;
+}
+
+message ReportTaskResultResponse {
+  bool     acknowledged = 1;
+  BaseResp base_resp    = 255;
+}
+
+message ReportTaskProgressRequest {
+  string       node_id       = 1;
+  TaskProgress task_progress = 2;
+}
+
+message ReportTaskProgressResponse {
+  bool     acknowledged = 1;
+  BaseResp base_resp    = 255;
+}
+
+message DispatchTaskRequest {
+  Task task = 1;
+}
+
+message DispatchTaskResponse {
+  bool     accepted      = 1;
+  string   reject_reason = 2;
+  BaseResp base_resp     = 255;
+}
+
+message CancelTaskRequest {
+  string task_id = 1;
+  string reason  = 2;
+}
+
+message CancelTaskResponse {
+  bool     success   = 1;
+  BaseResp base_resp = 255;
+}
+
+message DrainNodeRequest {
+  string node_id = 1;
+}
+
+message DrainNodeResponse {
+  bool     success   = 1;
+  BaseResp base_resp = 255;
+}
+
+message ListNodesRequest {
+  NodeStatus status_filter = 1;
+  int32      page_size     = 2;
+  string     page_token    = 3;
+}
+
+message ListNodesResponse {
+  repeated NodeInfo nodes           = 1;
+  string            next_page_token = 2;
+  int32             total_count     = 3;
+  BaseResp          base_resp       = 255;
+}
+
+message GetNodeRequest {
+  string node_id = 1;
+}
+
+message GetNodeResponse {
+  NodeInfo     node_info = 1;
+  NodeLoadInfo load_info = 2;
+  BaseResp     base_resp = 255;
+}
+
+message CordonNodeRequest {
+  string node_id = 1;
+  string reason  = 2;
+}
+
+message CordonNodeResponse {
+  bool     success   = 1;
+  BaseResp base_resp = 255;
+}
+
+message UncordonNodeRequest {
+  string node_id = 1;
+}
+
+message UncordonNodeResponse {
+  bool     success   = 1;
+  BaseResp base_resp = 255;
+}

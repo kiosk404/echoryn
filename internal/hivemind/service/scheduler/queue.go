@@ -3,6 +3,8 @@ package scheduler
 import (
 	"container/heap"
 	"sync"
+
+	"github.com/kiosk404/echoryn/internal/pkg/protocol"
 )
 
 // --------------------------------------------------------------------------

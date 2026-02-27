@@ -13,6 +13,7 @@ VERSION_PACKAGE=github.com/kiosk404/echoryn/pkg/version
 # Protobuf IDL options
 PROTO_IDL_DIR := ./idl
 PROTO_OUT_GO := ./pkg/proto
+PROTO_MODULES := golem
 
 # ==============================================================================
 # Includes
@@ -75,15 +76,21 @@ format: tools.verify.golines tools.verify.goimports
 	@$(FIND) -type f -name '*.go' | $(XARGS) golines -w --max-len=240 --reformat-tags --shorten-comments --ignore-generated .
 	@$(GO) mod edit -fmt
 
-## proto: Generate Go code from protobuf IDL files.
+## proto: Generate Go code from protobuf IDL files (gRPC).
 .PHONY: proto
-proto:
-	@echo "===========> Generating Go code from protobuf IDL files"
+proto: tools.verify.protoc-gen-go tools.verify.protoc-gen-go-grpc
+	@echo "===========> Generating Go code from protobuf proto files"
 	@mkdir -p $(PROTO_OUT_GO)
 	@protoc --proto_path=$(PROTO_IDL_DIR) \
 		--go_out=$(PROTO_OUT_GO) --go_opt=paths=source_relative \
 		--go-grpc_out=$(PROTO_OUT_GO) --go-grpc_opt=paths=source_relative \
-		$(shell find $(PROTO_IDL_DIR) -name '*.proto')
+		$(foreach mod,$(PROTO_MODULES),$(shell find $(PROTO_IDL_DIR)/$(mod) -name '*.proto'))
+
+## proto-clean: Remove generated protobuf Go files.
+.PHONY: proto-clean
+proto-clean:
+	@echo "===========> Cleaning generated protobuf files"
+	@$(foreach mod,$(PROTO_MODULES),rm -rf $(PROTO_OUT_GO)/$(mod);)
 
 ## clean: Remove all files that are created by building.
 .PHONY: clean

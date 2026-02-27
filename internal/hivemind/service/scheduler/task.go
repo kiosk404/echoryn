@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"time"
+
+	"github.com/kiosk404/echoryn/internal/pkg/protocol"
 )
 
 // ScheduleMode defines how a Golem node is selected for task execution.

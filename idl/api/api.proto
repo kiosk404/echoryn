@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package api;
+
+option go_package = "github.com/kiosk404/echoryn/api/model/api";
+
+import "base/base.proto";
+import "golem/golem.proto";
+import "google/protobuf/timestamp.proto";
+
+// ==========================================================================
+// GolemNodeService — Golem 节点向 Hivemind 注册 / 心跳 / 上报结果
+// 由 Golem 调用, Hivemind 作为 gRPC Server 端
+// ==========================================================================
+service GolemNodeService {
+  // Register 注册 Golem 节点到 Hivemind
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+
+  // Heartbeat 双向流: Golem 定期上报负载, Hivemind 可下发控制指令
+  rpc Heartbeat(stream HeartbeatRequest) returns (stream HeartbeatResponse);
+
+  // Deregister 节点主动注销 (graceful shutdown)
+  rpc Deregister(DeregisterRequest) returns (DeregisterResponse);
+
+  // ReportTaskResult 上报任务执行结果
+  rpc ReportTaskResult(ReportTaskResultRequest) returns (ReportTaskResultResponse);
+
+  // ReportTaskProgress 上报任务执行进度
+  rpc ReportTaskProgress(ReportTaskProgressRequest) returns (ReportTaskProgressResponse);
+}
+
+// ==========================================================================
+// HivemindControlService — Hivemind 向 Golem 下发任务和管控指令
+// 由 Hivemind 调用, Golem 作为 gRPC Server 端 (或通过双向流实现)
+// ==========================================================================
+service HivemindControlService {
+  // DispatchTask 下发任务到 Golem 节点
+  rpc DispatchTask(DispatchTaskRequest) returns (DispatchTaskResponse);
+
+  // CancelTask 取消正在执行的任务
+  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
+
+  // DrainNode 排水节点 (停止接受新任务, 等待现有任务完成)
+  rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
+}
+
+// ==========================================================================
+// HivemindAdminService — 管理面 API, 供 echoctl / echadm 使用
+// ==========================================================================
+service HivemindAdminService {
+  // ListNodes 列出所有注册的 Golem 节点
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+
+  // GetNode 获取指定节点详情
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+
+  // CordonNode 隔离节点 (标记为不可调度)
+  rpc CordonNode(CordonNodeRequest) returns (CordonNodeResponse);
+
+  // UncordonNode 取消节点隔离
+  rpc UncordonNode(UncordonNodeRequest) returns (UncordonNodeResponse);
+}
+
+// ==========================================================================
+// Request / Response Messages — GolemNodeService
+// ==========================================================================
+
+message RegisterRequest {
+  string                        join_token = 1;  // 加入令牌 (由 echoadm 生成)
+  golem.NodeInfo                node_info  = 2;  // 节点信息
+  golem.NodeLoadInfo            load_info  = 3;  // 初始负载信息
+}
+
+message RegisterResponse {
+  bool   accepted       = 1;  // 是否接受注册
+  string node_id        = 2;  // Hivemind 分配/确认的节点 ID
+  string reject_reason  = 3;  // 拒绝原因 (如果不接受)
+  base.BaseResp base_resp = 255;
+}
+
+message HeartbeatRequest {
+  string                        node_id   = 1;  // 节点 ID
+  golem.NodeLoadInfo            load_info = 2;  // 当前负载
+  google.protobuf.Timestamp     timestamp = 3;  // 心跳时间戳
+}
+
+// HeartbeatAction 心跳响应中 Hivemind 可下发的控制指令
+enum HeartbeatAction {
+  HEARTBEAT_ACTION_UNSPECIFIED = 0;
+  HEARTBEAT_ACTION_NONE        = 1;  // 无操作
+  HEARTBEAT_ACTION_DRAIN       = 2;  // 开始排水
+  HEARTBEAT_ACTION_SHUTDOWN    = 3;  // 要求关闭
+}
+
+message HeartbeatResponse {
+  bool            acknowledged = 1;  // 心跳确认
+  HeartbeatAction action       = 2;  // 控制指令
+}
+
+message DeregisterRequest {
+  string node_id = 1;
+  string reason  = 2;  // 注销原因 (e.g. "graceful_shutdown", "maintenance")
+}
+
+message DeregisterResponse {
+  bool   success = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message ReportTaskResultRequest {
+  string                  node_id     = 1;
+  golem.TaskResult   task_result = 2;
+}
+
+message ReportTaskResultResponse {
+  bool   acknowledged = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message ReportTaskProgressRequest {
+  string                    node_id       = 1;
+  golem.TaskProgress   task_progress = 2;
+}
+
+message ReportTaskProgressResponse {
+  bool   acknowledged = 1;
+  base.BaseResp base_resp = 255;
+}
+
+// ==========================================================================
+// Request / Response Messages — HivemindControlService
+// ==========================================================================
+
+message DispatchTaskRequest {
+  golem.Task task = 1;
+}
+
+message DispatchTaskResponse {
+  bool   accepted      = 1;
+  string reject_reason = 2;
+  base.BaseResp base_resp = 255;
+}
+
+message CancelTaskRequest {
+  string task_id = 1;
+  string reason  = 2;
+}
+
+message CancelTaskResponse {
+  bool   success = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message DrainNodeRequest {
+  string node_id = 1;
+}
+
+message DrainNodeResponse {
+  bool   success = 1;
+  base.BaseResp base_resp = 255;
+}
+
+// ==========================================================================
+// Request / Response Messages — HivemindAdminService
+// ==========================================================================
+
+message ListNodesRequest {
+  golem.NodeStatus status_filter = 1;  // 可选: 按状态过滤
+  int32                 page_size     = 2;
+  string                page_token    = 3;
+}
+
+message ListNodesResponse {
+  repeated golem.NodeInfo nodes          = 1;
+  string                       next_page_token = 2;
+  int32                        total_count     = 3;
+  base.BaseResp base_resp = 255;
+}
+
+message GetNodeRequest {
+  string node_id = 1;
+}
+
+message GetNodeResponse {
+  golem.NodeInfo     node_info = 1;
+  golem.NodeLoadInfo load_info = 2;
+  base.BaseResp base_resp = 255;
+}
+
+message CordonNodeRequest {
+  string node_id = 1;
+  string reason  = 2;
+}
+
+message CordonNodeResponse {
+  bool   success = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message UncordonNodeRequest {
+  string node_id = 1;
+}
+
+message UncordonNodeResponse {
+  bool   success = 1;
+  base.BaseResp base_resp = 255;
+}

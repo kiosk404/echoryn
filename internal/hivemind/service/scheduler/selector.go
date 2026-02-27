@@ -10,6 +10,11 @@ import (
 )
 
 type NodeSelector interface {
+	// Name returns a human-readable identifier for this selector strategy.
+	Name() string
+
+	// Select evaluates the candidates and returns a scheduling decision.
+	Select(ctx context.Context, req *ScheduleRequest, candidates []GolemProfile) (*ScheduleDecision, error)
 }
 
 // --------------------------------------------------------------------------

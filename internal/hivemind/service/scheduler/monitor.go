@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/kiosk404/echoryn/internal/pkg/protocol"
 )
 
 // --------------------------------------------------------------------------

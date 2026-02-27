@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/kiosk404/echoryn/internal/pkg/protocol"
 )
 
 type Scheduler interface {

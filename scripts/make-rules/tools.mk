@@ -41,3 +41,11 @@ install.gotests:
 .PHONY: install.goimports
 install.goimports:
 	@$(GO) install golang.org/x/tools/cmd/goimports@latest
+
+.PHONY: install.protoc-gen-go
+install.protoc-gen-go:
+	@$(GO) install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+
+.PHONY: install.protoc-gen-go-grpc
+install.protoc-gen-go-grpc:
+	@$(GO) install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
