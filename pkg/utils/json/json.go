@@ -15,3 +15,7 @@ func Marshal(v interface{}) ([]byte, error) {
 func Unmarshal(data []byte, v interface{}) error {
 	return sonic.Unmarshal(data, v)
 }
+
+func MarshalIndent(v any, prefix, indent string) ([]byte, error) {
+	return json.MarshalIndent(v, prefix, indent)
+}

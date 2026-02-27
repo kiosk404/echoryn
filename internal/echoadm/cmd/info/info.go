@@ -6,92 +6,123 @@ import (
 	"reflect"
 	"strconv"
 
-	"github.com/kiosk404/echoryn/internal/echoadm/cmd/util"
+	cmdutil "github.com/kiosk404/echoryn/internal/echoadm/cmd/util"
+	admconfig "github.com/kiosk404/echoryn/internal/echoadm/config"
+	"github.com/kiosk404/echoryn/internal/echoadm/globals"
 	"github.com/kiosk404/echoryn/internal/echoadm/utils/templates"
 	"github.com/kiosk404/echoryn/pkg/cli/genericclioptions"
 	"github.com/kiosk404/echoryn/pkg/utils/iputil"
+	"github.com/kiosk404/echoryn/pkg/utils/json"
+	"github.com/kiosk404/echoryn/pkg/version"
 	hoststat "github.com/likexian/host-stat-go"
 	"github.com/spf13/cobra"
 )
 
 var infoExample = templates.Examples(`
-		# Print the host information
-		echoctl info`)
+		# Print node and host information
+		echoadm info
 
-// Info is an options struct to support 'info' sub command.
+		# Print in JSON format
+		echoadm info --output json
+`)
+
+// Info holds the collected system information.
 type Info struct {
-	HostName  string
-	IPAddress string
-	OSRelease string
-	CPUCore   uint64
-	MemTotal  string
-	MemFree   string
+	// Node info (from config).
+	NodeRole string `json:"node_role,omitempty"`
+	NodeName string `json:"node_name,omitempty"`
+	NodeID   string `json:"node_id,omitempty"`
+
+	// Host info.
+	HostName  string `json:"hostname"`
+	IPAddress string `json:"ip_address"`
+	OSRelease string `json:"os_release"`
+	CPUCore   uint64 `json:"cpu_core"`
+	MemTotal  string `json:"mem_total"`
+	MemFree   string `json:"mem_free"`
+
+	// Version.
+	Version string `json:"version"`
+}
+
+// InfoOptions holds the command options.
+type InfoOptions struct {
+	Output string
 	genericclioptions.IOStreams
 }
 
-// NewInfoOptions returns an initialized InfoOptions instance.
-func NewInfoOptions(ioStreams genericclioptions.IOStreams) *Info {
-	return &Info{
+func NewCmdInfo(_ cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobra.Command {
+	o := &InfoOptions{
+		Output:    "text",
 		IOStreams: ioStreams,
 	}
-}
-
-// NewCmdInfo returns new initialized instance of 'info' sub command.
-func NewCmdInfo(f util.Factory, ioStreams genericclioptions.IOStreams) *cobra.Command {
-	o := NewInfoOptions(ioStreams)
 
 	cmd := &cobra.Command{
-		Use:                   "info",
-		DisableFlagsInUseLine: true,
-		Aliases:               []string{},
-		Short:                 "Print the host information",
-		Long:                  "Print the host information.",
-		Example:               infoExample,
+		Use:     "info",
+		Short:   "Print node and host diagnostic information",
+		Long:    "Print detailed information about the current node, including host hardware, OS, network, and echoryn configuration.",
+		Example: infoExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckErr(o.Run(cmd.Context(), args))
+			if err := o.Run(cmd.Context()); err != nil {
+				fmt.Fprintf(o.ErrOut, "error: %v\n", err)
+			}
 		},
-		SuggestFor: []string{},
 	}
+
+	cmd.Flags().StringVarP(&o.Output, "output", "o", o.Output, "Output format: text or json")
 
 	return cmd
 }
 
-// Run executes an info sub command using the specified options.
-func (o *Info) Run(ctx context.Context, args []string) error {
+func (o *InfoOptions) Run(ctx context.Context) error {
 	var info Info
 
-	hostInfo, err := hoststat.GetHostInfo()
-	if err != nil {
-		return fmt.Errorf("get host info failed!error:%w", err)
+	// Collect node info from config.
+	configPath := globals.ConfigPath
+	cfg, err := admconfig.Load(configPath)
+	if err == nil && cfg.Node.Role != "" {
+		info.NodeRole = cfg.Node.Role
+		info.NodeName = cfg.Node.Name
+		info.NodeID = cfg.Node.ID
 	}
 
+	// Host info.
+	hostInfo, err := hoststat.GetHostInfo()
+	if err != nil {
+		return fmt.Errorf("get host info: %w", err)
+	}
 	info.HostName = hostInfo.HostName
 	info.OSRelease = hostInfo.Release + " " + hostInfo.OSBit
 
 	memStat, err := hoststat.GetMemStat()
 	if err != nil {
-		return fmt.Errorf("get mem stat failed!error:%w", err)
+		return fmt.Errorf("get mem stat: %w", err)
 	}
-
 	info.MemTotal = strconv.FormatUint(memStat.MemTotal, 10) + "M"
 	info.MemFree = strconv.FormatUint(memStat.MemFree, 10) + "M"
 	info.IPAddress = iputil.GetLocalIP()
 
 	cpuStat, err := hoststat.GetCPUInfo()
 	if err != nil {
-		return fmt.Errorf("get cpu stat failed!error:%w", err)
+		return fmt.Errorf("get cpu stat: %w", err)
+	}
+	info.CPUCore = cpuStat.CoreCount
+	info.Version = version.Get().String()
+
+	// Output.
+	if o.Output == "json" {
+		data, _ := json.MarshalIndent(info, "", "  ")
+		fmt.Fprintln(o.Out, string(data))
+		return nil
 	}
 
-	info.CPUCore = cpuStat.CoreCount
-
+	// Text output.
 	s := reflect.ValueOf(&info).Elem()
 	typeOfInfo := s.Type()
-
 	for i := 0; i < s.NumField(); i++ {
 		f := s.Field(i)
-
 		v := fmt.Sprintf("%v", f.Interface())
-		if v != "" {
+		if v != "" && v != "0" {
 			fmt.Fprintf(o.Out, "%12s %v\n", typeOfInfo.Field(i).Name+":", f.Interface())
 		}
 	}

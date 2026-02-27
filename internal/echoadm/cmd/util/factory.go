@@ -14,89 +14,107 @@ import (
 // upon peer methods in its own ring.
 // commands are decoupled from the factory).
 type Factory interface {
-	HivemindConnector() HivemindConnector
-	NodeChecker() NodeChecker
-	NodeInfoCollector() NodeInfoCollector
+	ClusterInitializer() ClusterInitializer
+	ConfigManager() ConfigManager
+	NodeDiagnostics() NodeDiagnostics
 }
 
-type HivemindConnector interface {
-	Connect(ctx context.Context, addr string) error
-	Join(ctx context.Context, token string)
-	NodeInfoCollector() NodeInfoCollector
+// ClusterInitializer provides cluster node initialization capabilities.
+type ClusterInitializer interface {
+	InitHivemind(ctx context.Context, opts HivemindInitOpts) error
+	InitGolem(ctx context.Context, opts GolemInitOpts) error
 }
 
-type NodeInfoCollector interface {
-	Collect(ctx context.Context) error
+// HivemindInitOpts holds options for initializing a Hivemind control plane node.
+type HivemindInitOpts struct {
+	BindAddress string
+	BindPort    int
+	ConfigDir   string
 }
 
-type NodeChecker interface {
-	RunAll(ctx context.Context) ([]*NodeCheckResult, error)
-
-	RunChecker(ctx context.Context, name string) (*NodeCheckResult, error)
+// GolemInitOpts holds options for initializing a Golem worker node.
+type GolemInitOpts struct {
+	Workspace  string
+	PluginsDir string
 }
 
-type NodeCheckResult struct {
-	Name    string
-	Status  string
-	Message string
-	Passed  bool
-	Errors  []error
+// ConfigManager provides configuration management capabilities.
+type ConfigManager interface {
+	Load(ctx context.Context, path string) (any, error)
+	Save(ctx context.Context, path string, cfg any) error
+	Validate(ctx context.Context, path string) ([]string, error)
 }
 
-type defaultFactory struct {
+// NodeDiagnostics provides node diagnostic information collection.
+type NodeDiagnostics interface {
+	CollectInfo(ctx context.Context) (*NodeInfo, error)
 }
 
+// NodeInfo holds collected node diagnostic information.
+type NodeInfo struct {
+	NodeRole  string
+	NodeName  string
+	NodeID    string
+	HostName  string
+	IPAddress string
+	OSRelease string
+	CPUCore   uint64
+	MemTotal  string
+	MemFree   string
+	Version   string
+}
+
+type defaultFactory struct{}
+
+// NewDefaultFactory creates a new default factory instance.
 func NewDefaultFactory() Factory {
 	return &defaultFactory{}
 }
 
-func (d *defaultFactory) HivemindConnector() HivemindConnector {
-	return &defaultHivemindConnector{}
+func (d *defaultFactory) ClusterInitializer() ClusterInitializer {
+	return &defaultClusterInitializer{}
 }
 
-func (d *defaultFactory) NodeInfoCollector() NodeInfoCollector {
-	return &defaultNodeInfoCollector{}
+func (d *defaultFactory) ConfigManager() ConfigManager {
+	return &defaultConfigManager{}
 }
 
-func (d *defaultFactory) NodeChecker() NodeChecker {
-	return &defaultNodeChecker{}
+func (d *defaultFactory) NodeDiagnostics() NodeDiagnostics {
+	return &defaultNodeDiagnostics{}
 }
 
-type defaultHivemindConnector struct {
-}
+type defaultClusterInitializer struct{}
 
-func (d defaultHivemindConnector) Connect(ctx context.Context, addr string) error {
+func (d *defaultClusterInitializer) InitHivemind(ctx context.Context, opts HivemindInitOpts) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (d defaultHivemindConnector) Join(ctx context.Context, token string) {
+func (d *defaultClusterInitializer) InitGolem(ctx context.Context, opts GolemInitOpts) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (d defaultHivemindConnector) NodeInfoCollector() NodeInfoCollector {
+type defaultConfigManager struct{}
+
+func (d *defaultConfigManager) Load(ctx context.Context, path string) (any, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-type defaultNodeInfoCollector struct {
-}
-
-func (d defaultNodeInfoCollector) Collect(ctx context.Context) error {
+func (d *defaultConfigManager) Save(ctx context.Context, path string, cfg any) error {
 	//TODO implement me
 	panic("implement me")
 }
 
-type defaultNodeChecker struct {
-}
-
-func (d defaultNodeChecker) RunAll(ctx context.Context) ([]*NodeCheckResult, error) {
+func (d *defaultConfigManager) Validate(ctx context.Context, path string) ([]string, error) {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (d defaultNodeChecker) RunChecker(ctx context.Context, name string) (*NodeCheckResult, error) {
+type defaultNodeDiagnostics struct{}
+
+func (d *defaultNodeDiagnostics) CollectInfo(ctx context.Context) (*NodeInfo, error) {
 	//TODO implement me
 	panic("implement me")
 }
