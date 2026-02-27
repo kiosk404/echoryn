@@ -44,7 +44,7 @@
     }
   },
   "plugins": {
-    "enabled": false,
+    "enabled": true,
     "slots": {
       "memory": "memory-core"
     },
@@ -54,8 +54,8 @@
           "enabled": true,
           "workspace_dir": ".",
           "db_path": ".echoryn/memory/index.db",
-          "embedding_provider": "openai",
-          "embedding_model": "text-embedding-3-small"
+          "embedding_provider": "ollama",
+          "embedding_model": "nomic-embed-text"
         }
       },
       "diagnostics": {
