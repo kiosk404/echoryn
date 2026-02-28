@@ -89,9 +89,10 @@ type AgentPersona struct {
 	// "full" (default), "minimal" (sub-agent), "none" (identity line only).
 	PromptMode string `json:"prompt_mode,omitempty"`
 
-	// WorkspaceDir is the directory for persona files (SOUL.md, IDENTITY.md, AGENTS.md, etc.).
-	// When set, the PromptPipeline's WorkspaceLoader reads .md files from this directory
-	// and registers them as dynamic PromptSections (P1 feature).
+	// WorkspaceDir is the workspace root directory for this agent.
+	// The WorkspaceLoader watches <WorkspaceDir>/.echoryn/ for persona files
+	// (SOUL.md, IDENTITY.md, AGENTS.md, prompts/*.md) and registers them as
+	// dynamic PromptSections. Typically inherited from the global config.
 	WorkspaceDir string `json:"workspace_dir,omitempty"`
 
 	// ExtraSections holds user-defined additional prompt sections.

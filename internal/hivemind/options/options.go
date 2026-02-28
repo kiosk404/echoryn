@@ -13,6 +13,10 @@ type Options struct {
 	ModelOptions            *genericoptions.ModelOptions     `json:"models"   mapstructure:"models"`
 	PluginOptions           *genericoptions.PluginsOptions   `json:"plugins"  mapstructure:"plugins"`
 	MCPOptions              *MCPOptions                      `json:"mcp"      mapstructure:"mcp"`
+
+	// DataDir specifies a custom data directory for all Echoryn state,
+	// When set, the state directory becomes <data-dir>/.echoryn instead of ~/.echoryn.
+	DataDir string `json:"data-dir" mapstructure:"data-dir"`
 }
 
 func (o *Options) Flags() (fss cliflag.NamedFlagSets) {
@@ -21,6 +25,11 @@ func (o *Options) Flags() (fss cliflag.NamedFlagSets) {
 	o.ModelOptions.AddFlags(fss.FlagSet("models"))
 	o.PluginOptions.AddFlags(fss.FlagSet("plugins"))
 	o.MCPOptions.AddFlags(fss.FlagSet("mcp"))
+
+	fs := fss.FlagSet("global")
+	fs.StringVar(&o.DataDir, "data-dir", o.DataDir,
+		"Custom data directory for Echoryn state, When set,"+
+			"the state directory becomes <data-dir>/.echoryn instead of ~/.echoryn.")
 	return fss
 }
 

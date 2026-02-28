@@ -85,8 +85,10 @@ func (p *memoryCorePlugin) Name() string {
 func (p *memoryCorePlugin) Init(api plugin.PluginAPI) error {
 	// Register memory_search tool.
 	api.RegisterTool(plugin.ToolDefinition{
-		Name:        "memory_search",
-		Description: "Search memory files using hybrid vector + keyword search. Returns relevant code/text snippets from indexed memory files.",
+		Name: "memory_search",
+		Description: "Mandatory recall step: semantically search MEMORY.md + memory/*.md before " +
+			"answering questions about prior work, decisions, dates, people, preferences, or todos; " +
+			"returns top snippets with path + lines.",
 		Parameters: []plugin.ParameterDef{
 			{Name: "query", Type: "string", Description: "The search query text", Required: true},
 		},
@@ -187,6 +189,16 @@ func (p *memoryCorePlugin) handleMemorySearch(ctx context.Context, params map[st
 	results, err := p.manager.Search(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("memory search failed: %w", err)
+	}
+
+	// Return an explicit 'no result' message so the LLM knows to inform the
+	// user instead of silently ending the turn with no follow-up text.
+	if len(results) == 0 {
+		return map[string]interface{}{
+			"results:": []interface{}{},
+			"message": "No matching memories found, the memory store is empty or has no relevant entries for this query" +
+				"Tell the user you checked but found nothing.",
+		}, nil
 	}
 
 	return results, nil
@@ -308,20 +320,17 @@ func (p *memoryCorePlugin) onBeforeAgentStart(ctx context.Context, data interfac
 		return nil
 	}
 
-	status := p.manager.Status()
-	if status.ChunkCount > 0 {
-		msg := agentEntity.NewSystemMessage(memoryRecallInstruction)
-		var injected []*agentEntity.Message
+	msg := agentEntity.NewSystemMessage(memoryRecallInstruction)
+	var injected []*agentEntity.Message
 
-		// Preserve existing injected messages from other hooks.
-		if existing, ok := hookData["injected_messages"].([]*agentEntity.Message); ok {
-			injected = existing
-		}
-		injected = append(injected, msg)
-		hookData["injected_messages"] = injected
-
-		logger.Debug("[MemoryCore] injected memory recall instruction (chunks=%d)", status.ChunkCount)
+	// Preserve existing injected messages from other hooks.
+	if existing, ok := hookData["injected_messages"].([]*agentEntity.Message); ok {
+		injected = existing
 	}
+	injected = append(injected, msg)
+	hookData["injected_messages"] = injected
+
+	logger.Debug("[MemoryCore] injected memory recall instruction")
 
 	return nil
 }
@@ -421,16 +430,16 @@ type MemorySection struct {
 func (s *MemorySection) Name() string  { return "memory" }
 func (s *MemorySection) Priority() int { return 400 }
 
-// Enabled returns true when the memory manager is initialized and has indexed content.
+// Enabled returns true when the memory manager is initialized
+// Unlike the previous implementation that required ChunkCount > 0,
+// we now enable the section as long as the manager exists (aligned with OpenClaw)
+// so the Agent always sees the recall instruction even for a fresh memory store.
 func (s *MemorySection) Enabled(_ context.Context, _ *prompt.PromptContext) bool {
-	if s.plugin.manager == nil {
-		return false
-	}
-	status := s.plugin.manager.Status()
-	return status.ChunkCount > 0
+	return s.plugin.manager != nil
 }
 
 // Render returns the memory recall instruction text.
+// Aligned with OpenClaw's imperative "Memory Recall" prompt style
 func (s *MemorySection) Render(_ context.Context, _ *prompt.PromptContext) (string, error) {
 	if s.plugin.manager == nil {
 		return "", nil
@@ -442,15 +451,10 @@ func (s *MemorySection) Render(_ context.Context, _ *prompt.PromptContext) (stri
 	}
 
 	// Enhanced instruction with index stats for Agent awareness.
-	return fmt.Sprintf(`## Memory System
-
-You have access to a persistent memory system with %d indexed files and %d content chunks.
-
-Follow these guidelines:
-- Before answering questions about past conversations, user preferences, or previously discussed topics, use the **memory_search** tool to recall relevant information.
-- When you learn important facts, decisions, user preferences, or actionable information during a conversation, use the **memory_write** tool to save them for future reference.
-- Use **memory_delete** to remove outdated or incorrect memories when appropriate.
-- Memory files are organized as Markdown under the memory/ directory.`, status.FileCount, status.ChunkCount), nil
+	return `## Memory Recall
+Before answering anything about prior work, decisions, dates, people, preferences, or todos: 
+run memory_search on MEMORY.md + memory/*.md; then use memory_read to pull only the needed lines. 
+If low confidence after search, say you checked.`, nil
 }
 
 // --- Manager Access (for testing/diagnostics) ---

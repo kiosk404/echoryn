@@ -1,6 +1,8 @@
 package config
 
 // EchorynConfig is the top-level configuration stored in ~/.echoryn/config.json.
+// Hivemind role: ~/.echoryn/hivemind.json
+// Golem role: ~/.echoryn/golem.json
 // It contains all node-level settings for both Hivemind and Golem roles.
 type EchorynConfig struct {
 	Version string `json:"version"`

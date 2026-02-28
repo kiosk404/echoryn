@@ -101,7 +101,7 @@ clean:
 ## run: Run the default binary (hivemind).
 .PHONY: run
 run:
-	@$(MAKE) go.run.hivemind
+	@$(MAKE) go.run.hivemind RUN_ARGS="--data-dir=."
 
 ## run.%: Run a specific binary (e.g. make run.hivemind).
 .PHONY: run.%

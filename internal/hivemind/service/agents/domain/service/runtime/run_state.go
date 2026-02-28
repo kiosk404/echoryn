@@ -32,7 +32,7 @@ func (sm *RunStateMachine) TransitionToInProgress() error {
 		return errno.ErrRunAlreadyDone
 	}
 	sm.run.Status = entity.RunStatusInProgress
-	logger.InfoX(pkg.ModuleName, "[RunState] run %s -> in_progress", "runID", sm.run.ID)
+	logger.InfoX(pkg.ModuleName, "[RunState] run %s -> in_progress", sm.run.ID)
 	return nil
 }
 
@@ -43,7 +43,7 @@ func (sm *RunStateMachine) TransitionToCompleted(output string, usage *entity.To
 	sm.run.Status = entity.RunStatusCompleted
 	sm.run.Output = output
 	sm.run.Usage = usage
-	logger.InfoX(pkg.ModuleName, "[RunState] run %s -> completed", "runID", sm.run.ID)
+	logger.InfoX(pkg.ModuleName, "[RunState] run %s -> completed", sm.run.ID)
 	return nil
 }
 
@@ -53,7 +53,7 @@ func (sm *RunStateMachine) TransitionToFailed(code, message string) {
 	sm.run.CompletedAt = &now
 	sm.run.Status = entity.RunStatusFailed
 	sm.run.Error = &entity.RunError{Code: code, Message: message}
-	logger.ErrorX(pkg.ModuleName, "[RunState] run %s -> failed, err: %v", "runID", sm.run.ID, sm.run.Error)
+	logger.ErrorX(pkg.ModuleName, "[RunState] run %s -> failed, err: %v", sm.run.ID, sm.run.Error)
 }
 
 // TransitionToCancelled transitions the run to the Cancelled state.
@@ -61,7 +61,7 @@ func (sm *RunStateMachine) TransitionToCancelled() {
 	now := time.Now()
 	sm.run.CompletedAt = &now
 	sm.run.Status = entity.RunStatusCancelled
-	logger.InfoX(pkg.ModuleName, "[RunState] run %s -> cancelled", "runID", sm.run.ID)
+	logger.InfoX(pkg.ModuleName, "[RunState] run %s -> cancelled", sm.run.ID)
 }
 
 // Run returns the current run.

@@ -161,6 +161,7 @@ func (s *ToolingSection) Render(_ context.Context, pc *PromptContext) (string, e
 // PersonaSection renders Agent.SystemPrompt as-is.
 // For workspace-based persona files (SOUL.md, IDENTITY.md, AGENTS.md),
 // use WorkspaceLoader which provides dynamic WorkspaceSections (Priority: 310-350).
+// from the `.echoryn/` subdirectory.
 
 // PersonaSection renders the Agent's user-defined system prompt.
 type PersonaSection struct{}
@@ -220,7 +221,7 @@ func (s *RuntimeSection) Render(_ context.Context, pc *PromptContext) (string, e
 
 // --- DefaultPipeline factory ---
 
-// NewDefaultPipeline creates a Pipeline pre-loaded with all builtin sections.
+// NewDefaultPipeline creates a Pipeline preloaded with all builtin sections.
 //
 // Builtin sections and their priorities:
 //
@@ -228,11 +229,11 @@ func (s *RuntimeSection) Render(_ context.Context, pc *PromptContext) (string, e
 //	150 — ClusterAwarenessSection (Golem topology, conditional)
 //	200 — ToolingSection          (available tools, conditional)
 //	300 — PersonaSection          (user-defined system prompt, conditional)
-//	310 — WorkspaceSection:soul          (SOUL.md, via WorkspaceLoader, conditional)
-//	320 — WorkspaceSection:identity_file (IDENTITY.md, via WorkspaceLoader, conditional)
-//	330 — WorkspaceSection:agents_file   (AGENTS.md, via WorkspaceLoader, conditional)
-//	350+— WorkspaceSection:extra:*       (prompts/*.md, via WorkspaceLoader, conditional)
-//	400 — MemorySection           (memory recall instructions, via memorycore plugin)
+//	310 — WorkspaceSection:soul          (.echoryn/SOUL.md, via WorkspaceLoader, conditional)
+//	320 — WorkspaceSection:identity_file (.echoryn/IDENTITY.md, via WorkspaceLoader, conditional)
+//	330 — WorkspaceSection:agents_file   (.echoryn/AGENTS.md, via WorkspaceLoader, conditional)
+//	350+— WorkspaceSection:extra:*       (.echoryn/prompts/*.md, via WorkspaceLoader, conditional)
+//	400 — MemorySection           (memory recall instructions, via memory-core plugin)
 //	900 — RuntimeSection          (runtime metadata, always on)
 //
 // WorkspaceSections (310-350+) are dynamically injected by WorkspaceLoader

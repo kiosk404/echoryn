@@ -19,6 +19,7 @@ import (
 	"github.com/kiosk404/echoryn/pkg/http/shutdown"
 	"github.com/kiosk404/echoryn/pkg/http/shutdown/posixsignal"
 	"github.com/kiosk404/echoryn/pkg/logger"
+	"github.com/kiosk404/echoryn/pkg/paths"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -68,6 +69,13 @@ func (c *completedExtraConfig) New() (*genericapiserver.GRPCAPIServer, error) {
 }
 
 func createAPIServer(cfg *config.Config) (*apiServer, error) {
+	// Ensure ~/.echoryn state directory structure exists.
+	stateDir, err := paths.EnsureStateDir()
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure state directory: %w", err)
+	}
+	logger.Info("[Hivemind] state directory: %s", stateDir)
+
 	gs := shutdown.New()
 	gs.AddShutdownManager(posixsignal.NewPosixSignalManager())
 

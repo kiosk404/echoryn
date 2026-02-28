@@ -1,0 +1,7 @@
+{
+  "grpc": {
+    "bind-address": "127.0.0.1",
+    "bind-port": 11790,
+    "max-msg-size": 4194303
+  }
+}

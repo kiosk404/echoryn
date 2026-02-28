@@ -5,25 +5,30 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/kiosk404/echoryn/pkg/utils/homedir"
+	"github.com/kiosk404/echoryn/pkg/paths"
 	"github.com/kiosk404/echoryn/pkg/utils/json"
 )
 
 const (
-	// DefaultConfigDir is the default echoryn configuration directory.
+	// DefaultConfigDir is the default echoryn configuration directory name.
 	DefaultConfigDir = ".echoryn"
-	// ConfigFileName is the global config file name.
-	ConfigFileName = "config.json"
 )
 
-// DefaultConfigPath returns the default path to config.json (~/.echoryn/config.json).
+// DefaultConfigPath returns the default config path for Hivemind role (~/.echoryn/hivemind.json).
 func DefaultConfigPath() string {
-	return filepath.Join(homedir.HomeDir(), DefaultConfigDir, ConfigFileName)
+	return paths.ResolveConfigPath(paths.RoleHivemind)
+}
+
+// DefaultConfigPathForRole returns the default config path for the given role.
+//   - Hivemind: ~/.echoryn/hivemind.json
+//   - Golem:    ~/.echoryn/golem.json
+func DefaultConfigPathForRole(role paths.NodeRole) string {
+	return paths.ResolveConfigPath(role)
 }
 
 // DefaultBaseDir returns the default echoryn base directory (~/.echoryn).
 func DefaultBaseDir() string {
-	return filepath.Join(homedir.HomeDir(), DefaultConfigDir)
+	return paths.ResolveStateDir()
 }
 
 // Load reads and parses the config file at the given path.

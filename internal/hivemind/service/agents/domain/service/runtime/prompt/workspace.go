@@ -33,20 +33,34 @@ var conventionFiles = []conventionFile{
 // found under the `prompts/` subdirectory.
 const extraSectionBasePriority = 350
 
-// WorkspaceLoader watches a workspace directory and provides PromptSections
-// from convention files (SOUL.md, IDENTITY.md, AGENTS.md) and extra prompts.
+// WorkspaceLoader watches a workspace directory for convention prompt files
+// and provides PromptSections dynamically at assemble time.
+//
+// The workspace directory is typically ~/.echoryn/workspace (resolved by pkg/paths),
+// and convention files live directly inside it:
+//
+//	~/.echoryn/workspace/
+//	├── SOUL.md          (Priority 310)
+//	├── IDENTITY.md      (Priority 320)
+//	├── AGENTS.md        (Priority 330)
+//	├── MEMORY.md
+//	├── memory/
+//	│   └── *.md
+//	└── prompts/
+//	    ├── coding-rules.md  (Priority 350+)
+//	    └── tone-guide.md
 type WorkspaceLoader struct {
 	mu      sync.RWMutex
-	dir     string
+	dir     string            // workspace directory (absolute)
 	content map[string]string // section name -> file content
 	watcher *fsnotify.Watcher
 	closeCh chan struct{}
 	closed  bool
 }
 
-// NewWorkspaceLoader creates a WorkspaceLoader for the given directory.
-// It performs an initial scan and starts a background fsnotify watcher.
-// If dir is empty or does not exist, returns nil (no-op).
+// NewWorkspaceLoader creates a WorkspaceLoader for the given workspace directory.
+// Convention files (SOUL.md, IDENTITY.md, AGENTS.md) and the prompts/ subdirectory
+// are scanned directly inside dir. Returns nil if dir is empty or does not exist.
 func NewWorkspaceLoader(dir string) *WorkspaceLoader {
 	if dir == "" {
 		return nil
@@ -168,7 +182,7 @@ func (wl *WorkspaceLoader) Close() {
 	}
 }
 
-// reload scans the workspace directory and refreshes the content cache.
+// reload scans the .echoryn/ directory and refreshes the content cache.
 func (wl *WorkspaceLoader) reload() {
 	wl.mu.Lock()
 	defer wl.mu.Unlock()
@@ -228,7 +242,7 @@ func (wl *WorkspaceLoader) startWatcher() error {
 	}
 	wl.watcher = watcher
 
-	// Watch the root directory for convention files.
+	// Watch the workspace for convention files.
 	if err := watcher.Add(wl.dir); err != nil {
 		watcher.Close()
 		return fmt.Errorf("watch %q: %w", wl.dir, err)

@@ -78,17 +78,17 @@ func (g *ContextWindowGuard) Resolve(ctx context.Context, ref llmEntity.ModelRef
 				reserveTokens = model.MaxTokens
 			}
 		} else if err != nil {
-			logger.WarnX(pkg.ModuleName, "[ContextWindowGuard] failed to resolve model context window, err: %v", "modelRef",
-				ref, "err", err)
+			logger.WarnX(pkg.ModuleName, "[ContextWindowGuard] failed to resolve model context window, err: %v",
+				err)
 		}
 	}
 	if windowSize < HardMinimumContextWindow {
 		logger.WarnX(pkg.ModuleName, "[ContextWindowGuard] resolved window size %d is below hard minimum %d, using default %d",
-			"windowSize", windowSize, "hardMinimum", HardMinimumContextWindow, "defaultWindow", g.defaultWindow)
+			windowSize, HardMinimumContextWindow, g.defaultWindow)
 		windowSize = HardMinimumContextWindow
 	} else if windowSize < WarnContextWindow {
 		logger.WarnX(pkg.ModuleName, "[ContextWindowGuard] resolved window size %d is below warn threshold %d, using default %d",
-			"windowSize", windowSize, "warnThreshold", WarnContextWindow, "defaultWindow", g.defaultWindow)
+			windowSize, WarnContextWindow, g.defaultWindow)
 	}
 
 	// Ensure reserve doesn't execute more than half the window.
@@ -97,7 +97,7 @@ func (g *ContextWindowGuard) Resolve(ctx context.Context, ref llmEntity.ModelRef
 	}
 
 	logger.DebugX(pkg.ModuleName, "[ContextWindowGuard] resolved window size %d, reserve tokens %d, usable tokens %d",
-		"windowSize", windowSize, "reserveTokens", reserveTokens, "usableTokens", windowSize-reserveTokens)
+		windowSize, reserveTokens, windowSize-reserveTokens)
 
 	return ContextWindowInfo{
 		WindowSize:    windowSize,

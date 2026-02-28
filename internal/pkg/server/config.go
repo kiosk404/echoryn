@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -94,7 +95,9 @@ func (c CompletedConfig) New() (*GenericAPIServer, error) {
 }
 
 // LoadConfig reads in config file and ENV variables if set.
-func LoadConfig(cfg string, defaultName string) {
+// When optional is true, missing config files are silently ignored (CLI Tool
+// behaviour, like kubectl). When false, a WARN is emitted (server behaviour)
+func LoadConfig(cfg string, defaultName string, optional bool) {
 	if cfg != "" {
 		viper.SetConfigFile(cfg)
 	} else {
@@ -105,13 +108,17 @@ func LoadConfig(cfg string, defaultName string) {
 	}
 
 	// Use config file from the flag.
-	viper.SetConfigType("json")              // set the type of the configuration to yaml.
+	viper.SetConfigType("json")              // set the type of the configuration to json.
 	viper.AutomaticEnv()                     // read in environment variables that match.
 	viper.SetEnvPrefix(RecommendedEnvPrefix) // set ENVIRONMENT variables prefix to echoryn.
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
 
 	// If a config file is found, read it in.
 	if err := viper.ReadInConfig(); err != nil {
+		var configFileNotFoundError viper.ConfigFileNotFoundError
+		if errors.As(err, &configFileNotFoundError) && optional {
+			return // CLI tools: silently use defaults
+		}
 		logger.Warn("WARNING: viper failed to discover and load the configuration file: %s", err.Error())
 	}
 }

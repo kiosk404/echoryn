@@ -75,6 +75,10 @@ type AgentRunnerConfig struct {
 	MaxHistoryTurns     int
 	CompactionThreshold float64
 	KeepRecentTurns     int
+	// WorkspaceDir is the resolved workspace directory (e.g. ~/.echoryn/workspace).
+	// Convention prompt files (SOUL.md, IDENTITY.md, AGENTS.md, prompts/*.md)
+	// are read directly from this directory.
+	WorkspaceDir string
 }
 
 // NewAgentRunner creates a new AgentRunner with all dependencies.
@@ -107,6 +111,14 @@ func NewAgentRunner(
 		pipeline = prompt.NewDefaultPipeline()
 	}
 	contextBuilder.SetPipeline(pipeline)
+
+	// Wire up WorkspaceLoader: watch workspace directory for prompt files.
+	if cfg.WorkspaceDir != "" {
+		if wl := prompt.NewWorkspaceLoader(cfg.WorkspaceDir); wl != nil {
+			pipeline.SetWorkspaceLoader(wl)
+			logger.Info("[AgentRunner] WorkspaceLoader attached for %s", cfg.WorkspaceDir)
+		}
+	}
 
 	var windowGuard *ContextWindowGuard
 	if llmModule != nil {

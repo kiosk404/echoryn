@@ -2,6 +2,7 @@ package hivemind
 
 import (
 	"github.com/kiosk404/echoryn/internal/hivemind/handler/middleware"
+	"github.com/kiosk404/echoryn/pkg/paths"
 )
 
 // GatewayConfig holds the gateway-level configuration for HTTP API endpoints.
@@ -37,10 +38,10 @@ func DefaultGatewayConfig() *GatewayConfig {
 		},
 		Store: StoreConfig{
 			Type:       "boltdb",
-			BoltDBPath: "data/hivemind.db",
+			BoltDBPath: paths.ResolveSessionStorePath(paths.DefaultAgentID()),
 		},
 		Defaults: GatewayDefaults{
-			AgentID: "main",
+			AgentID: paths.DefaultAgentID(),
 			Model:   "Echoryn",
 		},
 	}

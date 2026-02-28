@@ -96,6 +96,7 @@ func newManager(ctx context.Context, cfg *entity.MemoryConfig) (*Manager, error)
 	}
 
 	// Ensure database directory exists.
+	// Store.Path is typically an absolute path from paths.ResolveMemoryDBPath
 	dbPath := cfg.Store.Path
 	if !filepath.IsAbs(dbPath) {
 		dbPath = filepath.Join(cfg.WorkspaceDir, dbPath)
@@ -249,7 +250,22 @@ func (m *Manager) Search(ctx context.Context, query string, opts ...SearchOption
 	}
 
 	// Merge hybrid results.
-	merged := hybrid.MergeResults(vectorResults, keywordResults, cfg.Hybrid.VectorWeight, cfg.Hybrid.TextWeight)
+	merged := hybrid.MergeResults(hybrid.MergeParams{
+		Vector:       vectorResults,
+		Keyword:      keywordResults,
+		VectorWeight: cfg.Hybrid.VectorWeight,
+		TextWeight:   cfg.Hybrid.TextWeight,
+		MMR: hybrid.MMRConfig{
+			Enabled: cfg.MMR.Enabled,
+			Lambda:  cfg.MMR.Lambda,
+		},
+		TemporalDecay: hybrid.TemporalDecayConfig{
+			Enabled:      cfg.TemporalDecay.Enabled,
+			HalfLifeDays: cfg.TemporalDecay.HalfLifeDays,
+		},
+		WorkspaceDir: m.cfg.WorkspaceDir,
+		Now:          time.Now(),
+	})
 
 	// Filter by min score and limit.
 	var filtered []entity.MemorySearchResult

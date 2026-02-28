@@ -73,6 +73,8 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions) *plugin.InTreeRegist
 
 // resolveMemoryConfig extracts memory-core config from PluginsOptions.entries["memory-core"].config,
 // falling back to DefaultMemoryConfig if not specified.
+//
+// Path fields (workspace_dir, db_path) default to ~/.echoryn paths via DefaultMemoryConfig().
 func resolveMemoryConfig(opts *genericoptions.PluginsOptions) *mementity.MemoryConfig {
 	cfg := mementity.DefaultMemoryConfig()
 	if opts == nil {
@@ -91,12 +93,12 @@ func resolveMemoryConfig(opts *genericoptions.PluginsOptions) *mementity.MemoryC
 		}
 	}
 	if v, ok := entry.Config["workspace_dir"]; ok {
-		if s, ok := v.(string); ok {
+		if s, ok := v.(string); ok && s != "" && s != "." {
 			cfg.WorkspaceDir = s
 		}
 	}
 	if v, ok := entry.Config["db_path"]; ok {
-		if s, ok := v.(string); ok {
+		if s, ok := v.(string); ok && s != "" && s != "." {
 			cfg.Store.Path = s
 		}
 	}

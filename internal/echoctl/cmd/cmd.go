@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 
-	"github.com/kiosk404/echoryn/internal/echoadm/types"
 	"github.com/kiosk404/echoryn/internal/echoadm/utils/templates"
 	"github.com/kiosk404/echoryn/internal/echoctl/cmd/chat"
 	cmdutil "github.com/kiosk404/echoryn/internal/echoctl/cmd/util"
@@ -57,7 +56,10 @@ func NewEchoCtlCommand(in io.Reader, out, err io.Writer) *cobra.Command {
 
 	_ = viper.BindPFlags(cmds.PersistentFlags())
 	cobra.OnInitialize(func() {
-		genericapiserver.LoadConfig(viper.GetString(types.FlagEchorynConfig), "echoctl")
+		// echoctl is a lightweight CLI (like kubectl) — config file is optional.
+		// LoadConfig will silently ignore "file not found"; if a config exists it
+		// will be loaded so that users can persist defaults (e.g. server address).
+		genericapiserver.LoadConfig("", "echoctl", true)
 	})
 	cmds.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 

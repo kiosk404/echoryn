@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"strings"
+
+	"github.com/kiosk404/echoryn/pkg/paths"
 )
 
 // Validate checks the config for common errors and returns a list of issues.
@@ -13,12 +15,13 @@ func Validate(cfg *EchorynConfig) []string {
 		issues = append(issues, "missing version field")
 	}
 
-	if cfg.Node.Role != "" && cfg.Node.Role != "hivemind" && cfg.Node.Role != "golem" {
+	role := paths.NodeRole(cfg.Node.Role)
+	if cfg.Node.Role != "" && role != paths.RoleHivemind && role != paths.RoleGolem {
 		issues = append(issues, fmt.Sprintf("invalid node.role %q, must be 'hivemind' or 'golem'", cfg.Node.Role))
 	}
 
 	// Validate hivemind config if role is hivemind.
-	if cfg.Node.Role == "hivemind" {
+	if role == paths.RoleHivemind {
 		if cfg.Hivemind.Address == "" {
 			issues = append(issues, "hivemind.address is required when node.role is 'hivemind'")
 		}
@@ -28,7 +31,7 @@ func Validate(cfg *EchorynConfig) []string {
 	}
 
 	// Validate golem config if role is golem.
-	if cfg.Node.Role == "golem" {
+	if role == paths.RoleGolem {
 		if cfg.Golem.Workspace == "" {
 			issues = append(issues, "golem.workspace is required when node.role is 'golem'")
 		}

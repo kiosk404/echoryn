@@ -1,5 +1,9 @@
 package entity
 
+import (
+	"github.com/kiosk404/echoryn/pkg/paths"
+)
+
 // MemoryConfig is the resolved configuration for the memory system.
 // This corresponds to OpenClaw's ResolvedMemorySearchConfig.
 type MemoryConfig struct {
@@ -110,11 +114,13 @@ type CacheConfig struct {
 }
 
 // DefaultMemoryConfig returns a sensible default memory configuration.
+// Paths are resolved from the centralized ~/.echoryn state directory.
 func DefaultMemoryConfig() *MemoryConfig {
 	return &MemoryConfig{
-		Enabled:    true,
-		Sources:    []MemorySource{MemorySourceMemory},
-		ExtraPaths: nil,
+		Enabled:      true,
+		WorkspaceDir: paths.ResolveWorkspaceDir(paths.DefaultAgentID(), ""),
+		Sources:      []MemorySource{MemorySourceMemory},
+		ExtraPaths:   nil,
 		Embedding: EmbeddingConfig{
 			Provider: "openai",
 			Model:    "text-embedding-3-small",
@@ -122,7 +128,7 @@ func DefaultMemoryConfig() *MemoryConfig {
 		},
 		Store: StoreConfig{
 			Driver: "sqlite",
-			Path:   ".echoryn/memory/index.db",
+			Path:   paths.ResolveMemoryDBPath(paths.DefaultAgentID()),
 			Vector: VectorConfig{Enabled: false},
 		},
 		Chunking: DefaultChunkingConfig(),

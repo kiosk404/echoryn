@@ -110,6 +110,12 @@ type QueryConfig struct {
 
 	// Hybrid contains hybrid search weights.
 	Hybrid HybridConfig `json:"hybrid"`
+
+	// MMR configures Maximal Marginal Relevance re-ranking for diversity.
+	MMR MMRConfig `json:"mmr"`
+
+	// TemporalDecay configures time-based score decay for recency-aware scouring
+	TemporalDecay TemporalDecayConfig `json:"temporal_decay"`
 }
 
 // HybridConfig holds the weights for hybrid search merge.
@@ -127,6 +133,29 @@ type HybridConfig struct {
 	CandidateMultiplier float64 `json:"candidate_multiplier"`
 }
 
+// MMRConfig configures Maximal Marginal Relevance re-ranking.
+// MMR balances relevance with diversity by penalizing results that are
+// too similar to already-selected results.
+type MMRConfig struct {
+	// Enabled controls whether MMR re-ranking is applied. Default: false (opt-in).
+	Enabled bool `json:"enabled"`
+
+	// Lambda controls the trade-off between relevance and diversity
+	// o = max diversity, 1 = max relevance, Default: 0.7.
+	Lambda float64 `json:"lambda"`
+}
+
+// TemporalDecayConfig configures time-based score decay.
+// Never documents score higher; older documents are penalized with exponential decay.
+type TemporalDecayConfig struct {
+	// Enabled controls whether temporal decay is applied. Default: false (opt-in)
+	Enabled bool `json:"enabled"`
+
+	// HalfLifeDays is the number of days after which a document's score is halved.
+	// Default: 30.
+	HalfLifeDays float64 `json:"half_life_days"`
+}
+
 // DefaultQueryConfig returns the default query config matching OpenClaw defaults.
 func DefaultQueryConfig() QueryConfig {
 	return QueryConfig{
@@ -137,6 +166,14 @@ func DefaultQueryConfig() QueryConfig {
 			VectorWeight:        0.7,
 			TextWeight:          0.3,
 			CandidateMultiplier: 3,
+		},
+		MMR: MMRConfig{
+			Enabled: false,
+			Lambda:  0.7,
+		},
+		TemporalDecay: TemporalDecayConfig{
+			Enabled:      false,
+			HalfLifeDays: 30,
 		},
 	}
 }

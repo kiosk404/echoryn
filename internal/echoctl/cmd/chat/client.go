@@ -41,11 +41,23 @@ type chatChunk struct {
 	ID      string `json:"id"`
 	Choices []struct {
 		Delta *struct {
-			Role    string `json:"role,omitempty"`
-			Content string `json:"content,omitempty"`
+			Role      string          `json:"role,omitempty"`
+			Content   string          `json:"content,omitempty"`
+			ToolCalls []toolCallChunk `json:"tool_calls,omitempty"`
 		} `json:"delta,omitempty"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
+}
+
+// toolCallChunk matches the OpenAI tool_call delta in streaming mode.
+type toolCallChunk struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Function struct {
+		Name      string `json:"name,omitempty"`
+		Arguments string `json:"arguments,omitempty"`
+	} `json:"function"`
 }
 
 type chatError struct {
@@ -78,9 +90,14 @@ func NewHivemindClient(baseURL, sessionKey, model string, httpClient *http.Clien
 // StreamCallback is called for each text delta during streaming.
 type StreamCallback func(delta string)
 
+// ToolCallCallback is called when a tool call is detected in the stream.
+// name is the tool function name, arguments is the JSON arguments string.
+type ToolCallCallback func(name string)
+
 // ChatStream sends messages and streams the response, calling cb for each delta.
+// toolCb is called when a tool call is detected (may be nil).
 // Returns the full assistant reply when done.
-func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage, cb StreamCallback) (string, error) {
+func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage, cb StreamCallback, toolCb ToolCallCallback) (string, error) {
 	body, err := json.Marshal(chatRequest{
 		Model:    c.Model,
 		Messages: messages,
@@ -131,10 +148,20 @@ func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage,
 		}
 
 		for _, choice := range chunk.Choices {
-			if choice.Delta != nil && choice.Delta.Content != "" {
-				fullContent.WriteString(choice.Delta.Content)
-				if cb != nil {
-					cb(choice.Delta.Content)
+			if choice.Delta != nil {
+				if choice.Delta.Content != "" {
+					fullContent.WriteString(choice.Delta.Content)
+					if cb != nil {
+						cb(choice.Delta.Content)
+					}
+				}
+				// Notify tool call events so the TUI can show progress.
+				if toolCb != nil {
+					for _, tc := range choice.Delta.ToolCalls {
+						if tc.Function.Name != "" {
+							toolCb(tc.Function.Name)
+						}
+					}
 				}
 			}
 		}

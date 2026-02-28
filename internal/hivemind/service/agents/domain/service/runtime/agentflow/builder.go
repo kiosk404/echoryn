@@ -3,6 +3,7 @@ package agentflow
 import (
 	"context"
 	"fmt"
+	"io"
 
 	einoModel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
@@ -68,6 +69,12 @@ func (b *AgentFlowBuilder) buildWithTools(
 			Tools: tools,
 		},
 		MaxStep: maxTurns,
+		// Use a full-stream checker instead of the default firstChunkStreamToolCallChecker.
+		// The default checker returns false (no tool call) as soon as it sees a non-empty
+		// Content chunk, which breaks models like DeepSeek and Claude that emit text
+		// content BEFORE tool_calls in the same response. Our checker consumes the
+		// entire stream and checks whether ANY chunk contains ToolCalls.
+		StreamToolCallChecker: fullStreamToolCallChecker,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ReAct agent: %w", err)
@@ -124,4 +131,31 @@ func (b *AgentFlowBuilder) buildWithoutTools(
 
 	logger.Info("[AgentFlow] built simple ChatModel agent (no tools)")
 	return runnable, nil
+}
+
+// fullStreamToolCallChecker consumes the entire model stream to determine
+// whether any chunk contains tool calls.
+//
+// The default Eino firstChunkStreamToolCallChecker only inspects the first
+// non-empty content chunk — if it sees text before tool_calls it immediately
+// concludes "no tool call" and routes to END, which breaks models like DeepSeek
+// and Claude that output text content BEFORE tool_calls in the same turn.
+//
+// This checker drains the full stream so it correctly detects tool_calls
+// regardless of their position in the output.
+func fullStreamToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Message]) (bool, error) {
+	defer sr.Close()
+
+	for {
+		msg, err := sr.Recv()
+		if err == io.EOF {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if len(msg.ToolCalls) > 0 {
+			return true, nil
+		}
+	}
 }

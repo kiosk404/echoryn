@@ -14,10 +14,14 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/mcp"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	"github.com/kiosk404/echoryn/pkg/logger"
+	"github.com/kiosk404/echoryn/pkg/paths"
 )
 
 // Config holds the configuration for the Agents module.
 // Follows K8S-style: Config → Complete() → New(ctx, deps).
+//
+// Path resolution follows the ~/.echoryn state directory convention.
+// BoltDBPath and WorkspaceDir are derived from paths.Resolve* when empty.
 type Config struct {
 	// DefaultMaxTurns is the maximum tool-call turns per run (default: 10).
 	DefaultMaxTurns int `json:"default_max_turns,omitempty"`
@@ -43,15 +47,15 @@ type Config struct {
 	// Default: 3.
 	KeepRecentTurns int `json:"keep_recent_turns,omitempty"`
 
-	// --- Storage (P0) ---
+	// --- Storage ---
 
 	// StoreType selects the persistence backend: "inmemory" or "boltdb".
-	// Default: "inmemory".
+	// Default: "boltdb".
 	StoreType string `json:"store_type,omitempty"`
 
-	// BoltDBPath is the file path for BoltDB storage (when StoreType="boltdb").
-	// Default: "data/echoryn.db".
-	BoltDBPath string `json:"boltdb_path,omitempty"`
+	// AgentID identifies which agent's data directories to use.
+	// Default: "main".
+	AgentID string `json:"agent_id,omitempty"`
 }
 
 // CompletedConfig is the validated and completed configuration.
@@ -80,10 +84,10 @@ func (c *Config) Complete() CompletedConfig {
 		c.KeepRecentTurns = 3
 	}
 	if c.StoreType == "" {
-		c.StoreType = "inmemory"
+		c.StoreType = "boltdb"
 	}
-	if c.BoltDBPath == "" {
-		c.BoltDBPath = "data/echoryn.db"
+	if c.AgentID == "" {
+		c.AgentID = paths.DefaultAgentID()
 	}
 	return CompletedConfig{c}
 }
@@ -92,7 +96,7 @@ func (c *Config) Complete() CompletedConfig {
 type Dependencies struct {
 	LLM     *llm.Module
 	Plugins *plugin.Framework
-	MCP     mcp.Manager // MCP tool provider (may be nil if no MCP servers configured)
+	MCP     mcp.Manager // MCP tool provider (maybe nil if no MCP servers configured)
 }
 
 // Module is the top-level Agents module, holding all domain services.
@@ -126,6 +130,10 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 		return nil, fmt.Errorf("plugin framework dependency is required")
 	}
 
+	// Resolve paths from the centralized ~/.echoryn state directory
+	boltDBPath := paths.ResolveSessionStorePath(c.AgentID)
+	workspaceDir := paths.ResolveWorkspaceDir(c.AgentID, "")
+
 	// Infrastructure layer: select store backend.
 	var (
 		agentStore    repo.AgentRepository
@@ -138,15 +146,15 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 	switch c.StoreType {
 	case "boltdb":
 		var err error
-		boltDB, err = boltdbStore.Open(c.BoltDBPath)
+		boltDB, err = boltdbStore.Open(boltDBPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to open boltdb at %s: %w", c.BoltDBPath, err)
+			return nil, fmt.Errorf("failed to open boltdb at %s: %w", boltDBPath, err)
 		}
 		agentStore = boltdbStore.NewAgentStore(boltDB)
 		sessionStore = boltdbStore.NewSessionStore(boltDB)
 		runStore = boltdbStore.NewRunStore(boltDB)
 		subAgentStore = boltdbStore.NewSubAgentStore(boltDB)
-		logger.Info("[Agents] using BoltDB store at %s", c.BoltDBPath)
+		logger.Info("[Agents] using BoltDB store at %s", boltDBPath)
 	default:
 		agentStore = inmemory.NewAgentStore()
 		sessionStore = inmemory.NewSessionStore()
@@ -170,6 +178,7 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 			MaxHistoryTurns:     c.MaxHistoryTurns,
 			CompactionThreshold: c.CompactionThreshold,
 			KeepRecentTurns:     c.KeepRecentTurns,
+			WorkspaceDir:        workspaceDir,
 		},
 	)
 
@@ -178,8 +187,8 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 	// SubAgent manager (Controller pattern)
 	subAgentMgr := runtime.NewSubAgentManager(subAgentStore, agentStore, sessionStore, runner, runtime.DefaultSubAgentManagerConfig())
 
-	logger.Info("[Agents] Agents module initialized (store=%s, max_turns=%d, timeout=%s, retries=%d, history_limit=%d, compaction_threshold=%.1f)",
-		c.StoreType, c.DefaultMaxTurns, c.RunTimeout, c.MaxRetries, c.MaxHistoryTurns, c.CompactionThreshold)
+	logger.Info("[Agents] Agents module initialized (store=%s, max_turns=%d, timeout=%s, retries=%d, history_limit=%d, compaction_threshold=%.1f, workspace=%s)",
+		c.StoreType, c.DefaultMaxTurns, c.RunTimeout, c.MaxRetries, c.MaxHistoryTurns, c.CompactionThreshold, workspaceDir)
 
 	return &Module{
 		Service:         svc,
