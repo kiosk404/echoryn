@@ -10,7 +10,6 @@ import (
 	cmdinit "github.com/kiosk404/echoryn/internal/echoadm/cmd/init"
 	cmdjoin "github.com/kiosk404/echoryn/internal/echoadm/cmd/join"
 	cmdutil "github.com/kiosk404/echoryn/internal/echoadm/cmd/util"
-	"github.com/kiosk404/echoryn/internal/echoadm/types"
 	templates2 "github.com/kiosk404/echoryn/internal/echoadm/utils/templates"
 	genericapiserver "github.com/kiosk404/echoryn/internal/pkg/server"
 	"github.com/kiosk404/echoryn/pkg/cli/genericclioptions"
@@ -59,7 +58,7 @@ func NewEchoAdmCommand(in io.Reader, out, err io.Writer) *cobra.Command {
 
 	_ = viper.BindPFlags(cmds.PersistentFlags())
 	cobra.OnInitialize(func() {
-		genericapiserver.LoadConfig(viper.GetString(types.FlagEchorynConfig), "echoctl")
+		genericapiserver.LoadConfig("", "echoadm", true)
 	})
 	cmds.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 
