@@ -6,9 +6,9 @@
 package builtin
 
 import (
-	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
-
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
+	feishuchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/feishu"
+	telegramchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/telegram"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics"
 	diagentity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask"
@@ -16,6 +16,7 @@ import (
 	memorycore "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core"
 	mementity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
+	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
 )
 
 // NewInTreeRegistry creates the in-tree plugin registry with all
@@ -252,6 +253,100 @@ func resolveSubAgentConfig(opts *genericoptions.PluginsOptions) *subagent.Config
 	if v, ok := entry.Config["archive_after_minutes"]; ok {
 		if f, ok := v.(float64); ok {
 			cfg.ArchiveAfterMinutes = int(f)
+		}
+	}
+
+	return cfg
+}
+
+// resolveFeishuConfig extracts channel-feishu config from PluginsOptions.entries["channel-feishu"].config,
+// falling back to defaults if not specified.
+func resolveFeishuConfig(opts *genericoptions.PluginsOptions) *feishuchannel.FeishuConfig {
+	cfg := feishuchannel.DefaultFeishuConfig()
+	if opts == nil {
+		return cfg
+	}
+
+	entry, ok := opts.Entries[feishuchannel.PluginName]
+	if !ok || entry.Config == nil {
+		return cfg
+	}
+
+	if v, ok := entry.Config["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.Enabled = b
+		}
+	}
+	if v, ok := entry.Config["app_id"]; ok {
+		if b, ok := v.(string); ok {
+			cfg.AppID = b
+		}
+	}
+	if v, ok := entry.Config["app_secret"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.AppSecret = s
+		}
+	}
+	if v, ok := entry.Config["verification_token"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.VerificationToken = s
+		}
+	}
+	if v, ok := entry.Config["encrypt_key"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.EncryptKey = s
+		}
+	}
+	if v, ok := entry.Config["agent_id"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.AgentID = s
+		}
+	}
+	if v, ok := entry.Config["listen_addr"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.ListenAddr = s
+		}
+	}
+	if v, ok := entry.Config["webhook_path"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.WebhookPath = s
+		}
+	}
+
+	return cfg
+}
+
+// resolveTelegramConfig extracts channel-telegram config from PluginsOptions.entries["channel-telegram"].config,
+// falling back to defaults if not specified.
+func resolveTelegramConfig(opts *genericoptions.PluginsOptions) *telegramchannel.TelegramConfig {
+	cfg := telegramchannel.DefaultTelegramConfig()
+	if opts == nil {
+		return cfg
+	}
+
+	entry, ok := opts.Entries[telegramchannel.PluginName]
+	if !ok || entry.Config == nil {
+		return cfg
+	}
+
+	if v, ok := entry.Config["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.Enabled = b
+		}
+	}
+	if v, ok := entry.Config["bot_token"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.BotToken = s
+		}
+	}
+	if v, ok := entry.Config["agent_id"]; ok {
+		if s, ok := v.(string); ok {
+			cfg.AgentID = s
+		}
+	}
+	if v, ok := entry.Config["polling_timeout"]; ok {
+		if f, ok := v.(float64); ok {
+			cfg.PollingTimeout = int(f)
 		}
 	}
 

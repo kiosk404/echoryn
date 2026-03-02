@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -65,6 +66,12 @@ type AgentRunner struct {
 	compactor       *Compactor
 	defaultMaxTurns int
 	runTimeout      time.Duration
+
+	// activeRuns tracks in-flight abort controllers by run ID.
+	// This enables external callers to cancel a running execution via Abort().
+	// Pattern borrowed from subAgentManagerImpl.abortFuncs.
+	mu         sync.Mutex
+	activeRuns map[string]*AbortController
 }
 
 // AgentRunnerConfig holds configuration for the AgentRunner.
@@ -132,7 +139,7 @@ func NewAgentRunner(
 	if cfg.KeepRecentTurns > 0 {
 		compactorCfg.KeepRecentTurns = cfg.KeepRecentTurns
 	}
-	compactor := NewCompactor(estimator, compactorCfg)
+	compactor := NewCompactor(estimator, compactorCfg, pluginFramework.Registry())
 
 	flowBuilder := agentflow.NewAgentFlowBuilder()
 	turnExecutor := NewTurnExecutor(flowBuilder, llmModule.Fallback, contextBuilder, cfg.MaxRetries)
@@ -360,7 +367,7 @@ func (r *AgentRunner) checkProactiveCompaction(
 		return
 	}
 
-	_, err = r.compactor.Compact(ctx, session, compactModel, windowInfo)
+	_, err = r.compactor.Compact(ctx, session, compactModel, windowInfo, agent)
 	if err != nil {
 		logger.WarnX(pkg.ModuleName, "[AgentRunner] proactive compaction failed: %v", err)
 		return
@@ -426,11 +433,57 @@ func (r *AgentRunner) fireAgentEnd(ctx context.Context, agent *entity.Agent, ses
 	}
 }
 
+// registerRun adds an abort controller to the active runs map.
+func (r *AgentRunner) registerRun(runID string, ac *AbortController) {
+	r.mu.Lock()
+	r.activeRuns[runID] = ac
+	r.mu.Unlock()
+}
+
+// unregisterRun removes an abort controller from the active runs map.
+func (r *AgentRunner) unregisterRun(runID string) {
+	r.mu.Lock()
+	delete(r.activeRuns, runID)
+	r.mu.Unlock()
+}
+
 // Abort cancels a running agent execution by run ID.
-// Note: In the current implementation, abort controllers are not tracked externally.
-// This is a placeholder for future implementation where run→abort mappings are maintained.
-func (r *AgentRunner) Abort(_ context.Context, _ string) error {
-	return fmt.Errorf("abort not yet implemented for external callers")
+//
+// If the run is active, the abort controller is triggered and the run
+// transitions to Cancelled state. If the run is not found in the active
+// map, it may have already completed or was never started.
+//
+// This pattern is aligned with subAgentManagerImpl.Cancel() which uses
+// mu + map[string]CancelFunc for sub-agent abort tracking.
+func (r *AgentRunner) Abort(ctx context.Context, runID string) error {
+	r.mu.Lock()
+	ac, ok := r.activeRuns[runID]
+	r.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("run %q not found in active runs (may have already completed)", runID)
+	}
+
+	// Trigger abort — idempotent, safe to call multiple times.
+	ac.Abort()
+
+	// Transition the run to Cancelled state if possible.
+	run, err := r.runRepo.Get(ctx, runID)
+	if err != nil {
+		logger.Warn("[AgentRunner] Abort: failed to load run %s for state transition: %v", runID, err)
+		return nil // Abort signal sent regardless.
+	}
+
+	if run.Status == entity.RunStatusInProgress {
+		sm := NewRunStateMachine(run, r.runRepo)
+		sm.TransitionToCancelled()
+		if updateErr := r.runRepo.Update(ctx, run); updateErr != nil {
+			logger.Warn("[AgentRunner] Abort: failed to persist cancelled state for run %s: %v", runID, updateErr)
+		}
+	}
+
+	logger.Info("[AgentRunner] run %s aborted by external caller", runID)
+	return nil
 }
 
 // buildPromptContext creates a PromptContext from the current run state.

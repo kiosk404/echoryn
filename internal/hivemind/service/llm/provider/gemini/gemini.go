@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/bytedance/gg/gptr"
 	einoGemini "github.com/cloudwego/eino-ext/components/model/gemini"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
@@ -109,10 +110,33 @@ func applyParamsToGeminiConfig(conf *einoGemini.Config, params *entity.LLMParams
 		conf.MaxTokens = &mt
 	}
 
-	if params.EnableThinking != nil {
+	if params.ThinkingLevel.IsEnabled() {
+		applyThinkingLevelToGeminiConfig(conf, params.ThinkingLevel)
+	} else if params.EnableThinking != nil {
 		conf.ThinkingConfig = &genai.ThinkingConfig{
 			IncludeThoughts: *params.EnableThinking,
 		}
+	}
+}
+
+// geminiBudgetTokens maps ThinkingLevel to optional ThinkingBudget.
+// XHigh uses nil budget (unlimited)
+var geminiBudgetTokens = map[entity.ThinkingLevel]*int32{
+	entity.ThinkingLevelMinimal: gptr.Of(int32(1024)),
+	entity.ThinkingLevelLow:     gptr.Of(int32(4096)),
+	entity.ThinkingLevelMedium:  gptr.Of(int32(10240)),
+	entity.ThinkingLevelHigh:    gptr.Of(int32(32768)),
+	entity.ThinkingLevelXHigh:   gptr.Of(int32(65536)),
+}
+
+func applyThinkingLevelToGeminiConfig(conf *einoGemini.Config, level entity.ThinkingLevel) {
+	budget, ok := geminiBudgetTokens[level]
+	if !ok {
+		return
+	}
+	conf.ThinkingConfig = &genai.ThinkingConfig{
+		IncludeThoughts: true,
+		ThinkingBudget:  budget,
 	}
 }
 

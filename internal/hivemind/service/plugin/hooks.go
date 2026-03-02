@@ -28,6 +28,16 @@ const (
 
 	// HookAfterGenerate is fired after LLM generation completes.
 	HookAfterGenerate HookEvent = "after_generate"
+
+	// HookBeforeCompaction is fired before compaction is about to run.
+	// Plugin can perform pre-compaction actions (e.g., LLM-driven memory flush.)
+	// Data: {"agent", "session", "window_info", "chat_model"}
+	HookBeforeCompaction HookEvent = "before_compaction"
+
+	// HookAfterCompaction is fired after compaction completes successfully.
+	// Plugins can perform post-compaction actions (e.g., workspace context refresh.)
+	// Data: {"agent", "session", "summary", "compaction_count"}
+	HookAfterCompaction HookEvent = "after_compaction"
 )
 
 // HookHandler is the callback function for lifecycle hooks.

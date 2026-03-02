@@ -2,6 +2,8 @@ package entity
 
 import (
 	"time"
+
+	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 )
 
 // Session represents a persistent conversation context between a user and an agent.
@@ -37,6 +39,24 @@ type Session struct {
 
 	// CompactionCount tracks how many times this session has been compacted.
 	CompactionCount int `json:"compaction_count,omitempty"`
+
+	// MemoryFlushCompactionCount records the CompactionCount value at which
+	// the last memory flush was performed. This prevents multiple flushes
+	// within the same compaction cycle (aligned with OpenClaw's memoryFlushCompactionCount).
+	// A nil-equivalent (0 with CompactionCount > 0) means no flush in this cycle.
+	MemoryFlushCompactionCount int `json:"memory_flush_compaction_count,omitempty"`
+
+	// MemoryFlushAt is the timestamp of the last memory flush.
+	MemoryFlushAt *time.Time `json:"memory_flush_at,omitempty"`
+
+	// ThinkingLevel is the session-level thinking level override.
+	// Persisted across turns so that a user's `/think medium` directive
+	// remains effective for subsequent messages in the same session.
+	// Empty means no session-level override (use agent/model default).
+	//
+	// Priority: per-message directive > session > agent > model default.
+	// Aligned with OpenClaw's sessionEntry.thinkingLevel.
+	ThinkingLevel llmEntity.ThinkingLevel `json:"thinking_level,omitempty"`
 
 	// FirstKeptIndex is the index in Messages from which history is kept verbatim.
 	// Messages[0:FirstKeptIndex] have been summarized into CompactionSummary.
@@ -96,6 +116,31 @@ func (s *Session) ApplyCompaction(summary string, keptFrom int) {
 // HasCompaction returns true if this session has been compacted at least once.
 func (s *Session) HasCompaction() bool {
 	return s.CompactionSummary != ""
+}
+
+// ShouldMemoryFlush returns true if a memory flush should be executed.
+// Conditions (aligned with OpenClaw's shouldRunMemoryFlush):
+//  1. Session must have active messages
+//  2. The flush hasn't already been done in this compaction cycle
+//     (memoryFlushCompactionCount != compactionCount only when a flush was recorded)
+func (s *Session) ShouldMemoryFlush() bool {
+	if len(s.ActiveMessages()) < 4 {
+		return false
+	}
+	// If MemoryFlushCompactionCount matches CompactionCount and MemoryFlushAt is set,
+	// a flush was already performed in this compaction cycle — skip.
+	if s.MemoryFlushAt != nil && s.MemoryFlushCompactionCount == s.CompactionCount {
+		return false
+	}
+	return true
+}
+
+// RecordMemoryFlush records that a memory flush was performed.
+func (s *Session) RecordMemoryFlush() {
+	now := time.Now()
+	s.MemoryFlushAt = &now
+	s.MemoryFlushCompactionCount = s.CompactionCount
+	s.UpdatedAt = now
 }
 
 // IsSubAgentSession returns true if this session was spawned by a sub-agent.

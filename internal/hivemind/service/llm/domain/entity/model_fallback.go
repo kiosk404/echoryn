@@ -55,6 +55,41 @@ func (c *FallbackConfig) EffectiveMaxAttempts() int {
 	return total
 }
 
+// CalcDynamicMaxAttempts computes a dynamic retry budget based on the number
+// of auth profiles / API Key slots, aligned with OpenClaw's formula:
+//
+// budget = clamp (BASE + max(1, profileCount) * STEP, MIN, MAX)
+//
+//	= clamp (24 + max(1, n) * 8, 32, 160)
+//
+// The idea is that more auth profiles justify more retry iterations because
+// each profile represents a distinct API key / quota that can be rotated.
+//
+// If profileCount <= 0, it defaults to 1 (single-profile baseline = 32)
+func CalcDynamicMaxAttempts(profileCount int) int {
+	const (
+		base = 24
+		step = 8
+		minT = 32
+		maxT = 160
+	)
+
+	n := profileCount
+	if n < 1 {
+		n = 1
+	}
+
+	budget := base + n*step
+	if budget < minT {
+		return minT
+	}
+	if budget > maxT {
+		return maxT
+	}
+
+	return budget
+}
+
 // FallbackAttempt records the result of a single fallback attempt.
 // Modeled after OpenClaw's FallbackAttempt type.
 type FallbackAttempt struct {

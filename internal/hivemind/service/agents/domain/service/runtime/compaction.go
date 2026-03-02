@@ -8,6 +8,7 @@ import (
 	einoModel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	"github.com/kiosk404/echoryn/pkg/logger"
 )
 
@@ -16,8 +17,10 @@ import (
 //
 // This is the Echoryn equivalent of OpenClaw's compaction.ts:
 //
+//   - Pre-compaction memory flush: fire before_compaction hook for LLM-driven memory persist
 //   - summarizeInStages(): split messages into N chunks, summarize each, merge
 //   - summarizeWithFallback(): progressive fallback (full → exclude-large → simple)
+//   - Post-compaction: fire after_compaction hook for workspace context refresh
 //   - Apply result to Session (CompactionSummary + FirstKeptIndex)
 //
 // Compaction is triggered when:
@@ -27,6 +30,7 @@ type Compactor struct {
 	estimator           *TokenEstimator
 	compactionThreshold float64
 	keepRecentTurns     int
+	registry            *plugin.Registry
 }
 
 // CompactorConfig holds configuration for the compactor.
@@ -49,7 +53,7 @@ func DefaultCompactorConfig() CompactorConfig {
 }
 
 // NewCompactor creates a new Compactor.
-func NewCompactor(estimator *TokenEstimator, cfg CompactorConfig) *Compactor {
+func NewCompactor(estimator *TokenEstimator, cfg CompactorConfig, registry *plugin.Registry) *Compactor {
 	if cfg.CompactionThreshold <= 0 {
 		cfg.CompactionThreshold = 0.8
 	}
@@ -60,6 +64,7 @@ func NewCompactor(estimator *TokenEstimator, cfg CompactorConfig) *Compactor {
 		estimator:           estimator,
 		compactionThreshold: cfg.CompactionThreshold,
 		keepRecentTurns:     cfg.KeepRecentTurns,
+		registry:            registry,
 	}
 }
 
@@ -77,11 +82,13 @@ func (c *Compactor) ShouldCompact(session *entity.Session, windowInfo ContextWin
 // Compact performs compaction on the session using the provided ChatModel.
 //
 // Flow:
-//  1. Identify messages to summarize (all active messages except last N turns)
-//  2. Split into chunks by token budget
-//  3. Summarize each chunk with the LLM
-//  4. Merge partial summaries into a final summary
-//  5. Apply to session (CompactionSummary + FirstKeptIndex)
+//  1. Fire before_compaction hook (LLM-driven memory flush)
+//  2. Identify messages to summarize (all active messages except last N turns)
+//  3. Split into chunks by token budget
+//  4. Summarize each chunk with the LLM
+//  5. Merge partial summaries into a final summary
+//  6. Apply to session (CompactionSummary + FirstKeptIndex)
+//  7. Fire after_compaction hook (post-compaction context refresh)
 //
 // Returns the summary text and error.
 func (c *Compactor) Compact(
@@ -89,11 +96,15 @@ func (c *Compactor) Compact(
 	session *entity.Session,
 	chatModel einoModel.BaseChatModel,
 	windowInfo ContextWindowInfo,
+	agent *entity.Agent,
 ) (string, error) {
 	activeMessages := session.ActiveMessages()
 	if len(activeMessages) == 0 {
 		return "", fmt.Errorf("no messages to compact")
 	}
+
+	// Step 1: Fire before_compaction hook (pre-compaction memory flush.)
+	c.fireBeforeCompaction(ctx, agent, session, chatModel)
 
 	// Find the split point: keep last N user→assistant turn pairs.
 	splitIdx := c.findCompactionSplitPoint(activeMessages)
@@ -108,20 +119,66 @@ func (c *Compactor) Compact(
 	// Build the existing summary prefix (if any previous compaction).
 	existingSummary := session.CompactionSummary
 
-	// Summarize.
+	// Step 2-5 Summarize.
 	summary, err := c.summarize(ctx, chatModel, messagesToSummarize, existingSummary, windowInfo)
 	if err != nil {
 		return "", fmt.Errorf("compaction summarization failed: %w", err)
 	}
 
-	// Apply to session.
+	// Step 6 Apply to session.
 	absoluteKeptFrom := session.FirstKeptIndex + splitIdx
 	session.ApplyCompaction(summary, absoluteKeptFrom)
 
 	logger.Info("[Compactor] compaction completed: session=%s, summary_len=%d, first_kept=%d, compaction_count=%d",
 		session.ID, len(summary), absoluteKeptFrom, session.CompactionCount)
 
+	// Step 7 Fire after_compaction hook
+	c.fireAfterCompaction(ctx, agent, session, summary)
+
 	return summary, nil
+}
+
+// fireBeforeCompaction fires the before_compaction hook to allow plugins
+// (e.g., memory-core) to perform pre-compaction actions like memory flush.
+func (c *Compactor) fireBeforeCompaction(
+	ctx context.Context,
+	agent *entity.Agent,
+	session *entity.Session,
+	chatModel einoModel.BaseChatModel,
+) {
+	if c.registry == nil {
+		return
+	}
+	hookData := map[string]interface{}{
+		"agent":      agent,
+		"session":    session,
+		"chat_model": chatModel,
+	}
+	if err := plugin.FireHooks(ctx, c.registry, plugin.HookBeforeCompaction, hookData); err != nil {
+		logger.Warn("[Compactor] before_compaction hook error: %v", err)
+	}
+}
+
+// fireAfterCompaction fires the after_compaction hook to allow plugins
+// to perform post-compaction actions (e.g., workspace context refresh).
+func (c *Compactor) fireAfterCompaction(
+	ctx context.Context,
+	agent *entity.Agent,
+	session *entity.Session,
+	summary string,
+) {
+	if c.registry == nil {
+		return
+	}
+	hookData := map[string]interface{}{
+		"agent":            agent,
+		"session":          session,
+		"summary":          summary,
+		"compaction_count": session.CompactionCount,
+	}
+	if err := plugin.FireHooks(ctx, c.registry, plugin.HookAfterCompaction, hookData); err != nil {
+		logger.Warn("[Compactor] after_compaction hook error: %v", err)
+	}
 }
 
 // findCompactionSplitPoint returns the index in activeMessages where we stop summarizing.

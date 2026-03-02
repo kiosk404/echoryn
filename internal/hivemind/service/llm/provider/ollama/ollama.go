@@ -79,6 +79,13 @@ func applyParamsToOllamaConfig(conf *einoOllama.ChatModelConfig, params *entity.
 	if params.PresencePenalty != 0 {
 		conf.Options.PresencePenalty = params.PresencePenalty
 	}
+	// ThinkingLevel takes precedence over EnableThinking.
+	// Ollama only supports binary thinking (on/off) at config level.
+	if params.ThinkingLevel.IsEnabled() {
+		conf.Thinking = &einoOllama.ThinkValue{
+			Value: gptr.Of(true),
+		}
+	}
 	if params.EnableThinking != nil {
 		conf.Thinking = &einoOllama.ThinkValue{
 			Value: params.EnableThinking,

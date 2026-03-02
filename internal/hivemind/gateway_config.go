@@ -13,6 +13,16 @@ type GatewayConfig struct {
 	Store StoreConfig `json:"store"`
 	// Defaults holds the default values for the gateway.
 	Defaults GatewayDefaults `json:"defaults"`
+	// Channels holds the IM channel gateway configuration.
+	Channels ChannelsConfig `json:"channels"`
+}
+
+// ChannelsConfig holds the configuration for IM channel integrations.
+type ChannelsConfig struct {
+	// Enabled controls whether the IM channel gateway is active.
+	Enabled bool `json:"enabled"`
+	// DefaultAgentID is the fallback agent for channels that don't specify one.
+	DefaultAgentID string `json:"default_agent_id,omitempty"`
 }
 
 // StoreConfig configures the persistence backend

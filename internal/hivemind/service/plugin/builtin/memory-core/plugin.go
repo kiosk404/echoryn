@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	einoModel "github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	agentEntity "github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
@@ -22,8 +24,25 @@ const (
 	Kind = "memory"
 
 	// minFlushMessages is the minimum number of messages in a session
-	// before memory flush is triggered on agent_end.
+	// before memory flush is triggered.
 	minFlushMessages = 4
+
+	// memoryFlushPrompt is the user-facing prompt sent to the LLM during
+	// pre-compaction memory flush (aligned with OpenClaw's DEFAULT_MEMORY_FLUSH_PROMPT).
+	memoryFlushPrompt = "Pre-compaction memory flush. " +
+		"Store durable memories now (use memory/YYYY-MM-DD.md; create memory/ if needed). " +
+		"IMPORTANT: If the file already exists, APPEND new content only and do not overwrite existing entries. " +
+		"Focus on: user preferences, key decisions, important facts, technical choices, and action items. " +
+		"If nothing worth storing, reply with exactly: NOTHING_TO_STORE"
+
+	// memoryFlushSystemPrompt is the system prompt for the memory flush LLM call.
+	memoryFlushSystemPrompt = "Pre-compaction memory flush turn. " +
+		"The session is near auto-compaction; capture durable memories to disk. " +
+		"You have access to memory_write tool to write memories. " +
+		"Write concise, structured Markdown entries. Usually reply NOTHING_TO_STORE."
+
+	// nothingToStoreToken is the sentinel reply indicating no memories need to be stored.
+	nothingToStoreToken = "NOTHING_TO_STORE"
 
 	// memoryRecallInstruction is the system-level instruction injected
 	// before agent start to guide the agent to use memory tools.
@@ -131,7 +150,7 @@ func (p *memoryCorePlugin) Init(api plugin.PluginAPI) error {
 
 	// Register lifecycle hooks.
 	api.RegisterHook(plugin.HookBeforeAgentStart, p.onBeforeAgentStart)
-	api.RegisterHook(plugin.HookAgentEnd, p.onAgentEnd)
+	api.RegisterHook(plugin.HookBeforeCompaction, p.onBeforeCompaction)
 
 	return nil
 }
@@ -335,8 +354,15 @@ func (p *memoryCorePlugin) onBeforeAgentStart(ctx context.Context, data interfac
 	return nil
 }
 
-// onAgentEnd extracts key information from the conversation and persists it to memory.
-func (p *memoryCorePlugin) onAgentEnd(ctx context.Context, data interface{}) error {
+// onBeforeCompaction performs an LLM-driven memory flush before compaction.
+// This is the Echoryn equivalent of OpenClaw's pre-compaction memory flush:
+//   - Triggered by the before_compaction hook (fired by the Compactor)
+//   - Uses the ChatModel to let the LLM decide what memories to persist
+//   - The LLM can call memory_write to store durable memories
+//   - Frequency control: only once per compaction cycle (via session.ShouldMemoryFlush)
+//
+// Data expected: {"agent", "session", "chat_model"}
+func (p *memoryCorePlugin) onBeforeCompaction(ctx context.Context, data interface{}) error {
 	if p.manager == nil {
 		return nil
 	}
@@ -351,13 +377,85 @@ func (p *memoryCorePlugin) onAgentEnd(ctx context.Context, data interface{}) err
 		return nil
 	}
 
-	// Only flush if the conversation is substantial enough.
-	activeMessages := session.ActiveMessages()
-	if len(activeMessages) < minFlushMessages {
+	// Frequency control: only flush once per compaction cycle.
+	if !session.ShouldMemoryFlush() {
+		logger.Debug("[MemoryCore] memory flush skipped: already flushed in this compaction cycle")
 		return nil
 	}
 
-	// Extract the latest turn's messages (last user + assistant pair).
+	chatModel, _ := hookData["chat_model"].(einoModel.BaseChatModel)
+	if chatModel == nil {
+		logger.Debug("[MemoryCore] memory flush skipped: no chat model available, falling back to lightweight flush")
+		p.lightweightFlush(ctx, session)
+		return nil
+	}
+
+	// LLM-driven flush: let the model decide what to store.
+	logger.Info("[MemoryCore] running LLM-driven pre-compaction memory flush...")
+
+	// Build conversation context for the LLM to analyze.
+	activeMessages := session.ActiveMessages()
+	var conversationCtx strings.Builder
+	conversationCtx.WriteString("Current conversation context to analyze for durable memories:\n\n")
+	for _, msg := range activeMessages {
+		role := string(msg.Role)
+		content := msg.Content
+		if len([]rune(content)) > 500 {
+			runes := []rune(content)
+			content = string(runes[:400]) + "\n...[truncated]..."
+		}
+		conversationCtx.WriteString(fmt.Sprintf("[%s]: %s\n\n", role, content))
+	}
+
+	userPrompt := memoryFlushPrompt + "\n\n" + conversationCtx.String()
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{
+		{Role: schema.System, Content: memoryFlushSystemPrompt},
+		{Role: schema.User, Content: userPrompt},
+	})
+	if err != nil {
+		logger.Warn("[MemoryCore] LLM-driven memory flush failed: %v, falling back to lightweight flush", err)
+		p.lightweightFlush(ctx, session)
+		session.RecordMemoryFlush()
+		return nil
+	}
+
+	responseText := strings.TrimSpace(resp.Content)
+
+	// Check if the LLM decided nothing needs to be stored.
+	if strings.Contains(strings.ToUpper(responseText), nothingToStoreToken) {
+		logger.Info("[MemoryCore] LLM-driven flush: nothing to store")
+		session.RecordMemoryFlush()
+		return nil
+	}
+
+	// The LLM returned content to store — write it as a memory entry.
+	now := time.Now()
+	datePath := fmt.Sprintf("memory/%s.md", now.Format("2006-01-02"))
+
+	entry := fmt.Sprintf("\n## %s (pre-compaction flush)\n\n%s\n",
+		now.Format("15:04:05"),
+		responseText,
+	)
+
+	if err := p.manager.WriteMemory(ctx, datePath, entry, true); err != nil {
+		logger.Warn("[MemoryCore] LLM-driven memory flush write failed: %v", err)
+		return nil
+	}
+
+	session.RecordMemoryFlush()
+	logger.Info("[MemoryCore] LLM-driven memory flush: stored memories to %s", datePath)
+	return nil
+}
+
+// lightweightFlush is the fallback flush when no ChatModel is available.
+// It mechanically extracts the last user+assistant pair (legacy behavior).
+func (p *memoryCorePlugin) lightweightFlush(ctx context.Context, session *agentEntity.Session) {
+	activeMessages := session.ActiveMessages()
+	if len(activeMessages) < minFlushMessages {
+		return
+	}
+
 	var lastUserMsg, lastAssistantMsg string
 	for i := len(activeMessages) - 1; i >= 0; i-- {
 		msg := activeMessages[i]
@@ -373,15 +471,11 @@ func (p *memoryCorePlugin) onAgentEnd(ctx context.Context, data interface{}) err
 	}
 
 	if lastUserMsg == "" || lastAssistantMsg == "" {
-		return nil
+		return
 	}
 
-	// Build a simple summary entry (no LLM call — lightweight approach).
-	// Format: timestamped bullet points of user query + assistant key response.
 	now := time.Now()
 	datePath := fmt.Sprintf("memory/%s.md", now.Format("2006-01-02"))
-
-	// Truncate long messages for the summary.
 	userSnippet := truncate(lastUserMsg, 200)
 	assistantSnippet := truncate(lastAssistantMsg, 400)
 
@@ -392,12 +486,11 @@ func (p *memoryCorePlugin) onAgentEnd(ctx context.Context, data interface{}) err
 	)
 
 	if err := p.manager.WriteMemory(ctx, datePath, entry, true); err != nil {
-		logger.Warn("[MemoryCore] memory flush failed: %v", err)
-		return nil // Non-fatal.
+		logger.Warn("[MemoryCore] lightweight memory flush failed: %v", err)
+		return
 	}
 
-	logger.Info("[MemoryCore] memory flush: appended conversation entry to %s", datePath)
-	return nil
+	logger.Info("[MemoryCore] lightweight memory flush: appended to %s", datePath)
 }
 
 // --- PromptProvider Implementation ---

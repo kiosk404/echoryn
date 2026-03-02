@@ -8,6 +8,7 @@ import (
 	einoOpenAI "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/llm/provider/thinking"
 )
 
 // NewOpenAICompatibleChatModel creates an Eino ChatModel using the OpenAI-compatible API.
@@ -41,6 +42,9 @@ func NewOpenAICompatibleChatModel(ctx context.Context, instance *entity.ModelIns
 
 	applyParamsToOpenAIChatModelConfig(cfg, params)
 
+	// Apply ThinkingLevel via OpenAI's ReasoningEffort config field.
+	applyThinkingToOpenAIConfig(cfg, params, instance)
+
 	return einoOpenAI.NewChatModel(ctx, cfg)
 }
 
@@ -71,4 +75,40 @@ func applyParamsToOpenAIChatModelConfig(cfg *einoOpenAI.ChatModelConfig, params 
 			Type: einoOpenAI.ChatCompletionResponseFormatTypeJSONObject,
 		}
 	}
+}
+
+// applyThinkingToOpenAIConfig applies ThinkingLevel to the OpenAI ChatModelConfig.
+// Uses the OpenAI strategy to map ThinkingLevel → ReasoningEffort.
+func applyThinkingToOpenAIConfig(cfg *einoOpenAI.ChatModelConfig, params *entity.LLMParams, instance *entity.ModelInstance) {
+	level := resolveEffectiveThinkingLevel(params, instance)
+	if !level.IsEnabled() {
+		return
+	}
+
+	strategy := thinking.ForProvider("openai")
+	clamped := thinking.ClampLevel(strategy, level)
+
+	switch clamped {
+	case entity.ThinkingLevelLow:
+		cfg.ReasoningEffort = einoOpenAI.ReasoningEffortLevelLow
+	case entity.ThinkingLevelMedium:
+		cfg.ReasoningEffort = einoOpenAI.ReasoningEffortLevelMedium
+	case entity.ThinkingLevelHigh, entity.ThinkingLevelXHigh:
+		cfg.ReasoningEffort = einoOpenAI.ReasoningEffortLevelHigh
+	}
+}
+
+// resolveEffectiveThinkingLevel determines the effective ThinkingLevel from params and model instance.
+// Priority: params.ThinkingLevel > params.EnableThinking > model.Reasoning auto-detect.
+func resolveEffectiveThinkingLevel(params *entity.LLMParams, instance *entity.ModelInstance) entity.ThinkingLevel {
+	if params != nil && params.ThinkingLevel != "" {
+		return params.ThinkingLevel
+	}
+	if params != nil && params.EnableThinking != nil {
+		if *params.EnableThinking {
+			return entity.ThinkingLevelLow
+		}
+		return entity.ThinkingLevelOff
+	}
+	return entity.ThinkingLevelOff
 }

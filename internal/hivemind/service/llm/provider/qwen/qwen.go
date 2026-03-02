@@ -88,7 +88,11 @@ func applyParamsToQwenConfig(conf *einoQwen.ChatModelConfig, params *entity.LLMP
 		conf.PresencePenalty = gptr.Of(params.PresencePenalty)
 	}
 
-	if params.EnableThinking != nil {
+	// ThinkingLevel takes precedence over EnableThinking
+	// Qwen only supports binary thinking (on/off)
+	if params.ThinkingLevel.IsValid() {
+		conf.EnableThinking = gptr.Of(true)
+	} else if params.EnableThinking != nil {
 		conf.EnableThinking = params.EnableThinking
 	}
 }

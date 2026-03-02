@@ -52,6 +52,9 @@ func (p *Plugin) BuildChatModel(ctx context.Context, instance *entity.ModelInsta
 }
 
 // applyParamsToDeepseekConfig maps LLMParams to Deepseek ChatModelConfig.
+//
+// Note: Deepseek;s reasoning capability is model-intrinsic (deepseek-reasoner always reasons; deepseek-chat never docs).
+// ThinkingLevel has no runtime effect but is preserved for API consistency and future model support.
 func applyParamsToDeepseekConfig(conf *einoDeepseek.ChatModelConfig, params *entity.LLMParams) {
 	if params == nil {
 		return

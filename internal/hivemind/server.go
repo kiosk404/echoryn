@@ -9,6 +9,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/config"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/gateway"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
 	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
@@ -33,6 +34,7 @@ type apiServer struct {
 	llmModule       *llm.Module
 	mcpModule       *mcp.Module
 	agentsModule    *agents.Module
+	channelManager  *gateway.ChannelManager
 }
 
 type preparedAPIServer struct {
@@ -180,6 +182,11 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		agentsModule:     agentsModule,
 	}
 
+	// Initialize IM channel gateway.
+	// Create ChannelManager + Dispatcher, then inject the manager into
+	// channel plugins via k8s-style interface probe (ChannelManagerSetter).
+	server.initChannelGateway()
+
 	return server, nil
 }
 
@@ -193,7 +200,20 @@ func (s *apiServer) PrepareRun() preparedAPIServer {
 		gatewayConfig: gatewayCfg,
 	})
 
+	// Start IM channel gateway if ChannelManager is initialized.
+	if s.channelManager != nil {
+		if err := s.channelManager.StartAll(context.Background()); err != nil {
+			logger.Warn("[Hivemind] channel gateway start errors: %v", err)
+		} else {
+			logger.Info("[Hivemind] IM channel gateway started")
+		}
+	}
+
 	s.gs.AddShutdownCallback(shutdown.Func(func(string) error {
+		// Stop IM channel gateway first.
+		if s.channelManager != nil {
+			s.channelManager.StopAll(context.Background())
+		}
 		// Stop Plugin framework (reverse lifecycle: hooks -> services -> plugins).
 		if s.pluginFramework != nil {
 			s.pluginFramework.Stop(context.Background())
@@ -238,6 +258,45 @@ func buildExtraConfig(cfg *config.Config) (*ExtraConfig, error) {
 		Addr:       fmt.Sprintf("%s:%d", cfg.GRPCOptions.BindAddress, cfg.GRPCOptions.BindPort),
 		MaxMsgSize: cfg.GRPCOptions.MaxMsgSize,
 	}, nil
+}
+
+// --- IM Channel Gateway ---
+
+// channelManagerSetter is the interface that channel plugins implement
+// to receive the shared ChannelManager via k8s-style interface probe.
+type channelManagerSetter interface {
+	SetChannelManager(m *gateway.ChannelManager)
+}
+
+func (s *apiServer) initChannelGateway() {
+	if s.pluginFramework == nil || s.agentsModule == nil {
+		return
+	}
+
+	gatewayCfg := DefaultGatewayConfig()
+	defaultAgentID := gatewayCfg.Defaults.AgentID
+
+	// Create Dispatcher (implements InboundHandler)
+	dispatcher := gateway.NewDispatcher(s.agentsModule.Service, nil, defaultAgentID)
+
+	// Create ChannelManager with the dispatcher as the inbound handler.
+	manager := gateway.NewChannelManager(dispatcher)
+
+	// Wire the dispatcher's channel manager reference.
+	dispatcher.SetChannelManager(manager)
+
+	// Inject ChannelManager into all channel plugins via interface probe.
+	registry := s.pluginFramework.Registry()
+	for _, name := range registry.PluginNames() {
+		p, ok := registry.GetPlugin(name)
+		if !ok {
+			continue
+		}
+		if setter, ok := p.(channelManagerSetter); ok {
+			setter.SetChannelManager(manager)
+			logger.Info("[Hivemind] injected ChannelManager into plugin %q", name)
+		}
+	}
 }
 
 // --- ModelManager Adapter ---

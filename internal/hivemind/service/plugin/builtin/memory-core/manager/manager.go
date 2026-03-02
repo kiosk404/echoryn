@@ -213,7 +213,7 @@ func (m *Manager) Search(ctx context.Context, query string, opts ...SearchOption
 	// Embed the query.
 	queryVec, err := m.embedQueryWithTimeout(ctx, query)
 	if err != nil {
-		logger.Warn("[Memory] failed to embed query: %v", err)
+		logger.Error("[Memory] failed to embed query: %v", err)
 	}
 
 	// Vector search — use sqlite-vec KNN if available, otherwise brute-force.

@@ -22,8 +22,21 @@ import (
 // - ToolsNode end -> EventToolResult events
 // - Errors -> EventError events
 // All events are pushed into a schema.StreamWriter[*entity.AgentEvent].
+//
+// An optional StreamMiddlewareChain can be attached to process each streaming
+// chunk before it is translated into AgentEvent. This is aligned with OpenClaw's
+// response-side stream wrappers (wrapStreamTrimToolCallNames, payloadLogger)
 type ReplayChunkCallback struct {
-	sw *schema.StreamWriter[*entity.AgentEvent]
+	sw         *schema.StreamWriter[*entity.AgentEvent]
+	middleware *StreamMiddlewareChain
+}
+
+// WithMiddleware attaches a StreamMiddlewareChain for response-side processing.
+// This enables chunk-level transformations (e.g., tool call name trimming,
+// payload logging) aligned with OpenClaw's stream wrapper pipline.
+func (r *ReplayChunkCallback) WithMiddleware(chain *StreamMiddlewareChain) *ReplayChunkCallback {
+	r.middleware = chain
+	return r
 }
 
 // NewReplayChunkCallback creates a new ReplayChunkCallback.
@@ -110,10 +123,25 @@ func (r *ReplayChunkCallback) consumeChatModelStream(_ context.Context, output *
 			continue
 		}
 
+		// Apply response-side stream middleware chain (aligned with OpenClaw's
+		// wrapStreamTrimToolCallNames + payloadLogger wrapper pipeline).
+		msg = r.middleware.Apply(msg)
+		if msg == nil {
+			continue
+		}
+
 		if msg.Content != "" {
 			r.sw.Send(&entity.AgentEvent{
 				Type:  entity.EventTextDelta,
 				Delta: msg.Content,
+			}, nil)
+		}
+
+		// Stream reasoning/thinking content (supported by Deepseek R1, Claude, Gemini, Qwen)
+		if msg.ReasoningContent != "" {
+			r.sw.Send(&entity.AgentEvent{
+				Type:           entity.EventReasoningDelta,
+				ReasoningDelta: msg.ReasoningContent,
 			}, nil)
 		}
 

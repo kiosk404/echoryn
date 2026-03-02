@@ -11,6 +11,11 @@ const (
 	// EventTextDelta is a chunk of assistant text being streamed.
 	EventTextDelta EventType = "text_delta"
 
+	// EventReasoningDelta is a chunk of reasoning/thinking content being streamed.
+	// Emitted when the model returns ReasoningContent (e.g. DeepSeek R1, Claude thinking
+	// Gemini Thinking, Qwen), Clients can display this in a collapsible "thinking" panel.
+	EventReasoningDelta EventType = "reasoning_delta"
+
 	// EventToolCallStart indicates a tool call has been initiated.
 	EventToolCallStart EventType = "tool_call_start"
 
@@ -45,6 +50,9 @@ type AgentEvent struct {
 
 	// Delta contains the text chunk for EventTextDelta events.
 	Delta string `json:"delta,omitempty"`
+
+	// ReasoningDelta contains the reasoning/thinking chunk for EventReasoningDelta events.
+	ReasoningDelta string `json:"reasoning_delta"`
 
 	// ToolCall contains tool call info for EventToolCallStart events.
 	ToolCall *ToolCall `json:"tool_call,omitempty"`

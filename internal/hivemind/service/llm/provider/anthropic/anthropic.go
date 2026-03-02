@@ -62,6 +62,46 @@ func applyParamsToClaudeConfig(conf *einoClaude.Config, params *entity.LLMParams
 	if params.TopP != nil {
 		conf.TopP = params.TopP
 	}
+
+	// Apply ThinkingLevel via Claude's Thinking config.
+	applyThinkingToClaudeConfig(conf, params)
+}
+
+// claudeBudgetTokens maps ThinkingLevel to Claude budget_tokens.
+var claudeBudgetTokens = map[entity.ThinkingLevel]int{
+	entity.ThinkingLevelMinimal: 1024,
+	entity.ThinkingLevelLow:     4096,
+	entity.ThinkingLevelMedium:  10240,
+	entity.ThinkingLevelHigh:    32768,
+	entity.ThinkingLevelXHigh:   65536,
+}
+
+// applyThinkingToClaudeConfig applies ThinkingLevel to the Claude Config.
+func applyThinkingToClaudeConfig(conf *einoClaude.Config, params *entity.LLMParams) {
+	if params == nil {
+		return
+	}
+
+	level := params.ThinkingLevel
+	if level == "" && params.EnableThinking != nil && *params.EnableThinking {
+		level = entity.ThinkingLevelLow
+	}
+	if !level.IsEnabled() {
+		return
+	}
+
+	// Claude supports up to XHigh.
+	clamped := level.ClampMax(entity.ThinkingLevelXHigh)
+
+	budget, ok := claudeBudgetTokens[clamped]
+	if !ok {
+		return
+	}
+
+	conf.Thinking = &einoClaude.Thinking{
+		Enable:       true,
+		BudgetTokens: budget,
+	}
 }
 
 func (p *Plugin) DefaultConfig() *options.ProviderConfig {

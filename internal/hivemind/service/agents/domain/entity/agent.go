@@ -64,6 +64,13 @@ type Agent struct {
 	// nil means use model default.
 	MaxTokens *int `json:"max_tokens,omitempty"`
 
+	// ThinkingDefault is the default ThinkingLevel for this agent.
+	// Controls the model's reasoning depth. Empty means auto-resolve
+	// based on model capabilities (reasoning models -> "low", others -> "off").
+	//
+	// Modeled after OpenClaw's agentCfg.thinkingDefault
+	ThinkingDefault llmEntity.ThinkingLevel `json:"thinking_default,omitempty"`
+
 	// CreatedAt is when this agent was created.
 	CreatedAt time.Time `json:"created_at"`
 
@@ -137,6 +144,9 @@ func (a *Agent) LLMParams() *llmEntity.LLMParams {
 	}
 	if a.MaxTokens != nil {
 		params.MaxTokens = *a.MaxTokens
+	}
+	if a.ThinkingDefault != "" {
+		params.ThinkingLevel = a.ThinkingDefault
 	}
 	return params
 }
