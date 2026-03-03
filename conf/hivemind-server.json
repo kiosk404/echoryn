@@ -60,7 +60,7 @@
       },
       "diagnostics": {
         "config": {
-          "enabled": false
+          "enabled": true
         }
       },
       "llm-task": {

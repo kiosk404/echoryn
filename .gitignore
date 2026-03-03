@@ -40,6 +40,7 @@ node_modules/
 /oldimpl
 /vendor
 log
+temp/
 openclaw/
 airi-go/
 *gen_test.go

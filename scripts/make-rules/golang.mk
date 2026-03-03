@@ -11,7 +11,7 @@ GO_LDFLAGS += -X $(VERSION_PACKAGE).GitVersion=$(VERSION) \
 ifneq ($(DLV),)
 	GO_BUILD_FLAGS += -gcflags "all=-N -l"
 endif
-GO_BUILD_FLAGS += -ldflags "$(GO_LDFLAGS)"
+GO_BUILD_FLAGS += -ldflags "$(GO_LDFLAGS)" -tags "sqlite_fts5"
 
 ifeq ($(GOOS),windows)
 	GO_OUT_EXT := .exe
