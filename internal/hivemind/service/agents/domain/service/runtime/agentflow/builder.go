@@ -11,9 +11,20 @@ import (
 	"github.com/cloudwego/eino/flow/agent/react"
 	"github.com/cloudwego/eino/schema"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/toolloop"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg/errno"
 	"github.com/kiosk404/echoryn/pkg/logger"
 )
+
+// maxGraphSteps is a deliberately large Eino MaxStep ceiling.
+// The actual execution boundary is enforced by:
+//   - toolloop.Detector (circuit-breaker after N no-progress calls)
+//   - context timeout (RunTimeout in AgentRunner)
+//
+// This value is high enough that the agent is effectively "unlimited"
+// from a step-count perspective; loop detection + timeout are the real guards.
+// Aligned with OpenClaw which has no hard maxTurns at all.
+const maxGraphSteps = 1024
 
 // AgentFlowBuilder constructs an Eino execution graph for agent execution.
 //
@@ -33,21 +44,27 @@ func NewAgentFlowBuilder() *AgentFlowBuilder {
 //
 // When tools are provided, it builds a ReAct Agent that handles
 // the LLM → tool_call → execute → result → LLM loop automatically.
+// Tool call loops are guarded by the toolloop.Detector (circuit-breaker),
+// NOT by Eino's MaxStep which is set to a high ceiling.
 // When no tools are provided, it uses a plain ChatModel chain.
 func (b *AgentFlowBuilder) Build(
 	ctx context.Context,
 	agent *entity.Agent,
 	chatModel einoModel.BaseChatModel,
 	tools []tool.BaseTool,
-	maxTurns int,
+	loopDetector *toolloop.Detector,
 ) (compose.Runnable[[]*schema.Message, *schema.Message], error) {
 	if len(tools) > 0 {
-		return b.buildWithTools(ctx, agent, chatModel, tools, maxTurns)
+		return b.buildWithTools(ctx, agent, chatModel, tools, loopDetector)
 	}
 	return b.buildWithoutTools(ctx, chatModel)
 }
 
 // buildWithTools creates a ReAct Agent and wraps it as compose.Runnable via Chain + AnyLambda.
+//
+// Tools are wrapped with toolloop.GuardedTool to detect and block infinite loops.
+// Eino's MaxStep is set to a high ceiling (maxGraphSteps); the real execution
+// boundary comes from the loop detector (circuit-breaker) and context timeout.
 //
 // react.Agent directly provides Generate/Stream methods, so we wrap it with
 // compose.AnyLambda to get compose.Runnable compatible interface.
@@ -56,19 +73,22 @@ func (b *AgentFlowBuilder) buildWithTools(
 	agent *entity.Agent,
 	chatModel einoModel.BaseChatModel,
 	tools []tool.BaseTool,
-	maxTurns int,
+	loopDetector *toolloop.Detector,
 ) (compose.Runnable[[]*schema.Message, *schema.Message], error) {
 	tcm, ok := chatModel.(einoModel.ToolCallingChatModel)
 	if !ok {
 		return nil, errno.ErrModelNotToolCapable
 	}
 
+	// Wrap tools with loop detection guard (OpenClaw's wrapToolWithBeforeToolCallHook).
+	guardedTools := toolloop.WrapTools(tools, loopDetector)
+
 	reactAgent, err := react.NewAgent(ctx, &react.AgentConfig{
 		ToolCallingModel: tcm,
 		ToolsConfig: compose.ToolsNodeConfig{
-			Tools: tools,
+			Tools: guardedTools,
 		},
-		MaxStep: maxTurns,
+		MaxStep: maxGraphSteps,
 		// Use a full-stream checker instead of the default firstChunkStreamToolCallChecker.
 		// The default checker returns false (no tool call) as soon as it sees a non-empty
 		// Content chunk, which breaks models like DeepSeek and Claude that emit text
@@ -92,8 +112,8 @@ func (b *AgentFlowBuilder) buildWithTools(
 		return nil, fmt.Errorf("failed to compile ReAct agent chain: %w", err)
 	}
 
-	logger.Info("[AgentFlow] built ReAct agent for %q with %d tools, max_turns=%d",
-		agent.ID, len(tools), maxTurns)
+	logger.Info("[AgentFlow] built ReAct agent for %q with %d tools, (loop detection=%v, max_graph_steps=%d)",
+		agent.ID, len(tools), loopDetector != nil, maxGraphSteps)
 
 	return runnable, nil
 }

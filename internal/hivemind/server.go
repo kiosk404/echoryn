@@ -7,9 +7,13 @@ import (
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/kiosk404/echoryn/internal/hivemind/config"
+	grpchandler "github.com/kiosk404/echoryn/internal/hivemind/handler/grpc"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/gateway"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/scheduler"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
 	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
@@ -21,6 +25,7 @@ import (
 	"github.com/kiosk404/echoryn/pkg/http/shutdown/posixsignal"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	"github.com/kiosk404/echoryn/pkg/paths"
+	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
@@ -35,6 +40,7 @@ type apiServer struct {
 	mcpModule       *mcp.Module
 	agentsModule    *agents.Module
 	channelManager  *gateway.ChannelManager
+	golemModule     *golem.Module
 }
 
 type preparedAPIServer struct {
@@ -109,6 +115,32 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		return nil, fmt.Errorf("failed to initialize LLM module: %w", err)
 	}
 	logger.Info("LLM module initialized successfully")
+
+	// Initialize Golem subsystem (registry + dispatcher + scheduler)
+	golemCfg := &golem.Config{
+		Registry:  registry.Config{},
+		Scheduler: scheduler.DefaultSchedulerConfig(),
+	}
+	golemModule, err := golemCfg.Complete().New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Golem subsystem: %w", err)
+	}
+	if err := golemModule.Start(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to start Golem subsystem: %w", err)
+	}
+	logger.Info("[Hivemind] Golem subsystem initialized successfully")
+
+	// Register Golem gRPC services on the gRPC server
+	nodeServiceHandler := grpchandler.NewNodeServiceHandler(golemModule.Registry)
+	adminServiceHandler := grpchandler.NewAdminServiceHandler(golemModule.Registry)
+	pb.RegisterGolemNodeServiceServer(extraServer.Server, nodeServiceHandler)
+	pb.RegisterHivemindAdminServiceServer(extraServer.Server, adminServiceHandler)
+
+	// Bind the NodeServiceHandler as the StreamManager for the dispatcher.
+	// This enables task dispatch through the heartbeat bidirectional stream.
+	golemModule.BindStreamManager(nodeServiceHandler)
+	logger.Info("[Hivemind] Golem gRPC services registered (GolemNodeService + HivemindAdminService + stream-based dispatch)")
+
 	pluginCfg := &plugin.Config{
 		SlotConfig: plugin.SlotConfig{
 			"memory": cfg.PluginOptions.Slots.Memory,

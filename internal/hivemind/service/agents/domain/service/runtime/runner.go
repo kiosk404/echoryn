@@ -14,6 +14,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/agentflow"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/toolloop"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg/errno"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
@@ -64,7 +65,7 @@ type AgentRunner struct {
 	contextBuilder  *ContextBuilder
 	windowGuard     *ContextWindowGuard
 	compactor       *Compactor
-	defaultMaxTurns int
+	loopDetectCfg   toolloop.Config
 	runTimeout      time.Duration
 
 	// activeRuns tracks in-flight abort controllers by run ID.
@@ -76,13 +77,16 @@ type AgentRunner struct {
 
 // AgentRunnerConfig holds configuration for the AgentRunner.
 type AgentRunnerConfig struct {
-	DefaultMaxTurns     int
 	RunTimeout          time.Duration
 	MaxRetries          int
 	MaxHistoryTurns     int
 	CompactionThreshold float64
 	KeepRecentTurns     int
 	// WorkspaceDir is the resolved workspace directory (e.g. ~/.echoryn/workspace).
+	// Convention prompt files (SOUL.md, IDENTITY.md, AGENTS.md, prompts/*.md)
+	// are read directly from this directory.
+	LoopDetection toolloop.Config
+	// WorkspaceDir is the resolved workspace directory (e.g. ~/.echoryn/workspace)
 	// Convention prompt files (SOUL.md, IDENTITY.md, AGENTS.md, prompts/*.md)
 	// are read directly from this directory.
 	WorkspaceDir string
@@ -98,11 +102,15 @@ func NewAgentRunner(
 	mcpManager mcp.Manager,
 	cfg AgentRunnerConfig,
 ) *AgentRunner {
-	if cfg.DefaultMaxTurns <= 0 {
-		cfg.DefaultMaxTurns = 10
-	}
 	if cfg.RunTimeout <= 0 {
 		cfg.RunTimeout = 5 * time.Minute
+	}
+
+	// Initialize loop detection config
+	loopCfg := cfg.LoopDetection
+	if !loopCfg.Enabled && loopCfg.GlobalCircuitBreakerThreshold == 0 {
+		// Zero-value config: use defaults.
+		loopCfg = toolloop.DefaultConfig()
 	}
 
 	estimator := NewTokenEstimator(DefaultCharsPerToken)
@@ -155,7 +163,7 @@ func NewAgentRunner(
 		contextBuilder:  contextBuilder,
 		windowGuard:     windowGuard,
 		compactor:       compactor,
-		defaultMaxTurns: cfg.DefaultMaxTurns,
+		loopDetectCfg:   loopCfg,
 		runTimeout:      cfg.RunTimeout,
 	}
 }
@@ -265,18 +273,20 @@ func (r *AgentRunner) executeRun(
 	logger.DebugX(pkg.ModuleName, "[AgentRunner] context built: %d messages, ~%d tokens, window=%d usable=%d",
 		len(messages), buildResult.EstimatedTokens, windowInfo.WindowSize, windowInfo.UsableTokens)
 
-	maxTurns := agent.EffectiveMaxTurns(r.defaultMaxTurns)
+	// Create per-run loop detector (OpenClaw's tool-loop-detection.ts.)
+	// Each run gets its own detector with a fresh sliding window.
+	loopDetector := toolloop.NewDetector(r.loopDetectCfg)
 
 	// Execute the turn.
 	result, err := r.turnExecutor.Execute(ctx, &TurnRequest{
-		Agent:       agent,
-		Messages:    messages,
-		Tools:       tools,
-		MaxTurns:    maxTurns,
-		EventWriter: sw,
-		Session:     session,
-		WindowInfo:  windowInfo,
-		Compactor:   r.compactor,
+		Agent:        agent,
+		Messages:     messages,
+		Tools:        tools,
+		LoopDetector: loopDetector,
+		EventWriter:  sw,
+		Session:      session,
+		WindowInfo:   windowInfo,
+		Compactor:    r.compactor,
 	}, abort)
 
 	if err != nil {

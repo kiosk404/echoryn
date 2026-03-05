@@ -7,6 +7,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
+	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
 )
 
 type NodeSelector interface {
@@ -14,7 +17,7 @@ type NodeSelector interface {
 	Name() string
 
 	// Select evaluates the candidates and returns a scheduling decision.
-	Select(ctx context.Context, req *ScheduleRequest, candidates []GolemProfile) (*ScheduleDecision, error)
+	Select(ctx context.Context, req *ScheduleRequest, candidates []NodeProfile) (*ScheduleDecision, error)
 }
 
 // --------------------------------------------------------------------------
@@ -27,10 +30,64 @@ type NodeSelector interface {
 type ProfileProvider interface {
 	// ListProfiles returns all Golem profiles that are currently online
 	// or in a schedulable state.
-	ListProfiles(ctx context.Context) ([]GolemProfile, error)
+	ListProfiles(ctx context.Context) ([]NodeProfile, error)
 
 	// GetProfile returns the profile for a specific Golem node by ID.
-	GetProfile(ctx context.Context, nodeID string) (*GolemProfile, error)
+	GetProfile(ctx context.Context, nodeID string) (*NodeProfile, error)
+}
+
+// RegistryProfileProvider adapts registry.Registry to ProfileProvider.
+type RegistryProfileProvider struct {
+	registry registry.Registry
+}
+
+// NewRegistryProfileProvider creates a ProfileProvider backed by a Registry.
+func NewRegistryProfileProvider(reg registry.Registry) *RegistryProfileProvider {
+	return &RegistryProfileProvider{registry: reg}
+}
+
+func (p *RegistryProfileProvider) ListProfiles(ctx context.Context) ([]NodeProfile, error) {
+	nodes, err := p.registry.ListNodes(nil)
+	if err != nil {
+		return nil, err
+	}
+	profiles := make([]NodeProfile, len(nodes))
+	for i, node := range nodes {
+		profiles[i] = NodeProfile{
+			NodeState:   node,
+			HealthScore: calculateHealthScore(node),
+			LastUpdated: time.Now(),
+			// InstalledSkills, SupportedFeatures, Tags would be populated
+			// from additional data sources in a real implementation
+		}
+	}
+	return profiles, nil
+}
+
+func (p *RegistryProfileProvider) GetProfile(ctx context.Context, nodeID string) (*NodeProfile, error) {
+	node, err := p.registry.GetNode(nodeID)
+	if err != nil {
+		return nil, err
+	}
+	return &NodeProfile{
+		NodeState:   node,
+		HealthScore: calculateHealthScore(node),
+		LastUpdated: time.Now(),
+	}, nil
+}
+
+func calculateHealthScore(node *registry.NodeState) float64 {
+	if node.Status.Phase != pb.NodeStatus_NODE_STATUS_ONLINE {
+		return 0.0
+	}
+	// Simple health score based on load.
+	if node.Status.Load == nil {
+		return 1.0
+	}
+	load := node.Status.Load
+	cpuScore := 1.0 - load.CpuPercent/100.0
+	memScore := 1.0 - load.MemoryPercent/100.0
+	return (cpuScore + memScore) / 2.0
 }
 
 // --------------------------------------------------------------------------
@@ -53,7 +110,7 @@ func NewDirectSelector(provider ProfileProvider) *DirectSelector {
 func (s *DirectSelector) Name() string { return "direct" }
 
 // Select validates and selects the explicitly targeted node.
-func (s *DirectSelector) Select(ctx context.Context, req *ScheduleRequest, candidates []GolemProfile) (*ScheduleDecision, error) {
+func (s *DirectSelector) Select(ctx context.Context, req *ScheduleRequest, candidates []NodeProfile) (*ScheduleDecision, error) {
 	start := time.Now()
 
 	if req.TargetNodeID == "" {
@@ -61,9 +118,9 @@ func (s *DirectSelector) Select(ctx context.Context, req *ScheduleRequest, candi
 	}
 
 	// Find the target among candidates.
-	var target *GolemProfile
+	var target *NodeProfile
 	for i := range candidates {
-		if candidates[i].NodeInfo.ID == req.TargetNodeID {
+		if candidates[i].Spec.NodeID == req.TargetNodeID {
 			target = &candidates[i]
 			break
 		}
@@ -81,7 +138,7 @@ func (s *DirectSelector) Select(ctx context.Context, req *ScheduleRequest, candi
 
 	return &ScheduleDecision{
 		Mode:           DirectMode,
-		SelectedNodeID: target.NodeInfo.ID,
+		SelectedNodeID: target.Spec.NodeID,
 		Reason:         fmt.Sprintf("directly targeted node %q passed all constraints", req.TargetNodeID),
 		CandidateCount: len(candidates),
 		EligibleCount:  1,
@@ -139,7 +196,7 @@ func NewDefaultAISelector() *AISelector {
 func (s *AISelector) Name() string { return "ai" }
 
 // Select evaluates all candidates and returns the highest-scoring eligible node.
-func (s *AISelector) Select(ctx context.Context, req *ScheduleRequest, candidates []GolemProfile) (*ScheduleDecision, error) {
+func (s *AISelector) Select(ctx context.Context, req *ScheduleRequest, candidates []NodeProfile) (*ScheduleDecision, error) {
 	start := time.Now()
 
 	if len(candidates) == 0 {
@@ -192,9 +249,9 @@ func (s *AISelector) Select(ctx context.Context, req *ScheduleRequest, candidate
 }
 
 // score computes the multi-dimensional score for a single candidate.
-func (s *AISelector) score(req *ScheduleRequest, profile *GolemProfile) NodeScore {
+func (s *AISelector) score(req *ScheduleRequest, profile *NodeProfile) NodeScore {
 	ns := NodeScore{
-		NodeID: profile.NodeInfo.ID,
+		NodeID: profile.Spec.NodeID,
 	}
 
 	ns.CapabilityScore = s.scoreCapabilities(req, profile)
@@ -217,12 +274,12 @@ func (s *AISelector) score(req *ScheduleRequest, profile *GolemProfile) NodeScor
 
 // scoreCapabilities returns 1.0 if all required capabilities are present, otherwise
 // the fraction of matched capabilities.
-func (s *AISelector) scoreCapabilities(req *ScheduleRequest, profile *GolemProfile) float64 {
+func (s *AISelector) scoreCapabilities(req *ScheduleRequest, profile *NodeProfile) float64 {
 	if len(req.RequiredCapabilities) == 0 {
 		return 1.0
 	}
-	capSet := make(map[string]struct{}, len(profile.NodeInfo.Capabilities))
-	for _, c := range profile.NodeInfo.Capabilities {
+	capSet := make(map[string]struct{}, len(profile.Spec.Capabilities))
+	for _, c := range profile.Spec.Capabilities {
 		capSet[c.Name] = struct{}{}
 	}
 	matched := 0
@@ -235,7 +292,7 @@ func (s *AISelector) scoreCapabilities(req *ScheduleRequest, profile *GolemProfi
 }
 
 // scoreSkills returns the fraction of required skills that are installed.
-func (s *AISelector) scoreSkills(req *ScheduleRequest, profile *GolemProfile) float64 {
+func (s *AISelector) scoreSkills(req *ScheduleRequest, profile *NodeProfile) float64 {
 	if len(req.RequiredSkills) == 0 {
 		return 1.0
 	}
@@ -254,22 +311,26 @@ func (s *AISelector) scoreSkills(req *ScheduleRequest, profile *GolemProfile) fl
 }
 
 // scoreResources evaluates available system resources (higher is better).
-func (s *AISelector) scoreResources(_ *ScheduleRequest, profile *GolemProfile) float64 {
-	info := profile.NodeInfo.SystemInfo
-	load := profile.Load
+func (s *AISelector) scoreResources(_ *ScheduleRequest, profile *NodeProfile) float64 {
+	info := profile.Spec.SystemInfo
+	load := profile.Status.Load
 
 	// Normalise individual dimensions to [0, 1].
-	cpuScore := 1.0 - clamp(load.CPUPercent/100.0, 0, 1)
+	cpuScore := 1.0 - clamp(load.CpuPercent/100.0, 0, 1)
 	memScore := 1.0 - clamp(load.MemoryPercent/100.0, 0, 1)
-	diskScore := clamp(float64(info.DiskFreeMB)/10240.0, 0, 1) // 10 GB = 1.0
+	diskScore := clamp(float64(info.DiskFreeMb)/10240.0, 0, 1) // 10 GB = 1.0
 
 	return (cpuScore + memScore + diskScore) / 3.0
 }
 
 // scoreLoad evaluates how busy the node is (fewer tasks = higher score).
-func (s *AISelector) scoreLoad(profile *GolemProfile) float64 {
-	active := profile.Load.ActiveTasks
-	queued := profile.Load.QueuedTasks
+func (s *AISelector) scoreLoad(profile *NodeProfile) float64 {
+	if profile.Status.Load == nil {
+		return 1.0
+	}
+
+	active := profile.Status.Load.ActiveTasks
+	queued := profile.Status.Load.QueuedTasks
 	total := active + queued
 	if total == 0 {
 		return 1.0
@@ -279,7 +340,7 @@ func (s *AISelector) scoreLoad(profile *GolemProfile) float64 {
 }
 
 // scoreTags returns the fraction of preferred tags that match.
-func (s *AISelector) scoreTags(req *ScheduleRequest, profile *GolemProfile) float64 {
+func (s *AISelector) scoreTags(req *ScheduleRequest, profile *NodeProfile) float64 {
 	if len(req.PreferredTags) == 0 {
 		return 1.0
 	}
@@ -293,11 +354,11 @@ func (s *AISelector) scoreTags(req *ScheduleRequest, profile *GolemProfile) floa
 }
 
 // scoreAffinity returns a score based on affinity / anti-affinity hints.
-func (s *AISelector) scoreAffinity(req *ScheduleRequest, profile *GolemProfile) float64 {
+func (s *AISelector) scoreAffinity(req *ScheduleRequest, profile *NodeProfile) float64 {
 	if req.Hints == nil {
 		return 0.5 // neutral
 	}
-	nodeID := profile.NodeInfo.ID
+	nodeID := profile.Spec.NodeID
 
 	// Anti-affinity penalty.
 	for _, anti := range req.Hints.AntiAffinity {
@@ -349,7 +410,7 @@ func (s *CompositeSelector) Name() string {
 }
 
 // Select tries each selector in order, returning the first successful decision.
-func (s *CompositeSelector) Select(ctx context.Context, req *ScheduleRequest, candidates []GolemProfile) (*ScheduleDecision, error) {
+func (s *CompositeSelector) Select(ctx context.Context, req *ScheduleRequest, candidates []NodeProfile) (*ScheduleDecision, error) {
 	var lastErr error
 	for _, sel := range s.selectors {
 		decision, err := sel.Select(ctx, req, candidates)
@@ -365,8 +426,8 @@ func (s *CompositeSelector) Select(ctx context.Context, req *ScheduleRequest, ca
 // FilterSelector — pre-filter decorator
 // --------------------------------------------------------------------------
 
-// NodeFilter is a predicate that decides whether a GolemProfile is eligible.
-type NodeFilter func(profile *GolemProfile) bool
+// NodeFilter is a predicate that decides whether a NodeProfile is eligible.
+type NodeFilter func(profile *NodeProfile) bool
 
 // FilterSelector wraps another NodeSelector, pre-filtering candidates before
 // delegating to the inner selector. Implements the Decorator pattern.
@@ -386,8 +447,8 @@ func (s *FilterSelector) Name() string {
 }
 
 // Select applies all filters and delegates to the inner selector.
-func (s *FilterSelector) Select(ctx context.Context, req *ScheduleRequest, candidates []GolemProfile) (*ScheduleDecision, error) {
-	filtered := make([]GolemProfile, 0, len(candidates))
+func (s *FilterSelector) Select(ctx context.Context, req *ScheduleRequest, candidates []NodeProfile) (*ScheduleDecision, error) {
+	filtered := make([]NodeProfile, 0, len(candidates))
 	for i := range candidates {
 		keep := true
 		for _, f := range s.filters {
@@ -404,59 +465,25 @@ func (s *FilterSelector) Select(ctx context.Context, req *ScheduleRequest, candi
 }
 
 // --------------------------------------------------------------------------
-// Built-in NodeFilters
-// --------------------------------------------------------------------------
-
-// OnlineFilter returns a NodeFilter that only keeps online nodes.
-func OnlineFilter() NodeFilter {
-	return func(profile *GolemProfile) bool {
-		return profile.NodeInfo.Status == "online"
-	}
-}
-
-// HealthyFilter returns a NodeFilter that only keeps nodes above the given health threshold.
-func HealthyFilter(minHealth float64) NodeFilter {
-	return func(profile *GolemProfile) bool {
-		return profile.HealthScore >= minHealth
-	}
-}
-
-// FeatureFilter returns a NodeFilter that only keeps nodes supporting all given features.
-func FeatureFilter(features ...string) NodeFilter {
-	return func(profile *GolemProfile) bool {
-		featureSet := make(map[string]struct{}, len(profile.SupportedFeatures))
-		for _, f := range profile.SupportedFeatures {
-			featureSet[f] = struct{}{}
-		}
-		for _, required := range features {
-			if _, ok := featureSet[required]; !ok {
-				return false
-			}
-		}
-		return true
-	}
-}
-
-// --------------------------------------------------------------------------
 // constraintChecker — hard-constraint validation (shared helper)
 // --------------------------------------------------------------------------
 
-// constraintChecker validates that a GolemProfile meets all hard constraints
+// constraintChecker validates that a NodeProfile meets all hard constraints
 // specified in a ScheduleRequest. It is used by both DirectSelector and AISelector.
 type constraintChecker struct{}
 
 // check returns an empty string if the node passes all constraints, or a
 // human-readable rejection reason.
-func (c *constraintChecker) check(req *ScheduleRequest, profile *GolemProfile) string {
+func (c *constraintChecker) check(req *ScheduleRequest, profile *NodeProfile) string {
 	// 1. Node must be online.
-	if profile.NodeInfo.Status != "online" {
-		return fmt.Sprintf("node status is %q, expected online", profile.NodeInfo.Status)
+	if profile.Status.Phase != pb.NodeStatus_NODE_STATUS_ONLINE {
+		return fmt.Sprintf("node status is %q, expected online", profile.Status.Phase)
 	}
 
 	// 2. Required capabilities.
 	if len(req.RequiredCapabilities) > 0 {
-		capSet := make(map[string]struct{}, len(profile.NodeInfo.Capabilities))
-		for _, c := range profile.NodeInfo.Capabilities {
+		capSet := make(map[string]struct{}, len(profile.Spec.Capabilities))
+		for _, c := range profile.Spec.Capabilities {
 			capSet[c.Name] = struct{}{}
 		}
 		for _, rc := range req.RequiredCapabilities {
@@ -495,25 +522,25 @@ func (c *constraintChecker) check(req *ScheduleRequest, profile *GolemProfile) s
 
 	// 5. Resource requirements.
 	if rr := req.ResourceRequirements; rr != nil {
-		info := profile.NodeInfo.SystemInfo
-		load := profile.Load
+		info := profile.Spec.SystemInfo
+		load := profile.Status.Load
 
-		if rr.MinCPUCores > 0 && info.CPUCores < rr.MinCPUCores {
-			return fmt.Sprintf("insufficient CPU cores: have %d, need %d", info.CPUCores, rr.MinCPUCores)
+		if rr.MinCPUCores > 0 && int(info.CpuCores) < rr.MinCPUCores {
+			return fmt.Sprintf("insufficient CPU cores: have %d, need %d", info.CpuCores, rr.MinCPUCores)
 		}
-		if rr.MinMemoryMB > 0 && int64(info.MemoryMB) < rr.MinMemoryMB {
-			return fmt.Sprintf("insufficient memory: have %dMB, need %dMB", info.MemoryMB, rr.MinMemoryMB)
+		if rr.MinMemoryMB > 0 && int64(info.MemoryMb) < rr.MinMemoryMB {
+			return fmt.Sprintf("insufficient memory: have %dMB, need %dMB", info.MemoryMb, rr.MinMemoryMB)
 		}
-		if rr.MinDiskFreeMB > 0 && int64(info.DiskFreeMB) < rr.MinDiskFreeMB {
-			return fmt.Sprintf("insufficient disk: have %dMB, need %dMB", info.DiskFreeMB, rr.MinDiskFreeMB)
+		if rr.MinDiskFreeMB > 0 && int64(info.DiskFreeMb) < rr.MinDiskFreeMB {
+			return fmt.Sprintf("insufficient disk: have %dMB, need %dMB", info.DiskFreeMb, rr.MinDiskFreeMB)
 		}
-		if rr.MaxCPUPercent > 0 && load.CPUPercent > rr.MaxCPUPercent {
-			return fmt.Sprintf("CPU usage too high: %.1f%% > %.1f%%", load.CPUPercent, rr.MaxCPUPercent)
+		if rr.MaxCPUPercent > 0 && load.CpuPercent > rr.MaxCPUPercent {
+			return fmt.Sprintf("CPU usage too high: %.1f%% > %.1f%%", load.CpuPercent, rr.MaxCPUPercent)
 		}
 		if rr.MaxMemoryPercent > 0 && load.MemoryPercent > rr.MaxMemoryPercent {
 			return fmt.Sprintf("memory usage too high: %.1f%% > %.1f%%", load.MemoryPercent, rr.MaxMemoryPercent)
 		}
-		if rr.MaxActiveTasks > 0 && load.ActiveTasks > rr.MaxActiveTasks {
+		if rr.MaxActiveTasks > 0 && int(load.ActiveTasks) > rr.MaxActiveTasks {
 			return fmt.Sprintf("too many active tasks: %d > %d", load.ActiveTasks, rr.MaxActiveTasks)
 		}
 	}

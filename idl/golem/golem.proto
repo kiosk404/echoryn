@@ -9,7 +9,6 @@ import "google/protobuf/duration.proto";
 
 // ==========================================================================
 // Golem Node — 核心通信结构
-// 参考: airi-go IDL 风格 + Echoryn Hivemind-Golem 分布式架构
 // ==========================================================================
 
 // NodeStatus 节点状态枚举
@@ -45,9 +44,11 @@ enum TaskPriority {
 // HeartbeatAction 心跳响应中 Hivemind 可下发的控制指令
 enum HeartbeatAction {
   HEARTBEAT_ACTION_UNSPECIFIED = 0;
-  HEARTBEAT_ACTION_NONE        = 1;  // 无操作
-  HEARTBEAT_ACTION_DRAIN       = 2;  // 开始排水
-  HEARTBEAT_ACTION_SHUTDOWN    = 3;  // 要求关闭
+  HEARTBEAT_ACTION_NONE        = 1;   // 无操作
+  HEARTBEAT_ACTION_DRAIN       = 2;   // 开始排水
+  HEARTBEAT_ACTION_SHUTDOWN    = 3;   // 要求关闭
+  HEARTBEAT_ACTION_DISPATCH_TASK = 4; // 下发任务
+  HEARTBEAT_ACTION_CANCEL_TASK = 5;   // 取消任务
 }
 
 // Capability 节点能力描述
@@ -147,15 +148,6 @@ service GolemNodeService {
 }
 
 // ==========================================================================
-// HivemindControlService — Hivemind 向 Golem 下发任务和管控指令
-// ==========================================================================
-service HivemindControlService {
-  rpc DispatchTask(DispatchTaskRequest) returns (DispatchTaskResponse);
-  rpc CancelTask(CancelTaskRequest) returns (CancelTaskResponse);
-  rpc DrainNode(DrainNodeRequest) returns (DrainNodeResponse);
-}
-
-// ==========================================================================
 // HivemindAdminService — 管理面 API, 供 echoctl / echadm 使用
 // ==========================================================================
 service HivemindAdminService {
@@ -191,6 +183,12 @@ message HeartbeatRequest {
 message HeartbeatResponse {
   bool            acknowledged = 1;
   HeartbeatAction action       = 2;
+
+  // 当 action == DISPATCH_TASK 时携带任务
+  Task    dispatch_task = 3;
+  // 当 action == CANCEL_TASK 时携带要取消任务 ID 的原因
+  string  cancel_task_id = 4;
+  string  cancel_reason = 5;
 }
 
 message DeregisterRequest {
@@ -230,6 +228,8 @@ message DispatchTaskRequest {
 message DispatchTaskResponse {
   bool     accepted      = 1;
   string   reject_reason = 2;
+  // 任务执行结果  (同步等待模式下有 WaitForResult 填充)
+  TaskResult  task_result = 3;
   BaseResp base_resp     = 255;
 }
 

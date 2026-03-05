@@ -6,7 +6,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/dispatcher"
 	"github.com/kiosk404/echoryn/internal/pkg/protocol"
+	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Scheduler interface {
@@ -89,11 +93,11 @@ func DefaultSchedulerConfig() SchedulerConfig {
 type CompletedSchedulerConfig struct {
 	config     SchedulerConfig
 	provider   ProfileProvider
-	dispatcher TaskDispatcher
+	dispatcher dispatcher.Dispatcher
 }
 
 // Complete validates the configuration and seals it.
-func (c SchedulerConfig) Complete(provider ProfileProvider, dispatcher TaskDispatcher) (*CompletedSchedulerConfig, error) {
+func (c SchedulerConfig) Complete(provider ProfileProvider, dispatcher dispatcher.Dispatcher) (*CompletedSchedulerConfig, error) {
 	if provider == nil {
 		return nil, fmt.Errorf("scheduler: ProfileProvider must not be nil")
 	}
@@ -153,7 +157,7 @@ type taskRecord struct {
 type defaultScheduler struct {
 	config     SchedulerConfig
 	provider   ProfileProvider
-	dispatcher TaskDispatcher
+	dispatcher dispatcher.Dispatcher
 	queue      Queue
 	directSel  NodeSelector
 	aiSel      NodeSelector
@@ -395,7 +399,8 @@ func (s *defaultScheduler) tryDispatch(ctx context.Context, req *ScheduleRequest
 	s.mu.Unlock()
 
 	// Dispatch to the Golem node.
-	if err := s.dispatcher.Dispatch(ctx, decision.SelectedNodeID, req.Task); err != nil {
+	pbTask := convertTaskToPB(req.Task)
+	if _, err := s.dispatcher.Dispatch(ctx, decision.SelectedNodeID, pbTask); err != nil {
 		return nil, fmt.Errorf("failed to dispatch task %q to node %q: %w", req.Task.ID, decision.SelectedNodeID, err)
 	}
 
@@ -533,5 +538,56 @@ func (s *defaultScheduler) ReportResult(_ context.Context, result *protocol.Task
 			Error:     fmt.Errorf("%s", result.Error),
 			Timestamp: time.Now(),
 		})
+	}
+}
+
+// convertTaskToPB converts protocol.Task to pb.Task.
+// This is a simplified conversion - a full implementation would map all fields.
+func convertTaskToPB(task *protocol.Task) *pb.Task {
+	pbTask := &pb.Task{
+		Id:             task.ID,
+		Name:           task.Name,
+		SkillName:      task.SkillName,
+		Payload:        task.Payload,
+		Status:         taskStatusToProto(task.Status),
+		Priority:       pb.TaskPriority(task.Priority),
+		AssignedNodeId: task.AssignedNodeID,
+		SessionId:      task.SessionID,
+		AgentId:        task.AgentID,
+		Result:         task.Result,
+		Error:          task.Error,
+		Metadata:       task.Metadata,
+	}
+	if task.Timeout > 0 {
+		pbTask.Timeout = durationpb.New(task.Timeout)
+	}
+	if task.StartedAt != nil {
+		pbTask.StartedAt = timestamppb.New(*task.StartedAt)
+	}
+	if task.CompletedAt != nil {
+		pbTask.CompletedAt = timestamppb.New(*task.CompletedAt)
+	}
+	return pbTask
+}
+
+// taskStatusToProto converts protocol.TaskStatusValue to pb.TaskStatus.
+func taskStatusToProto(s protocol.TaskStatusValue) pb.TaskStatus {
+	switch s {
+	case protocol.TaskStatusPending:
+		return pb.TaskStatus_TASK_STATUS_PENDING
+	case protocol.TaskStatusAssigned:
+		return pb.TaskStatus_TASK_STATUS_ASSIGNED
+	case protocol.TaskStatusRunning:
+		return pb.TaskStatus_TASK_STATUS_RUNNING
+	case protocol.TaskStatusCompleted:
+		return pb.TaskStatus_TASK_STATUS_COMPLETED
+	case protocol.TaskStatusFailed:
+		return pb.TaskStatus_TASK_STATUS_FAILED
+	case protocol.TaskStatusCancelled:
+		return pb.TaskStatus_TASK_STATUS_CANCELLED
+	case protocol.TaskStatusTimedOut:
+		return pb.TaskStatus_TASK_STATUS_TIMED_OUT
+	default:
+		return pb.TaskStatus_TASK_STATUS_UNSPECIFIED
 	}
 }

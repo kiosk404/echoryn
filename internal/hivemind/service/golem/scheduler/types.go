@@ -3,6 +3,7 @@ package scheduler
 import (
 	"time"
 
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
 	"github.com/kiosk404/echoryn/internal/pkg/protocol"
 )
 
@@ -170,27 +171,21 @@ type NodeScore struct {
 	RejectReason string
 }
 
-// GolemProfile aggregates the static and dynamic information about a Golem node
-// that the scheduler uses for decision-making. It is a denormalised snapshot
-// assembled from the cluster registry, heartbeat data, and capability reports.
-type GolemProfile struct {
-	// NodeInfo is the static registration data for the Golem.
-	NodeInfo protocol.NodeInfo
-
-	// Load is the most recent load report from the Golem's heartbeat.
-	Load protocol.NodeLoadInfo
+// NodeProfile wraps registry.NodeState for scheduler scoring
+// It extends the node state with additional scheduler-specific information.
+type NodeProfile struct {
+	*registry.NodeState
 
 	// InstalledSkills lists the skills currently installed on this Golem.
 	InstalledSkills []SkillInfo
 
-	// SupportedFeatures lists the high-level features this Golem supports
-	// (e.g., "browser_automation", "gpu_inference", "sandbox_execution").
+	// SupportedFeatures lists the high-level features this Golem supports.
 	SupportedFeatures []string
 
 	// Tags are user-defined labels attached to the Golem for filtering.
 	Tags map[string]string
 
-	// HealthScore is a composite health indicator (0.0 = dead, 1.0 = perfect).
+	// HealthScore is a composite health indicator (0.0 = dead, 1.0 == perfect).
 	HealthScore float64
 
 	// LastUpdated records when this profile was last refreshed.
@@ -282,76 +277,4 @@ type TaskEventListenerFunc func(event *TaskEvent)
 // OnEvent calls the wrapped function.
 func (f TaskEventListenerFunc) OnEvent(event *TaskEvent) {
 	f(event)
-}
-
-// ScheduleRequestBuilder provides a fluent API for constructing ScheduleRequest instances.
-// Follows the Builder pattern for ergonomic request creation.
-type ScheduleRequestBuilder struct {
-	request *ScheduleRequest
-}
-
-// NewScheduleRequest creates a new ScheduleRequestBuilder with sensible defaults.
-func NewScheduleRequest(task *protocol.Task) *ScheduleRequestBuilder {
-	return &ScheduleRequestBuilder{
-		request: &ScheduleRequest{
-			Task:        task,
-			Mode:        AIMode,
-			RequestedAt: time.Now(),
-		},
-	}
-}
-
-// WithDirectMode switches to direct scheduling, targeting a specific Golem node.
-func (b *ScheduleRequestBuilder) WithDirectMode(nodeID string) *ScheduleRequestBuilder {
-	b.request.Mode = DirectMode
-	b.request.TargetNodeID = nodeID
-	return b
-}
-
-// WithAIMode switches to AI-driven scheduling (this is the default).
-func (b *ScheduleRequestBuilder) WithAIMode() *ScheduleRequestBuilder {
-	b.request.Mode = AIMode
-	b.request.TargetNodeID = ""
-	return b
-}
-
-// WithRequiredCapabilities sets the capabilities the target Golem must advertise.
-func (b *ScheduleRequestBuilder) WithRequiredCapabilities(caps ...string) *ScheduleRequestBuilder {
-	b.request.RequiredCapabilities = caps
-	return b
-}
-
-// WithRequiredSkills sets the skills that must be installed on the target Golem.
-func (b *ScheduleRequestBuilder) WithRequiredSkills(skills ...string) *ScheduleRequestBuilder {
-	b.request.RequiredSkills = skills
-	return b
-}
-
-// WithRequiredFeatures sets the features that the target Golem must support.
-func (b *ScheduleRequestBuilder) WithRequiredFeatures(features ...string) *ScheduleRequestBuilder {
-	b.request.RequiredFeatures = features
-	return b
-}
-
-// WithPreferredTags sets soft preferences for node tags.
-func (b *ScheduleRequestBuilder) WithPreferredTags(tags map[string]string) *ScheduleRequestBuilder {
-	b.request.PreferredTags = tags
-	return b
-}
-
-// WithResourceRequirements sets minimum resource thresholds.
-func (b *ScheduleRequestBuilder) WithResourceRequirements(req *ResourceRequirements) *ScheduleRequestBuilder {
-	b.request.ResourceRequirements = req
-	return b
-}
-
-// WithHints sets the scheduling hints for the AI selector.
-func (b *ScheduleRequestBuilder) WithHints(hints *ScheduleHints) *ScheduleRequestBuilder {
-	b.request.Hints = hints
-	return b
-}
-
-// Build returns the constructed ScheduleRequest.
-func (b *ScheduleRequestBuilder) Build() *ScheduleRequest {
-	return b.request
 }

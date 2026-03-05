@@ -204,10 +204,12 @@ func (TaskPriority) EnumDescriptor() ([]byte, []int) {
 type HeartbeatAction int32
 
 const (
-	HeartbeatAction_HEARTBEAT_ACTION_UNSPECIFIED HeartbeatAction = 0
-	HeartbeatAction_HEARTBEAT_ACTION_NONE        HeartbeatAction = 1 // 无操作
-	HeartbeatAction_HEARTBEAT_ACTION_DRAIN       HeartbeatAction = 2 // 开始排水
-	HeartbeatAction_HEARTBEAT_ACTION_SHUTDOWN    HeartbeatAction = 3 // 要求关闭
+	HeartbeatAction_HEARTBEAT_ACTION_UNSPECIFIED   HeartbeatAction = 0
+	HeartbeatAction_HEARTBEAT_ACTION_NONE          HeartbeatAction = 1 // 无操作
+	HeartbeatAction_HEARTBEAT_ACTION_DRAIN         HeartbeatAction = 2 // 开始排水
+	HeartbeatAction_HEARTBEAT_ACTION_SHUTDOWN      HeartbeatAction = 3 // 要求关闭
+	HeartbeatAction_HEARTBEAT_ACTION_DISPATCH_TASK HeartbeatAction = 4 // 下发任务
+	HeartbeatAction_HEARTBEAT_ACTION_CANCEL_TASK   HeartbeatAction = 5 // 取消任务
 )
 
 // Enum value maps for HeartbeatAction.
@@ -217,12 +219,16 @@ var (
 		1: "HEARTBEAT_ACTION_NONE",
 		2: "HEARTBEAT_ACTION_DRAIN",
 		3: "HEARTBEAT_ACTION_SHUTDOWN",
+		4: "HEARTBEAT_ACTION_DISPATCH_TASK",
+		5: "HEARTBEAT_ACTION_CANCEL_TASK",
 	}
 	HeartbeatAction_value = map[string]int32{
-		"HEARTBEAT_ACTION_UNSPECIFIED": 0,
-		"HEARTBEAT_ACTION_NONE":        1,
-		"HEARTBEAT_ACTION_DRAIN":       2,
-		"HEARTBEAT_ACTION_SHUTDOWN":    3,
+		"HEARTBEAT_ACTION_UNSPECIFIED":   0,
+		"HEARTBEAT_ACTION_NONE":          1,
+		"HEARTBEAT_ACTION_DRAIN":         2,
+		"HEARTBEAT_ACTION_SHUTDOWN":      3,
+		"HEARTBEAT_ACTION_DISPATCH_TASK": 4,
+		"HEARTBEAT_ACTION_CANCEL_TASK":   5,
 	}
 )
 
@@ -1137,9 +1143,14 @@ func (x *HeartbeatRequest) GetTimestamp() *timestamppb.Timestamp {
 }
 
 type HeartbeatResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Acknowledged  bool                   `protobuf:"varint,1,opt,name=acknowledged,proto3" json:"acknowledged,omitempty"`
-	Action        HeartbeatAction        `protobuf:"varint,2,opt,name=action,proto3,enum=golem.HeartbeatAction" json:"action,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Acknowledged bool                   `protobuf:"varint,1,opt,name=acknowledged,proto3" json:"acknowledged,omitempty"`
+	Action       HeartbeatAction        `protobuf:"varint,2,opt,name=action,proto3,enum=golem.HeartbeatAction" json:"action,omitempty"`
+	// 当 action == DISPATCH_TASK 时携带任务
+	DispatchTask *Task `protobuf:"bytes,3,opt,name=dispatch_task,json=dispatchTask,proto3" json:"dispatch_task,omitempty"`
+	// 当 action == CANCEL_TASK 时携带要取消任务 ID 的原因
+	CancelTaskId  string `protobuf:"bytes,4,opt,name=cancel_task_id,json=cancelTaskId,proto3" json:"cancel_task_id,omitempty"`
+	CancelReason  string `protobuf:"bytes,5,opt,name=cancel_reason,json=cancelReason,proto3" json:"cancel_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1186,6 +1197,27 @@ func (x *HeartbeatResponse) GetAction() HeartbeatAction {
 		return x.Action
 	}
 	return HeartbeatAction_HEARTBEAT_ACTION_UNSPECIFIED
+}
+
+func (x *HeartbeatResponse) GetDispatchTask() *Task {
+	if x != nil {
+		return x.DispatchTask
+	}
+	return nil
+}
+
+func (x *HeartbeatResponse) GetCancelTaskId() string {
+	if x != nil {
+		return x.CancelTaskId
+	}
+	return ""
+}
+
+func (x *HeartbeatResponse) GetCancelReason() string {
+	if x != nil {
+		return x.CancelReason
+	}
+	return ""
 }
 
 type DeregisterRequest struct {
@@ -1545,10 +1577,12 @@ func (x *DispatchTaskRequest) GetTask() *Task {
 }
 
 type DispatchTaskResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Accepted      bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	RejectReason  string                 `protobuf:"bytes,2,opt,name=reject_reason,json=rejectReason,proto3" json:"reject_reason,omitempty"`
-	BaseResp      *BaseResp              `protobuf:"bytes,255,opt,name=base_resp,json=baseResp,proto3" json:"base_resp,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	Accepted     bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	RejectReason string                 `protobuf:"bytes,2,opt,name=reject_reason,json=rejectReason,proto3" json:"reject_reason,omitempty"`
+	// 任务执行结果  (同步等待模式下有 WaitForResult 填充)
+	TaskResult    *TaskResult `protobuf:"bytes,3,opt,name=task_result,json=taskResult,proto3" json:"task_result,omitempty"`
+	BaseResp      *BaseResp   `protobuf:"bytes,255,opt,name=base_resp,json=baseResp,proto3" json:"base_resp,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1595,6 +1629,13 @@ func (x *DispatchTaskResponse) GetRejectReason() string {
 		return x.RejectReason
 	}
 	return ""
+}
+
+func (x *DispatchTaskResponse) GetTaskResult() *TaskResult {
+	if x != nil {
+		return x.TaskResult
+	}
+	return nil
 }
 
 func (x *DispatchTaskResponse) GetBaseResp() *BaseResp {
@@ -2333,10 +2374,13 @@ const file_golem_golem_proto_rawDesc = "" +
 	"\x10HeartbeatRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x120\n" +
 	"\tload_info\x18\x02 \x01(\v2\x13.golem.NodeLoadInfoR\bloadInfo\x128\n" +
-	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"g\n" +
+	"\ttimestamp\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\"\xe4\x01\n" +
 	"\x11HeartbeatResponse\x12\"\n" +
 	"\facknowledged\x18\x01 \x01(\bR\facknowledged\x12.\n" +
-	"\x06action\x18\x02 \x01(\x0e2\x16.golem.HeartbeatActionR\x06action\"D\n" +
+	"\x06action\x18\x02 \x01(\x0e2\x16.golem.HeartbeatActionR\x06action\x120\n" +
+	"\rdispatch_task\x18\x03 \x01(\v2\v.golem.TaskR\fdispatchTask\x12$\n" +
+	"\x0ecancel_task_id\x18\x04 \x01(\tR\fcancelTaskId\x12#\n" +
+	"\rcancel_reason\x18\x05 \x01(\tR\fcancelReason\"D\n" +
 	"\x11DeregisterRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"]\n" +
@@ -2357,10 +2401,12 @@ const file_golem_golem_proto_rawDesc = "" +
 	"\facknowledged\x18\x01 \x01(\bR\facknowledged\x12-\n" +
 	"\tbase_resp\x18\xff\x01 \x01(\v2\x0f.golem.BaseRespR\bbaseResp\"6\n" +
 	"\x13DispatchTaskRequest\x12\x1f\n" +
-	"\x04task\x18\x01 \x01(\v2\v.golem.TaskR\x04task\"\x86\x01\n" +
+	"\x04task\x18\x01 \x01(\v2\v.golem.TaskR\x04task\"\xba\x01\n" +
 	"\x14DispatchTaskResponse\x12\x1a\n" +
 	"\baccepted\x18\x01 \x01(\bR\baccepted\x12#\n" +
-	"\rreject_reason\x18\x02 \x01(\tR\frejectReason\x12-\n" +
+	"\rreject_reason\x18\x02 \x01(\tR\frejectReason\x122\n" +
+	"\vtask_result\x18\x03 \x01(\v2\x11.golem.TaskResultR\n" +
+	"taskResult\x12-\n" +
 	"\tbase_resp\x18\xff\x01 \x01(\v2\x0f.golem.BaseRespR\bbaseResp\"D\n" +
 	"\x11CancelTaskRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\tR\x06taskId\x12\x16\n" +
@@ -2424,24 +2470,21 @@ const file_golem_golem_proto_rawDesc = "" +
 	"\x14TASK_PRIORITY_NORMAL\x10\x05\x12\x16\n" +
 	"\x12TASK_PRIORITY_HIGH\x10\b\x12\x1a\n" +
 	"\x16TASK_PRIORITY_CRITICAL\x10\n" +
-	"*\x89\x01\n" +
+	"*\xcf\x01\n" +
 	"\x0fHeartbeatAction\x12 \n" +
 	"\x1cHEARTBEAT_ACTION_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15HEARTBEAT_ACTION_NONE\x10\x01\x12\x1a\n" +
 	"\x16HEARTBEAT_ACTION_DRAIN\x10\x02\x12\x1d\n" +
-	"\x19HEARTBEAT_ACTION_SHUTDOWN\x10\x032\x86\x03\n" +
+	"\x19HEARTBEAT_ACTION_SHUTDOWN\x10\x03\x12\"\n" +
+	"\x1eHEARTBEAT_ACTION_DISPATCH_TASK\x10\x04\x12 \n" +
+	"\x1cHEARTBEAT_ACTION_CANCEL_TASK\x10\x052\x86\x03\n" +
 	"\x10GolemNodeService\x12;\n" +
 	"\bRegister\x12\x16.golem.RegisterRequest\x1a\x17.golem.RegisterResponse\x12B\n" +
 	"\tHeartbeat\x12\x17.golem.HeartbeatRequest\x1a\x18.golem.HeartbeatResponse(\x010\x01\x12A\n" +
 	"\n" +
 	"Deregister\x12\x18.golem.DeregisterRequest\x1a\x19.golem.DeregisterResponse\x12S\n" +
 	"\x10ReportTaskResult\x12\x1e.golem.ReportTaskResultRequest\x1a\x1f.golem.ReportTaskResultResponse\x12Y\n" +
-	"\x12ReportTaskProgress\x12 .golem.ReportTaskProgressRequest\x1a!.golem.ReportTaskProgressResponse2\xe4\x01\n" +
-	"\x16HivemindControlService\x12G\n" +
-	"\fDispatchTask\x12\x1a.golem.DispatchTaskRequest\x1a\x1b.golem.DispatchTaskResponse\x12A\n" +
-	"\n" +
-	"CancelTask\x12\x18.golem.CancelTaskRequest\x1a\x19.golem.CancelTaskResponse\x12>\n" +
-	"\tDrainNode\x12\x17.golem.DrainNodeRequest\x1a\x18.golem.DrainNodeResponse2\x9c\x02\n" +
+	"\x12ReportTaskProgress\x12 .golem.ReportTaskProgressRequest\x1a!.golem.ReportTaskProgressResponse2\x9c\x02\n" +
 	"\x14HivemindAdminService\x12>\n" +
 	"\tListNodes\x12\x17.golem.ListNodesRequest\x1a\x18.golem.ListNodesResponse\x128\n" +
 	"\aGetNode\x12\x15.golem.GetNodeRequest\x1a\x16.golem.GetNodeResponse\x12A\n" +
@@ -2525,52 +2568,48 @@ var file_golem_golem_proto_depIdxs = []int32{
 	7,  // 16: golem.HeartbeatRequest.load_info:type_name -> golem.NodeLoadInfo
 	38, // 17: golem.HeartbeatRequest.timestamp:type_name -> google.protobuf.Timestamp
 	3,  // 18: golem.HeartbeatResponse.action:type_name -> golem.HeartbeatAction
-	11, // 19: golem.DeregisterResponse.base_resp:type_name -> golem.BaseResp
-	10, // 20: golem.ReportTaskResultRequest.task_result:type_name -> golem.TaskResult
-	11, // 21: golem.ReportTaskResultResponse.base_resp:type_name -> golem.BaseResp
-	9,  // 22: golem.ReportTaskProgressRequest.task_progress:type_name -> golem.TaskProgress
-	11, // 23: golem.ReportTaskProgressResponse.base_resp:type_name -> golem.BaseResp
-	8,  // 24: golem.DispatchTaskRequest.task:type_name -> golem.Task
-	11, // 25: golem.DispatchTaskResponse.base_resp:type_name -> golem.BaseResp
-	11, // 26: golem.CancelTaskResponse.base_resp:type_name -> golem.BaseResp
-	11, // 27: golem.DrainNodeResponse.base_resp:type_name -> golem.BaseResp
-	0,  // 28: golem.ListNodesRequest.status_filter:type_name -> golem.NodeStatus
-	6,  // 29: golem.ListNodesResponse.nodes:type_name -> golem.NodeInfo
-	11, // 30: golem.ListNodesResponse.base_resp:type_name -> golem.BaseResp
-	6,  // 31: golem.GetNodeResponse.node_info:type_name -> golem.NodeInfo
-	7,  // 32: golem.GetNodeResponse.load_info:type_name -> golem.NodeLoadInfo
-	11, // 33: golem.GetNodeResponse.base_resp:type_name -> golem.BaseResp
-	11, // 34: golem.CordonNodeResponse.base_resp:type_name -> golem.BaseResp
-	11, // 35: golem.UncordonNodeResponse.base_resp:type_name -> golem.BaseResp
-	12, // 36: golem.GolemNodeService.Register:input_type -> golem.RegisterRequest
-	14, // 37: golem.GolemNodeService.Heartbeat:input_type -> golem.HeartbeatRequest
-	16, // 38: golem.GolemNodeService.Deregister:input_type -> golem.DeregisterRequest
-	18, // 39: golem.GolemNodeService.ReportTaskResult:input_type -> golem.ReportTaskResultRequest
-	20, // 40: golem.GolemNodeService.ReportTaskProgress:input_type -> golem.ReportTaskProgressRequest
-	22, // 41: golem.HivemindControlService.DispatchTask:input_type -> golem.DispatchTaskRequest
-	24, // 42: golem.HivemindControlService.CancelTask:input_type -> golem.CancelTaskRequest
-	26, // 43: golem.HivemindControlService.DrainNode:input_type -> golem.DrainNodeRequest
-	28, // 44: golem.HivemindAdminService.ListNodes:input_type -> golem.ListNodesRequest
-	30, // 45: golem.HivemindAdminService.GetNode:input_type -> golem.GetNodeRequest
-	32, // 46: golem.HivemindAdminService.CordonNode:input_type -> golem.CordonNodeRequest
-	34, // 47: golem.HivemindAdminService.UncordonNode:input_type -> golem.UncordonNodeRequest
-	13, // 48: golem.GolemNodeService.Register:output_type -> golem.RegisterResponse
-	15, // 49: golem.GolemNodeService.Heartbeat:output_type -> golem.HeartbeatResponse
-	17, // 50: golem.GolemNodeService.Deregister:output_type -> golem.DeregisterResponse
-	19, // 51: golem.GolemNodeService.ReportTaskResult:output_type -> golem.ReportTaskResultResponse
-	21, // 52: golem.GolemNodeService.ReportTaskProgress:output_type -> golem.ReportTaskProgressResponse
-	23, // 53: golem.HivemindControlService.DispatchTask:output_type -> golem.DispatchTaskResponse
-	25, // 54: golem.HivemindControlService.CancelTask:output_type -> golem.CancelTaskResponse
-	27, // 55: golem.HivemindControlService.DrainNode:output_type -> golem.DrainNodeResponse
-	29, // 56: golem.HivemindAdminService.ListNodes:output_type -> golem.ListNodesResponse
-	31, // 57: golem.HivemindAdminService.GetNode:output_type -> golem.GetNodeResponse
-	33, // 58: golem.HivemindAdminService.CordonNode:output_type -> golem.CordonNodeResponse
-	35, // 59: golem.HivemindAdminService.UncordonNode:output_type -> golem.UncordonNodeResponse
-	48, // [48:60] is the sub-list for method output_type
-	36, // [36:48] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	8,  // 19: golem.HeartbeatResponse.dispatch_task:type_name -> golem.Task
+	11, // 20: golem.DeregisterResponse.base_resp:type_name -> golem.BaseResp
+	10, // 21: golem.ReportTaskResultRequest.task_result:type_name -> golem.TaskResult
+	11, // 22: golem.ReportTaskResultResponse.base_resp:type_name -> golem.BaseResp
+	9,  // 23: golem.ReportTaskProgressRequest.task_progress:type_name -> golem.TaskProgress
+	11, // 24: golem.ReportTaskProgressResponse.base_resp:type_name -> golem.BaseResp
+	8,  // 25: golem.DispatchTaskRequest.task:type_name -> golem.Task
+	10, // 26: golem.DispatchTaskResponse.task_result:type_name -> golem.TaskResult
+	11, // 27: golem.DispatchTaskResponse.base_resp:type_name -> golem.BaseResp
+	11, // 28: golem.CancelTaskResponse.base_resp:type_name -> golem.BaseResp
+	11, // 29: golem.DrainNodeResponse.base_resp:type_name -> golem.BaseResp
+	0,  // 30: golem.ListNodesRequest.status_filter:type_name -> golem.NodeStatus
+	6,  // 31: golem.ListNodesResponse.nodes:type_name -> golem.NodeInfo
+	11, // 32: golem.ListNodesResponse.base_resp:type_name -> golem.BaseResp
+	6,  // 33: golem.GetNodeResponse.node_info:type_name -> golem.NodeInfo
+	7,  // 34: golem.GetNodeResponse.load_info:type_name -> golem.NodeLoadInfo
+	11, // 35: golem.GetNodeResponse.base_resp:type_name -> golem.BaseResp
+	11, // 36: golem.CordonNodeResponse.base_resp:type_name -> golem.BaseResp
+	11, // 37: golem.UncordonNodeResponse.base_resp:type_name -> golem.BaseResp
+	12, // 38: golem.GolemNodeService.Register:input_type -> golem.RegisterRequest
+	14, // 39: golem.GolemNodeService.Heartbeat:input_type -> golem.HeartbeatRequest
+	16, // 40: golem.GolemNodeService.Deregister:input_type -> golem.DeregisterRequest
+	18, // 41: golem.GolemNodeService.ReportTaskResult:input_type -> golem.ReportTaskResultRequest
+	20, // 42: golem.GolemNodeService.ReportTaskProgress:input_type -> golem.ReportTaskProgressRequest
+	28, // 43: golem.HivemindAdminService.ListNodes:input_type -> golem.ListNodesRequest
+	30, // 44: golem.HivemindAdminService.GetNode:input_type -> golem.GetNodeRequest
+	32, // 45: golem.HivemindAdminService.CordonNode:input_type -> golem.CordonNodeRequest
+	34, // 46: golem.HivemindAdminService.UncordonNode:input_type -> golem.UncordonNodeRequest
+	13, // 47: golem.GolemNodeService.Register:output_type -> golem.RegisterResponse
+	15, // 48: golem.GolemNodeService.Heartbeat:output_type -> golem.HeartbeatResponse
+	17, // 49: golem.GolemNodeService.Deregister:output_type -> golem.DeregisterResponse
+	19, // 50: golem.GolemNodeService.ReportTaskResult:output_type -> golem.ReportTaskResultResponse
+	21, // 51: golem.GolemNodeService.ReportTaskProgress:output_type -> golem.ReportTaskProgressResponse
+	29, // 52: golem.HivemindAdminService.ListNodes:output_type -> golem.ListNodesResponse
+	31, // 53: golem.HivemindAdminService.GetNode:output_type -> golem.GetNodeResponse
+	33, // 54: golem.HivemindAdminService.CordonNode:output_type -> golem.CordonNodeResponse
+	35, // 55: golem.HivemindAdminService.UncordonNode:output_type -> golem.UncordonNodeResponse
+	47, // [47:56] is the sub-list for method output_type
+	38, // [38:47] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_golem_golem_proto_init() }
@@ -2586,7 +2625,7 @@ func file_golem_golem_proto_init() {
 			NumEnums:      4,
 			NumMessages:   34,
 			NumExtensions: 0,
-			NumServices:   3,
+			NumServices:   2,
 		},
 		GoTypes:           file_golem_golem_proto_goTypes,
 		DependencyIndexes: file_golem_golem_proto_depIdxs,

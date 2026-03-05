@@ -8,6 +8,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/toolloop"
 	boltdbStore "github.com/kiosk404/echoryn/internal/hivemind/service/agents/store/boltdb"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/store/inmemory"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
@@ -23,14 +24,16 @@ import (
 // Path resolution follows the ~/.echoryn state directory convention.
 // BoltDBPath and WorkspaceDir are derived from paths.Resolve* when empty.
 type Config struct {
-	// DefaultMaxTurns is the maximum tool-call turns per run (default: 10).
-	DefaultMaxTurns int `json:"default_max_turns,omitempty"`
-
 	// RunTimeout is the maximum duration for a single run (default: 5m).
 	RunTimeout time.Duration `json:"run_timeout,omitempty"`
 
 	// MaxRetries is the maximum retry attempts on transient failures (default: 3).
 	MaxRetries int `json:"max_retries,omitempty"`
+
+	// LoopDetection configures the tool call loop detection (circuit-breaker).
+	// Aligned with OpenClaw's tool-loop-detection.ts.
+	// Zero-value means use defaults (enabled, thresholds, warn=10, critical=20, breaker=30).
+	LoopDetection *LoopDetectionConfig `json:"loop_detection,omitempty"`
 
 	// --- Context management (Phase 2A) ---
 
@@ -63,11 +66,42 @@ type CompletedConfig struct {
 	*Config
 }
 
+// LoopDetectionConfig exposes the tool loop detection thresholds for JSON config.
+// Aligned with OpenClaw's ToolLoopDetectionConfig.
+type LoopDetectionConfig struct {
+	Enabled                       *bool `json:"enabled,omitempty"`
+	HistorySize                   int   `json:"history_size,omitempty"`
+	WarningThreshold              int   `json:"warning_threshold,omitempty"`
+	CriticalThreshold             int   `json:"critical_threshold,omitempty"`
+	GlobalCircuitBreakerThreshold int   `json:"global_circuit_breaker_threshold,omitempty"`
+}
+
+// toToolloopConfig converts the JSON config to the internal toolloop.Config.
+func (c *LoopDetectionConfig) toToolloopConfig() toolloop.Config {
+	if c == nil {
+		return toolloop.DefaultConfig()
+	}
+	cfg := toolloop.DefaultConfig()
+	if c.Enabled != nil {
+		cfg.Enabled = *c.Enabled
+	}
+	if c.HistorySize > 0 {
+		cfg.HistorySize = c.HistorySize
+	}
+	if c.WarningThreshold > 0 {
+		cfg.WarningThreshold = c.WarningThreshold
+	}
+	if c.CriticalThreshold > 0 {
+		cfg.CriticalThreshold = c.CriticalThreshold
+	}
+	if c.GlobalCircuitBreakerThreshold > 0 {
+		cfg.GlobalCircuitBreakerThreshold = c.GlobalCircuitBreakerThreshold
+	}
+	return cfg
+}
+
 // Complete validates and fills defaults.
 func (c *Config) Complete() CompletedConfig {
-	if c.DefaultMaxTurns <= 0 {
-		c.DefaultMaxTurns = 10
-	}
 	if c.RunTimeout <= 0 {
 		c.RunTimeout = 5 * time.Minute
 	}
@@ -172,12 +206,12 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 		deps.Plugins,
 		deps.MCP,
 		runtime.AgentRunnerConfig{
-			DefaultMaxTurns:     c.DefaultMaxTurns,
 			RunTimeout:          c.RunTimeout,
 			MaxRetries:          c.MaxRetries,
 			MaxHistoryTurns:     c.MaxHistoryTurns,
 			CompactionThreshold: c.CompactionThreshold,
 			KeepRecentTurns:     c.KeepRecentTurns,
+			LoopDetection:       c.LoopDetection.toToolloopConfig(),
 			WorkspaceDir:        workspaceDir,
 		},
 	)
@@ -187,8 +221,8 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 	// SubAgent manager (Controller pattern)
 	subAgentMgr := runtime.NewSubAgentManager(subAgentStore, agentStore, sessionStore, runner, runtime.DefaultSubAgentManagerConfig())
 
-	logger.Info("[Agents] Agents module initialized (store=%s, max_turns=%d, timeout=%s, retries=%d, history_limit=%d, compaction_threshold=%.1f, workspace=%s)",
-		c.StoreType, c.DefaultMaxTurns, c.RunTimeout, c.MaxRetries, c.MaxHistoryTurns, c.CompactionThreshold, workspaceDir)
+	logger.Info("[Agents] Agents module initialized (store=%s, timeout=%s, retries=%d, history_limit=%d, compaction_threshold=%.1f, workspace=%s)",
+		c.StoreType, c.RunTimeout, c.MaxRetries, c.MaxHistoryTurns, c.CompactionThreshold, workspaceDir)
 
 	return &Module{
 		Service:         svc,

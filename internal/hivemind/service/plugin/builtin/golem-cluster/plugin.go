@@ -1,0 +1,527 @@
+// Package golem_cluster provides the golem-cluster plugin for Hivemind.
+//
+// This plugin bridges the Golem subsystem to the Agent runtime, enabling:
+//   - cluster_list_nodes tool: allows the Agent to query connected Golem nodes
+//   - ClusterAwareness prompt injection: injects Golem topology into the system prompt
+//
+// Without this plugin, the Agent has no awareness of connected Golem nodes
+// and cannot answer questions about "entities" or "golems" in the cluster.
+package golem_cluster
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/dispatcher"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
+	"github.com/kiosk404/echoryn/pkg/logger"
+	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
+	"github.com/kiosk404/echoryn/pkg/version"
+	"google.golang.org/protobuf/types/known/durationpb"
+)
+
+const (
+	// PluginName is the unique identifier for this plugin.
+	PluginName = "golem-cluster"
+
+	// Kind marks this as a "general" plugin (no slot exclusion).
+	Kind = "general"
+)
+
+// PluginDefinition returns the static metadata for this plugin.
+func PluginDefinition() plugin.Definition {
+	return plugin.Definition{
+		ID:          PluginName,
+		Name:        "Golem Cluster",
+		Kind:        Kind,
+		Description: "Bridges NodeManager to Agent runtime, providing cluster awareness and node query tools",
+	}
+}
+
+// Config holds the configuration for the golem-cluster plugin.
+type Config struct {
+	Enabled bool `json:"enabled"`
+}
+
+// DefaultConfig returns the default configuration.
+func DefaultConfig() *Config {
+	return &Config{
+		Enabled: true,
+	}
+}
+
+// golemClusterPlugin is the runtime instance of the golem-cluster plugin.
+type golemClusterPlugin struct {
+	cfg        *Config
+	registry   registry.Registry
+	dispatcher dispatcher.Dispatcher
+}
+
+// Factory is the PluginFactory for golem-cluster.
+func Factory(args plugin.PluginArgs, handle plugin.Handle) (plugin.Plugin, error) {
+	cfg := DefaultConfig()
+	if c, ok := args["config"].(*Config); ok && c != nil {
+		cfg = c
+	}
+
+	var reg registry.Registry
+	var disp dispatcher.Dispatcher
+	if r, ok := args["registry"].(registry.Registry); ok {
+		reg = r
+	}
+	if d, ok := args["dispatcher"].(dispatcher.Dispatcher); ok {
+		disp = d
+	}
+
+	if !cfg.Enabled {
+		logger.Info("[golem-cluster] plugin disabled via config")
+	}
+
+	return &golemClusterPlugin{
+		cfg:        cfg,
+		registry:   reg,
+		dispatcher: disp,
+	}, nil
+}
+
+func (p *golemClusterPlugin) Name() string { return PluginName }
+
+// --- ToolProvider interface ---
+
+// Tools returns the tools contributed by this plugin.
+func (p *golemClusterPlugin) Tools() []plugin.ToolDefinition {
+	if !p.cfg.Enabled || p.registry == nil {
+		return nil
+	}
+
+	return []plugin.ToolDefinition{
+		{
+			Name:        "cluster_list_nodes",
+			Description: "List all connected Golem worker nodes in the Echoryn cluster, including their status, capabilities, and load information.",
+			Parameters: []plugin.ParameterDef{
+				{
+					Name:        "status_filter",
+					Type:        "string",
+					Description: "Optional status filter: 'online', 'offline', 'cordoned', 'draining'. Empty means all nodes.",
+					Required:    false,
+				},
+			},
+			Handler: p.handleListNodes,
+		},
+		{
+			Name:        "cluster_get_node",
+			Description: "Get detailed information about a specific Golem worker node by its ID or name.",
+			Parameters: []plugin.ParameterDef{
+				{
+					Name:        "node_id",
+					Type:        "string",
+					Description: "The ID or name of the Golem node to query.",
+					Required:    true,
+				},
+			},
+			Handler: p.handleGetNode,
+		},
+		{
+			Name:        "cluster_dispatch_task",
+			Description: "Dispatch a skill/task to a specific Golem worker node for remote execution. Use this to execute shell commands, file operations, or any other skill on a connected Golem node. The node must have the required capability (e.g., 'shell' for shell commands).",
+			Parameters: []plugin.ParameterDef{
+				{
+					Name:        "node_id",
+					Type:        "string",
+					Description: "The ID or name of the target Golem node. Use cluster_list_nodes to find available nodes.",
+					Required:    true,
+				},
+				{
+					Name:        "skill_name",
+					Type:        "string",
+					Description: "The skill to execute on the Golem node. Available skills depend on the node's capabilities (e.g., 'shell' for executing shell commands, 'fileops' for file operations).",
+					Required:    true,
+				},
+				{
+					Name:        "payload",
+					Type:        "object",
+					Description: "JSON parameters for the skill. For 'shell' skill: {\"command\": \"<shell command>\"}. For 'fileops' skill: {\"operation\": \"read|write|list\", \"path\": \"<file path>\", \"content\": \"<optional content for write>\"}.",
+					Required:    true,
+				},
+				{
+					Name:        "timeout",
+					Type:        "string",
+					Description: "Optional execution timeout (e.g., '30s', '5m'). Defaults to '30s'.",
+					Required:    false,
+				},
+			},
+			Handler: p.handleDispatchTask,
+		},
+	}
+}
+
+// --- PromptProvider interface ---
+
+// PromptSections returns a ClusterInfoSection that dynamically injects
+// Golem topology data into the PromptContext before section rendering.
+func (p *golemClusterPlugin) PromptSections() []prompt.PromptSection {
+	if !p.cfg.Enabled || p.registry == nil {
+		return nil
+	}
+	return []prompt.PromptSection{
+		&clusterInfoInjector{registry: p.registry},
+	}
+}
+
+// --- Tool Handlers ---
+
+// nodeInfo is the JSON output for a single node in tool results.
+type nodeInfo struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	Status       string   `json:"status"`
+	Address      string   `json:"address"`
+	Capabilities []string `json:"capabilities"`
+	Version      string   `json:"version"`
+	Cordoned     bool     `json:"cordoned"`
+	RunningTasks int32    `json:"running_tasks"`
+	CPUPercent   float64  `json:"cpu_percent,omitempty"`
+	MemPercent   float64  `json:"memory_percent,omitempty"`
+}
+
+func (p *golemClusterPlugin) handleListNodes(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+	if p.registry == nil {
+		return map[string]interface{}{
+			"nodes": []interface{}{},
+			"total": 0,
+			"note":  "Registry not available",
+		}, nil
+	}
+
+	nodes, err := p.registry.ListNodes(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list nodes: %w", err)
+	}
+
+	// Apply optional status filter.
+	if filterStr, ok := params["status_filter"].(string); ok && filterStr != "" {
+		filterStr = strings.ToLower(filterStr)
+		var filtered []*registry.NodeState
+		for _, n := range nodes {
+			if strings.ToLower(n.Status.Phase.String()) == "node_status_"+filterStr ||
+				strings.EqualFold(nodeStatusLabel(n), filterStr) {
+				filtered = append(filtered, n)
+			}
+		}
+		nodes = filtered
+	}
+
+	result := make([]nodeInfo, 0, len(nodes))
+	for _, n := range nodes {
+		info := nodeInfo{
+			ID:           n.Spec.NodeID,
+			Name:         n.Spec.NodeName,
+			Status:       nodeStatusLabel(n),
+			Address:      n.Spec.GRPCAddress,
+			Capabilities: capNames(n),
+			Version:      n.Spec.Version,
+			Cordoned:     n.Spec.Cordoned,
+			RunningTasks: n.Status.RunningTasks,
+		}
+		if n.Status.Load != nil {
+			info.CPUPercent = n.Status.Load.CpuPercent
+			info.MemPercent = n.Status.Load.MemoryPercent
+		}
+		result = append(result, info)
+	}
+
+	return map[string]interface{}{
+		"nodes": result,
+		"total": len(result),
+	}, nil
+}
+
+func (p *golemClusterPlugin) handleGetNode(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+	if p.registry == nil {
+		return nil, fmt.Errorf("Registry not available")
+	}
+
+	nodeID, _ := params["node_id"].(string)
+	if nodeID == "" {
+		return nil, fmt.Errorf("node_id parameter is required")
+	}
+
+	// Try direct ID lookup first.
+	n, err := p.registry.GetNode(nodeID)
+	if err != nil {
+		// Try searching by name.
+		allNodes, listErr := p.registry.ListNodes(nil)
+		if listErr != nil {
+			return nil, fmt.Errorf("node %q not found: %w", nodeID, err)
+		}
+		for _, node := range allNodes {
+			if strings.EqualFold(node.Spec.NodeName, nodeID) {
+				n = node
+				break
+			}
+		}
+		if n == nil {
+			return nil, fmt.Errorf("node %q not found", nodeID)
+		}
+	}
+
+	info := nodeInfo{
+		ID:           n.Spec.NodeID,
+		Name:         n.Spec.NodeName,
+		Status:       nodeStatusLabel(n),
+		Address:      n.Spec.GRPCAddress,
+		Capabilities: capNames(n),
+		Version:      n.Spec.Version,
+		Cordoned:     n.Spec.Cordoned,
+		RunningTasks: n.Status.RunningTasks,
+	}
+	if n.Status.Load != nil {
+		info.CPUPercent = n.Status.Load.CpuPercent
+		info.MemPercent = n.Status.Load.MemoryPercent
+	}
+
+	return info, nil
+}
+
+func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+	if p.registry == nil || p.dispatcher == nil {
+		return nil, fmt.Errorf("Registry or Dispatcher not available")
+	}
+
+	// Parse required parameters.
+	nodeIDOrName, _ := params["node_id"].(string)
+	if nodeIDOrName == "" {
+		return nil, fmt.Errorf("node_id parameter is required")
+	}
+	skillName, _ := params["skill_name"].(string)
+	if skillName == "" {
+		return nil, fmt.Errorf("skill_name parameter is required")
+	}
+
+	// Parse payload (can be map or string).
+	var payloadBytes []byte
+	switch v := params["payload"].(type) {
+	case map[string]interface{}:
+		var err error
+		payloadBytes, err = json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		}
+	case string:
+		payloadBytes = []byte(v)
+	default:
+		if v != nil {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal payload: %w", err)
+			}
+			payloadBytes = b
+		}
+	}
+
+	// Parse timeout.
+	timeoutStr, _ := params["timeout"].(string)
+	if timeoutStr == "" {
+		timeoutStr = "30s"
+	}
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		timeout = 30 * time.Second
+	}
+
+	// Resolve node ID (try direct lookup, then by name).
+	nodeID, err := p.resolveNodeID(nodeIDOrName)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check that the node has the required capability.
+	node, _ := p.registry.GetNode(nodeID)
+	if node != nil {
+		caps := capNames(node)
+		hasCap := false
+		for _, c := range caps {
+			if strings.EqualFold(c, skillName) {
+				hasCap = true
+				break
+			}
+		}
+		if !hasCap {
+			return nil, fmt.Errorf("node %q does not have capability %q (available: %v)", nodeIDOrName, skillName, caps)
+		}
+	}
+
+	// Build the gRPC Task.
+	task := &pb.Task{
+		Id:        uuid.New().String(),
+		SkillName: skillName,
+		Payload:   payloadBytes,
+		Status:    pb.TaskStatus_TASK_STATUS_PENDING,
+		Priority:  pb.TaskPriority_TASK_PRIORITY_NORMAL,
+		Timeout:   durationpb.New(timeout),
+	}
+
+	// Apply timeout to the dispatch context.
+	dispatchCtx, cancel := context.WithTimeout(ctx, timeout+5*time.Second)
+	defer cancel()
+
+	logger.Info("[golem-cluster] dispatching task %s (skill=%s) to node %s", task.Id, skillName, nodeID)
+
+	resp, err := p.dispatcher.Dispatch(dispatchCtx, nodeID, task)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dispatch task to node %q: %w", nodeIDOrName, err)
+	}
+
+	if !resp.Accepted {
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("task rejected by node: %s", resp.RejectReason),
+		}, nil
+	}
+
+	// For the initial implementation, we return the dispatch result.
+	// The task result is embedded in the response (synchronous execution).
+	result := map[string]interface{}{
+		"task_id": task.Id,
+		"node_id": nodeID,
+		"skill":   skillName,
+	}
+
+	// Parse the execution result from BaseResp.
+	if resp.BaseResp != nil {
+		if resp.BaseResp.StatusCode != 0 {
+			// Execution error — the output contains the error message.
+			result["success"] = false
+			result["error"] = resp.BaseResp.StatusMessage
+		} else {
+			result["success"] = true
+			result["output"] = resp.BaseResp.StatusMessage
+		}
+	} else {
+		result["success"] = true
+		result["output"] = "(no output)"
+	}
+
+	return result, nil
+}
+
+// resolveNodeID resolves a node ID or name to the actual node ID.
+func (p *golemClusterPlugin) resolveNodeID(nodeIDOrName string) (string, error) {
+	// Try direct ID lookup.
+	if _, err := p.registry.GetNode(nodeIDOrName); err == nil {
+		return nodeIDOrName, nil
+	}
+
+	// Try searching by name.
+	allNodes, err := p.registry.ListNodes(nil)
+	if err != nil {
+		return "", fmt.Errorf("node %q not found", nodeIDOrName)
+	}
+	for _, node := range allNodes {
+		if strings.EqualFold(node.Spec.NodeName, nodeIDOrName) {
+			return node.Spec.NodeID, nil
+		}
+	}
+	return "", fmt.Errorf("node %q not found", nodeIDOrName)
+}
+
+// --- ClusterInfoInjector PromptSection ---
+//
+// This section does NOT render its own text — the builtin ClusterAwarenessSection
+// (Priority 150) handles the actual rendering. Instead, this injector populates
+// the PromptContext.ClusterInfo field so that both IdentitySection and
+// ClusterAwarenessSection can access Golem topology data.
+//
+// Priority 99 ensures it runs BEFORE IdentitySection (100) and
+// ClusterAwarenessSection (150).
+
+type clusterInfoInjector struct {
+	registry registry.Registry
+}
+
+func (s *clusterInfoInjector) Name() string  { return "cluster_info_injector" }
+func (s *clusterInfoInjector) Priority() int { return 99 }
+
+func (s *clusterInfoInjector) Enabled(_ context.Context, _ *prompt.PromptContext) bool {
+	return s.registry != nil
+}
+
+func (s *clusterInfoInjector) Render(_ context.Context, pc *prompt.PromptContext) (string, error) {
+	if s.registry == nil {
+		return "", nil
+	}
+
+	nodes, err := s.registry.ListNodes(nil)
+	if err != nil {
+		logger.Warn("[golem-cluster] failed to list nodes for prompt injection: %v", err)
+		return "", nil
+	}
+
+	if len(nodes) == 0 {
+		return "", nil
+	}
+
+	// Populate ClusterInfo on the PromptContext — this is read by
+	// IdentitySection and ClusterAwarenessSection.
+	v := version.Get()
+	clusterInfo := &prompt.ClusterInfo{
+		HivemindID: "hivemind-0",
+		Version:    v.GitVersion,
+	}
+	for _, n := range nodes {
+		clusterInfo.Golems = append(clusterInfo.Golems, prompt.GolemInfo{
+			ID:     n.Spec.NodeID,
+			Name:   n.Spec.NodeName,
+			Status: nodeStatusLabel(n),
+			Skills: capNames(n),
+		})
+	}
+	pc.ClusterInfo = clusterInfo
+
+	// Return empty string — ClusterAwarenessSection handles the actual rendering.
+	return "", nil
+}
+
+// --- Helpers ---
+
+func nodeStatusLabel(n *registry.NodeState) string {
+	switch {
+	case n.Spec.Cordoned:
+		return "Cordoned"
+	default:
+		// Convert proto enum to human-readable label.
+		s := n.Status.Phase.String()
+		// "NODE_STATUS_ONLINE" → "Online"
+		s = strings.TrimPrefix(s, "NODE_STATUS_")
+		if len(s) > 0 {
+			return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
+		}
+		return "Unknown"
+	}
+}
+
+func capNames(n *registry.NodeState) []string {
+	if len(n.Spec.Capabilities) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(n.Spec.Capabilities))
+	for _, c := range n.Spec.Capabilities {
+		names = append(names, c.Name)
+	}
+	return names
+}
+
+// marshalJSON is a helper for JSON serialization in tool results.
+func marshalJSON(v interface{}) string {
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
+}

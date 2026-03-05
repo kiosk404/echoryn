@@ -1,7 +1,15 @@
 {
-  "grpc": {
-    "bind-address": "127.0.0.1",
-    "bind-port": 11790,
-    "max-msg-size": 4194303
-  }
+  "hivemind-address": "127.0.0.1:11788",
+  "connect-timeout": "10s",
+  "reconnect-interval": "5s",
+  "heartbeat-interval": "15s",
+  "node-name": "",
+  "node-labels": {
+    "env": "local",
+    "zone": "default"
+  },
+  "max-concurrent-tasks": 5,
+  "workspace-dir": "",
+  "skills-dir": "",
+  "hot-reload": true
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/cloudwego/eino/schema"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/agentflow"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/toolloop"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg/errno"
 	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
@@ -104,7 +105,11 @@ type TurnRequest struct {
 	Agent    *entity.Agent
 	Messages []*schema.Message
 	Tools    []tool.BaseTool
-	MaxTurns int
+
+	// LoopDetector is the per-run tool loop detector (circuit-breaker).
+	// When non-nil, tools are wrapped with loop detection guards.
+	// Aligned with OpenClaw's tool-loop-detection.ts
+	LoopDetector *toolloop.Detector
 
 	EventWriter *schema.StreamWriter[*entity.AgentEvent]
 
@@ -320,7 +325,7 @@ func (te *TurnExecutor) executeSingleAttempt(
 	// Aligned with OpenClaw's dropThinkingBlocks + sanitizeToolCallIds + trimNames.
 	messages := te.sanitizers.Apply(req.Messages)
 
-	runnable, err := te.flowBuilder.Build(ctx, req.Agent, cm, req.Tools, req.MaxTurns)
+	runnable, err := te.flowBuilder.Build(ctx, req.Agent, cm, req.Tools, req.LoopDetector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build agent flow: %w", err)
 	}
