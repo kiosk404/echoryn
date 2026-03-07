@@ -36,12 +36,28 @@ func addConfigFlag(basename string, fs *pflag.FlagSet) {
 		if cfgFile != "" {
 			viper.SetConfigFile(cfgFile)
 		} else {
-			viper.AddConfigPath(".")
+			// Config file search order:
+			// 1. <data-dir>/.echoryn  (if --data-dir is set)
+			// 2. ~/.echoryn           (default state directory)
+			// 3. .conf                (project conf directory)
+			// 4. /etc/echoryn         (system-wide)
 
+			// Read --data-dir from parsed flags (available in OnInitialize)
+			dataDir, _ := fs.GetString("data-dir")
+			if dataDir != "" {
+				if abs, err := filepath.Abs(dataDir); err == nil {
+					dataDir = abs
+				}
+				viper.AddConfigPath(filepath.Join(dataDir, ".echoryn"))
+			}
+
+			// Default state directory ~/.echoryn/
+			viper.AddConfigPath(filepath.Join(homedir.HomeDir(), ".echoryn"))
+
+			// Project conf directory and system-wide
+			viper.AddConfigPath(filepath.Join("./conf"))
 			// 添加配置文件搜索路径
 			if names := strings.Split(basename, "-"); len(names) > 1 {
-				viper.AddConfigPath(filepath.Join("./conf"))
-				viper.AddConfigPath(filepath.Join(homedir.HomeDir(), "."+names[0]))
 				viper.AddConfigPath(filepath.Join("/etc", names[0]))
 			}
 

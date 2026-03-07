@@ -52,8 +52,11 @@
       "memory-core": {
         "config": {
           "enabled": true,
-          "workspace_dir": ".",
-          "db_path": ".echoryn/memory/index.db",
+          "workspace_dir": ".echoryn/workspace",
+          "store": {
+            "driver": "sqlite",
+            "path": ".echoryn/workspace/memory/index.db"
+          },
           "embedding_provider": "ollama",
           "embedding_model": "nomic-embed-text"
         }

@@ -6,11 +6,13 @@
 package builtin
 
 import (
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	feishuchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/feishu"
 	telegramchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/telegram"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics"
 	diagentity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics/entity"
+	golemcluster "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/golem-cluster"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask"
 	llmentity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask/entity"
 	memorycore "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core"
@@ -30,7 +32,7 @@ import (
 // To add a new built-in plugin:
 // 1. Create the plugin package under builtin/
 // 2. Add a Register call here
-func NewInTreeRegistry(opts *genericoptions.PluginsOptions) *plugin.InTreeRegistry {
+func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.Module) *plugin.InTreeRegistry {
 	registry := plugin.NewInTreeRegistry()
 
 	// --- memory-core: default memory system (SQLite + hybrid search) ---
@@ -68,6 +70,18 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions) *plugin.InTreeRegist
 			"config": resolveSubAgentConfig(opts),
 		},
 	)
+
+	// --- golem: bridges golem subsystem to agent runtime ---
+	// Note: registry + dispatcher deps are injected post-init GolemDepsSetter
+	// interface probe in server.go (same pattern as channelManagerSetter)
+	registry.Register(
+		golemcluster.PluginDefinition(),
+		golemcluster.Factory,
+		plugin.PluginArgs{
+			"config":     resolveGolemClusterConfig(opts),
+			"registry":   golemModule.Registry,
+			"dispatcher": golemModule.Dispatcher,
+		})
 
 	return registry
 }
@@ -350,5 +364,24 @@ func resolveTelegramConfig(opts *genericoptions.PluginsOptions) *telegramchannel
 		}
 	}
 
+	return cfg
+}
+
+// resolveGolemServer
+func resolveGolemClusterConfig(opts *genericoptions.PluginsOptions) *golemcluster.Config {
+	cfg := golemcluster.DefaultConfig()
+	if opts == nil {
+		return cfg
+	}
+
+	entry, ok := opts.Entries[golemcluster.PluginName]
+	if !ok || entry.Config == nil {
+		return cfg
+	}
+	if v, ok := entry.Config["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.Enabled = b
+		}
+	}
 	return cfg
 }

@@ -92,85 +92,94 @@ func Factory(args plugin.PluginArgs, handle plugin.Handle) (plugin.Plugin, error
 
 func (p *golemClusterPlugin) Name() string { return PluginName }
 
-// --- ToolProvider interface ---
+// --- InitPlugin interface ---
 
-// Tools returns the tools contributed by this plugin.
-func (p *golemClusterPlugin) Tools() []plugin.ToolDefinition {
-	if !p.cfg.Enabled || p.registry == nil {
+// Init registers tools via the PluginAPI (same pattern as all other built-in plugins).
+// Handlers hold a reference to p and read p.registry / p.dispatcher at invocation time,
+// so there is no dependency on injection order.
+func (p *golemClusterPlugin) Init(api plugin.PluginAPI) error {
+	if !p.cfg.Enabled {
 		return nil
 	}
 
-	return []plugin.ToolDefinition{
-		{
-			Name:        "cluster_list_nodes",
-			Description: "List all connected Golem worker nodes in the Echoryn cluster, including their status, capabilities, and load information.",
-			Parameters: []plugin.ParameterDef{
-				{
-					Name:        "status_filter",
-					Type:        "string",
-					Description: "Optional status filter: 'online', 'offline', 'cordoned', 'draining'. Empty means all nodes.",
-					Required:    false,
-				},
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "cluster_list_nodes",
+		Description: "List all connected Golem worker nodes in the Echoryn cluster, including their status, capabilities, and load information.",
+		Parameters: []plugin.ParameterDef{
+			{
+				Name:        "status_filter",
+				Type:        "string",
+				Description: "Optional status filter: 'online', 'offline', 'cordoned', 'draining'. Empty means all nodes.",
+				Required:    false,
 			},
-			Handler: p.handleListNodes,
 		},
-		{
-			Name:        "cluster_get_node",
-			Description: "Get detailed information about a specific Golem worker node by its ID or name.",
-			Parameters: []plugin.ParameterDef{
-				{
-					Name:        "node_id",
-					Type:        "string",
-					Description: "The ID or name of the Golem node to query.",
-					Required:    true,
-				},
+		Handler: p.handleListNodes,
+	})
+
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "cluster_get_node",
+		Description: "Get detailed information about a specific Golem worker node by its ID or name.",
+		Parameters: []plugin.ParameterDef{
+			{
+				Name:        "node_id",
+				Type:        "string",
+				Description: "The ID or name of the Golem node to query.",
+				Required:    true,
 			},
-			Handler: p.handleGetNode,
 		},
-		{
-			Name:        "cluster_dispatch_task",
-			Description: "Dispatch a skill/task to a specific Golem worker node for remote execution. Use this to execute shell commands, file operations, or any other skill on a connected Golem node. The node must have the required capability (e.g., 'shell' for shell commands).",
-			Parameters: []plugin.ParameterDef{
-				{
-					Name:        "node_id",
-					Type:        "string",
-					Description: "The ID or name of the target Golem node. Use cluster_list_nodes to find available nodes.",
-					Required:    true,
-				},
-				{
-					Name:        "skill_name",
-					Type:        "string",
-					Description: "The skill to execute on the Golem node. Available skills depend on the node's capabilities (e.g., 'shell' for executing shell commands, 'fileops' for file operations).",
-					Required:    true,
-				},
-				{
-					Name:        "payload",
-					Type:        "object",
-					Description: "JSON parameters for the skill. For 'shell' skill: {\"command\": \"<shell command>\"}. For 'fileops' skill: {\"operation\": \"read|write|list\", \"path\": \"<file path>\", \"content\": \"<optional content for write>\"}.",
-					Required:    true,
-				},
-				{
-					Name:        "timeout",
-					Type:        "string",
-					Description: "Optional execution timeout (e.g., '30s', '5m'). Defaults to '30s'.",
-					Required:    false,
-				},
+		Handler: p.handleGetNode,
+	})
+
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "cluster_dispatch_task",
+		Description: "Dispatch a skill/task to a specific Golem worker node for remote execution. Use this to execute shell commands, file operations, or any other skill on a connected Golem node. The node must have the required capability (e.g., 'shell' for shell commands).",
+		Parameters: []plugin.ParameterDef{
+			{
+				Name:        "node_id",
+				Type:        "string",
+				Description: "The ID or name of the target Golem node. Use cluster_list_nodes to find available nodes.",
+				Required:    true,
 			},
-			Handler: p.handleDispatchTask,
+			{
+				Name:        "skill_name",
+				Type:        "string",
+				Description: "The skill to execute on the Golem node. Available skills depend on the node's capabilities (e.g., 'shell' for executing shell commands, 'fileops' for file operations).",
+				Required:    true,
+			},
+			{
+				Name:        "payload",
+				Type:        "object",
+				Description: "JSON parameters for the skill. For 'shell' skill: {\"command\": \"<shell command>\"}. For 'fileops' skill: {\"operation\": \"read|write|list\", \"path\": \"<file path>\", \"content\": \"<optional content for write>\"}.",
+				Required:    true,
+			},
+			{
+				Name:        "timeout",
+				Type:        "string",
+				Description: "Optional execution timeout (e.g., '30s', '5m'). Defaults to '30s'.",
+				Required:    false,
+			},
 		},
-	}
+		Handler: p.handleDispatchTask,
+	})
+
+	return nil
 }
 
 // --- PromptProvider interface ---
 
 // PromptSections returns a ClusterInfoSection that dynamically injects
 // Golem topology data into the PromptContext before section rendering.
+//
+// NOTE: We intentionally do NOT guard on p.registry == nil here because
+// PromptSections() is called during Framework.Init() → probeAndRegister(),
+// which runs BEFORE injectGolemDeps() sets the registry. The injector
+// holds a reference to the plugin and reads registry lazily at Render time.
 func (p *golemClusterPlugin) PromptSections() []prompt.PromptSection {
-	if !p.cfg.Enabled || p.registry == nil {
+	if !p.cfg.Enabled {
 		return nil
 	}
 	return []prompt.PromptSection{
-		&clusterInfoInjector{registry: p.registry},
+		&clusterInfoInjector{plugin: p},
 	}
 }
 
@@ -247,28 +256,19 @@ func (p *golemClusterPlugin) handleGetNode(ctx context.Context, params map[strin
 		return nil, fmt.Errorf("Registry not available")
 	}
 
-	nodeID, _ := params["node_id"].(string)
-	if nodeID == "" {
+	nodeIDOrName, _ := params["node_id"].(string)
+	if nodeIDOrName == "" {
 		return nil, fmt.Errorf("node_id parameter is required")
 	}
 
-	// Try direct ID lookup first.
-	n, err := p.registry.GetNode(nodeID)
+	// Resolve by ID or name, then fetch full state.
+	resolvedID, err := p.resolveNodeID(nodeIDOrName)
 	if err != nil {
-		// Try searching by name.
-		allNodes, listErr := p.registry.ListNodes(nil)
-		if listErr != nil {
-			return nil, fmt.Errorf("node %q not found: %w", nodeID, err)
-		}
-		for _, node := range allNodes {
-			if strings.EqualFold(node.Spec.NodeName, nodeID) {
-				n = node
-				break
-			}
-		}
-		if n == nil {
-			return nil, fmt.Errorf("node %q not found", nodeID)
-		}
+		return nil, err
+	}
+	n, err := p.registry.GetNode(resolvedID)
+	if err != nil {
+		return nil, fmt.Errorf("node %q not found", nodeIDOrName)
 	}
 
 	info := nodeInfo{
@@ -385,26 +385,23 @@ func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[
 		}, nil
 	}
 
-	// For the initial implementation, we return the dispatch result.
-	// The task result is embedded in the response (synchronous execution).
+	// Build the result from the task execution outcome.
 	result := map[string]interface{}{
 		"task_id": task.Id,
 		"node_id": nodeID,
 		"skill":   skillName,
 	}
 
-	// Parse the execution result from BaseResp.
-	if resp.BaseResp != nil {
-		if resp.BaseResp.StatusCode != 0 {
-			// Execution error — the output contains the error message.
-			result["success"] = false
-			result["error"] = resp.BaseResp.StatusMessage
-		} else {
-			result["success"] = true
-			result["output"] = resp.BaseResp.StatusMessage
+	if resp.TaskResult != nil {
+		result["success"] = resp.TaskResult.Success
+		if resp.TaskResult.Output != nil {
+			result["output"] = string(resp.TaskResult.Output)
+		}
+		if resp.TaskResult.Error != "" {
+			result["error"] = resp.TaskResult.Error
 		}
 	} else {
-		result["success"] = true
+		result["success"] = resp.Accepted
 		result["output"] = "(no output)"
 	}
 
@@ -442,22 +439,22 @@ func (p *golemClusterPlugin) resolveNodeID(nodeIDOrName string) (string, error) 
 // ClusterAwarenessSection (150).
 
 type clusterInfoInjector struct {
-	registry registry.Registry
+	plugin *golemClusterPlugin // lazy reference — registry is set after Init()
 }
 
 func (s *clusterInfoInjector) Name() string  { return "cluster_info_injector" }
 func (s *clusterInfoInjector) Priority() int { return 99 }
 
 func (s *clusterInfoInjector) Enabled(_ context.Context, _ *prompt.PromptContext) bool {
-	return s.registry != nil
+	return s.plugin.registry != nil
 }
 
 func (s *clusterInfoInjector) Render(_ context.Context, pc *prompt.PromptContext) (string, error) {
-	if s.registry == nil {
+	if s.plugin.registry == nil {
 		return "", nil
 	}
 
-	nodes, err := s.registry.ListNodes(nil)
+	nodes, err := s.plugin.registry.ListNodes(nil)
 	if err != nil {
 		logger.Warn("[golem-cluster] failed to list nodes for prompt injection: %v", err)
 		return "", nil
@@ -515,13 +512,4 @@ func capNames(n *registry.NodeState) []string {
 		names = append(names, c.Name)
 	}
 	return names
-}
-
-// marshalJSON is a helper for JSON serialization in tool results.
-func marshalJSON(v interface{}) string {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return fmt.Sprintf("%v", v)
-	}
-	return string(b)
 }

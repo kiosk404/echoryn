@@ -27,7 +27,7 @@ func (c *Config) Complete() *CompletedConfig {
 	if c.MaxNodes == 0 {
 		c.MaxNodes = 100
 	}
-	return &CompletedConfig{}
+	return &CompletedConfig{c}
 }
 
 // New creates a new Registry

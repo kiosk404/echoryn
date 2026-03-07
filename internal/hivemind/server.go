@@ -157,7 +157,7 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		// Register in-tree (built-in) plugins.
 		// All plugin configurations are sourced from PluginOptions.Entries,
 		// following OpenClaw's plugins.entries[pluginID].config pattern.
-		inTreeRegistry := builtin.NewInTreeRegistry(cfg.PluginOptions)
+		inTreeRegistry := builtin.NewInTreeRegistry(cfg.PluginOptions, golemModule)
 		if err := inTreeRegistry.ApplyTo(pluginFramework); err != nil {
 			return nil, fmt.Errorf("failed to register in-tree plugins: %w", err)
 		}
@@ -212,6 +212,7 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		pluginFramework:  pluginFramework,
 		mcpModule:        mcpModule,
 		agentsModule:     agentsModule,
+		golemModule:      golemModule,
 	}
 
 	// Initialize IM channel gateway.
@@ -257,6 +258,10 @@ func (s *apiServer) PrepareRun() preparedAPIServer {
 		// Close agent module(BoltDB handle if any)
 		if s.agentsModule != nil {
 			s.agentsModule.Close()
+		}
+		// Stop Golem subsystem (registry + dispatcher + scheduler)
+		if s.golemModule != nil {
+			s.golemModule.Stop(context.Background())
 		}
 		s.gRPCAPIServer.Stop()
 		s.genericAPIServer.Close()
@@ -329,6 +334,9 @@ func (s *apiServer) initChannelGateway() {
 			logger.Info("[Hivemind] injected ChannelManager into plugin %q", name)
 		}
 	}
+
+	// Store the manager so PrepareRun can StartAll and shutdown can StopAll.
+	s.channelManager = manager
 }
 
 // --- ModelManager Adapter ---
