@@ -280,6 +280,9 @@ const (
 	HivemindAdminService_GetNode_FullMethodName      = "/golem.HivemindAdminService/GetNode"
 	HivemindAdminService_CordonNode_FullMethodName   = "/golem.HivemindAdminService/CordonNode"
 	HivemindAdminService_UncordonNode_FullMethodName = "/golem.HivemindAdminService/UncordonNode"
+	HivemindAdminService_CreateToken_FullMethodName  = "/golem.HivemindAdminService/CreateToken"
+	HivemindAdminService_ListTokens_FullMethodName   = "/golem.HivemindAdminService/ListTokens"
+	HivemindAdminService_DeleteToken_FullMethodName  = "/golem.HivemindAdminService/DeleteToken"
 )
 
 // HivemindAdminServiceClient is the client API for HivemindAdminService service.
@@ -287,13 +290,18 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // ==========================================================================
-// HivemindAdminService — 管理面 API, 供 echoctl / echadm 使用
+// HivemindAdminService — 管理面 API, 供 echo 使用
 // ==========================================================================
 type HivemindAdminServiceClient interface {
+	// Node management
 	ListNodes(ctx context.Context, in *ListNodesRequest, opts ...grpc.CallOption) (*ListNodesResponse, error)
 	GetNode(ctx context.Context, in *GetNodeRequest, opts ...grpc.CallOption) (*GetNodeResponse, error)
 	CordonNode(ctx context.Context, in *CordonNodeRequest, opts ...grpc.CallOption) (*CordonNodeResponse, error)
 	UncordonNode(ctx context.Context, in *UncordonNodeRequest, opts ...grpc.CallOption) (*UncordonNodeResponse, error)
+	// Token management
+	CreateToken(ctx context.Context, in *CreateTokenRequest, opts ...grpc.CallOption) (*CreateTokenResponse, error)
+	ListTokens(ctx context.Context, in *ListTokensRequest, opts ...grpc.CallOption) (*ListTokensResponse, error)
+	DeleteToken(ctx context.Context, in *DeleteTokenRequest, opts ...grpc.CallOption) (*DeleteTokenResponse, error)
 }
 
 type hivemindAdminServiceClient struct {
@@ -344,18 +352,53 @@ func (c *hivemindAdminServiceClient) UncordonNode(ctx context.Context, in *Uncor
 	return out, nil
 }
 
+func (c *hivemindAdminServiceClient) CreateToken(ctx context.Context, in *CreateTokenRequest, opts ...grpc.CallOption) (*CreateTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateTokenResponse)
+	err := c.cc.Invoke(ctx, HivemindAdminService_CreateToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hivemindAdminServiceClient) ListTokens(ctx context.Context, in *ListTokensRequest, opts ...grpc.CallOption) (*ListTokensResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTokensResponse)
+	err := c.cc.Invoke(ctx, HivemindAdminService_ListTokens_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hivemindAdminServiceClient) DeleteToken(ctx context.Context, in *DeleteTokenRequest, opts ...grpc.CallOption) (*DeleteTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteTokenResponse)
+	err := c.cc.Invoke(ctx, HivemindAdminService_DeleteToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // HivemindAdminServiceServer is the server API for HivemindAdminService service.
 // All implementations must embed UnimplementedHivemindAdminServiceServer
 // for forward compatibility.
 //
 // ==========================================================================
-// HivemindAdminService — 管理面 API, 供 echoctl / echadm 使用
+// HivemindAdminService — 管理面 API, 供 echo 使用
 // ==========================================================================
 type HivemindAdminServiceServer interface {
+	// Node management
 	ListNodes(context.Context, *ListNodesRequest) (*ListNodesResponse, error)
 	GetNode(context.Context, *GetNodeRequest) (*GetNodeResponse, error)
 	CordonNode(context.Context, *CordonNodeRequest) (*CordonNodeResponse, error)
 	UncordonNode(context.Context, *UncordonNodeRequest) (*UncordonNodeResponse, error)
+	// Token management
+	CreateToken(context.Context, *CreateTokenRequest) (*CreateTokenResponse, error)
+	ListTokens(context.Context, *ListTokensRequest) (*ListTokensResponse, error)
+	DeleteToken(context.Context, *DeleteTokenRequest) (*DeleteTokenResponse, error)
 	mustEmbedUnimplementedHivemindAdminServiceServer()
 }
 
@@ -377,6 +420,15 @@ func (UnimplementedHivemindAdminServiceServer) CordonNode(context.Context, *Cord
 }
 func (UnimplementedHivemindAdminServiceServer) UncordonNode(context.Context, *UncordonNodeRequest) (*UncordonNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UncordonNode not implemented")
+}
+func (UnimplementedHivemindAdminServiceServer) CreateToken(context.Context, *CreateTokenRequest) (*CreateTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CreateToken not implemented")
+}
+func (UnimplementedHivemindAdminServiceServer) ListTokens(context.Context, *ListTokensRequest) (*ListTokensResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListTokens not implemented")
+}
+func (UnimplementedHivemindAdminServiceServer) DeleteToken(context.Context, *DeleteTokenRequest) (*DeleteTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteToken not implemented")
 }
 func (UnimplementedHivemindAdminServiceServer) mustEmbedUnimplementedHivemindAdminServiceServer() {}
 func (UnimplementedHivemindAdminServiceServer) testEmbeddedByValue()                              {}
@@ -471,6 +523,60 @@ func _HivemindAdminService_UncordonNode_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _HivemindAdminService_CreateToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HivemindAdminServiceServer).CreateToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HivemindAdminService_CreateToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HivemindAdminServiceServer).CreateToken(ctx, req.(*CreateTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HivemindAdminService_ListTokens_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTokensRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HivemindAdminServiceServer).ListTokens(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HivemindAdminService_ListTokens_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HivemindAdminServiceServer).ListTokens(ctx, req.(*ListTokensRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HivemindAdminService_DeleteToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HivemindAdminServiceServer).DeleteToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HivemindAdminService_DeleteToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HivemindAdminServiceServer).DeleteToken(ctx, req.(*DeleteTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // HivemindAdminService_ServiceDesc is the grpc.ServiceDesc for HivemindAdminService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -493,6 +599,18 @@ var HivemindAdminService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UncordonNode",
 			Handler:    _HivemindAdminService_UncordonNode_Handler,
+		},
+		{
+			MethodName: "CreateToken",
+			Handler:    _HivemindAdminService_CreateToken_Handler,
+		},
+		{
+			MethodName: "ListTokens",
+			Handler:    _HivemindAdminService_ListTokens_Handler,
+		},
+		{
+			MethodName: "DeleteToken",
+			Handler:    _HivemindAdminService_DeleteToken_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

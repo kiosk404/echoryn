@@ -13,6 +13,7 @@ type Options struct {
 	ModelOptions            *genericoptions.ModelOptions     `json:"models"   mapstructure:"models"`
 	PluginOptions           *genericoptions.PluginsOptions   `json:"plugins"  mapstructure:"plugins"`
 	MCPOptions              *MCPOptions                      `json:"mcp"      mapstructure:"mcp"`
+	GolemOptions            *GolemOptions                    `json:"golem"    mapstructure:"golem"`
 
 	// DataDir specifies a custom data directory for all Echoryn state,
 	// When set, the state directory becomes <data-dir>/.echoryn instead of ~/.echoryn.
@@ -26,6 +27,9 @@ func (o *Options) Flags() (fss cliflag.NamedFlagSets) {
 	o.PluginOptions.AddFlags(fss.FlagSet("plugins"))
 	o.MCPOptions.AddFlags(fss.FlagSet("mcp"))
 
+	gfs := fss.FlagSet("golem")
+	gfs.BoolVar(&o.GolemOptions.DevMode, "golem.dev-mode", o.GolemOptions.DevMode,
+		"Enabled local dev mode: loopback (127.0.0.1 / ::1) Golem nodes can register without a join token.")
 	fs := fss.FlagSet("global")
 	fs.StringVar(&o.DataDir, "data-dir", o.DataDir,
 		"Custom data directory for Echoryn state, When set,"+
@@ -40,6 +44,7 @@ func NewOptions() *Options {
 		ModelOptions:            genericoptions.NewModelOptions(),
 		PluginOptions:           genericoptions.NewPluginsOptions(),
 		MCPOptions:              NewMCPOptions(),
+		GolemOptions:            &GolemOptions{DevMode: false},
 	}
 }
 

@@ -5,11 +5,11 @@ import (
 	"os"
 
 	"github.com/fatih/color"
-	"github.com/kiosk404/echoryn/internal/echoadm/utils/term"
 	"github.com/kiosk404/echoryn/pkg/errorx"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	"github.com/kiosk404/echoryn/pkg/utils/cliflag"
 	globalflag "github.com/kiosk404/echoryn/pkg/utils/cliflag/global"
+	"github.com/kiosk404/echoryn/pkg/utils/term"
 	"github.com/kiosk404/echoryn/pkg/version"
 	"github.com/kiosk404/echoryn/pkg/version/verflag"
 	"github.com/spf13/cobra"

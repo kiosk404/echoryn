@@ -125,7 +125,23 @@ func (cb *ContextBuilder) Build(
 	}
 
 	// 6. Apply context pruning.
-	pruneResult := cb.pruner.Prune(messages, windowInfo.UsableTokens)
+	var pruneResult PruneResult
+	if cb.pruner != nil {
+		pruneResult = cb.pruner.Prune(messages, windowInfo.UsableTokens)
+	} else {
+		// No pruner configured, use messages as-is
+		estimatedTokens := 0
+		if cb.estimator != nil {
+			estimatedTokens = cb.estimator.EstimateMessages(messages)
+		}
+		pruneResult = PruneResult{
+			Messages:         messages,
+			EstimatedTokens:  estimatedTokens,
+			SoftTrimmed:      0,
+			HardCleared:      0,
+		}
+		logger.Warn("[ContextBuilder] pruner is nil, skipping context pruning")
+	}
 
 	if pruneResult.SoftTrimmed > 0 || pruneResult.HardCleared > 0 {
 		logger.Info("[ContextBuilder] pruning applied: soft_trimmed=%d, hard_cleared=%d, tokens=%d/%d",
@@ -182,15 +198,24 @@ func (cb *ContextBuilder) resolveSystemPrompt(
 	session *entity.Session,
 	promptCtx ...*prompt.PromptContext,
 ) string {
+	if agent == nil {
+		logger.Warn("[ContextBuilder] resolveSystemPrompt: agent is nil, returning empty system prompt")
+		return ""
+	}
+
 	if cb.pipeline == nil {
+		logger.Warn("[ContextBuilder] resolveSystemPrompt: pipeline is nil, use raw agent.SystemPrompt")
 		return agent.SystemPrompt
 	}
 
 	// Use provided PromptContext or build one from the agent/session.
 	var pc *prompt.PromptContext
 	if len(promptCtx) > 0 && promptCtx[0] != nil {
+		logger.Info("[ContextBuilder] resolveSystemPrompt: built PromptContext from agent/session (mode=%s)", promptCtx[0].Mode)
 		pc = promptCtx[0]
 	} else {
+		logger.Info("[ContextBuilder] resolveSystemPrompt: calling pipeline.Assemble (sections=%d, mutators=%d)",
+			cb.pipeline.SectionCount(), cb.pipeline.MutatorCount())
 		pc = cb.buildPromptContext(agent, session)
 	}
 
@@ -202,21 +227,22 @@ func (cb *ContextBuilder) resolveSystemPrompt(
 
 	// If pipeline produced nothing (all sections disabled/empty), fall back.
 	if assembled == "" {
+		logger.Warn("[ContextBuilder] resolveSystemPrompt: pipeline produced empty text, falling back to agent.SystemPrompt")
 		return agent.SystemPrompt
 	}
 
+	logger.Info("[ContextBuilder] resolveSystemPrompt: assembled prompt length=%d chars", len(assembled))
 	return assembled
 }
 
 // buildPromptContext converts entity.Agent + entity.Session into a prompt.PromptContext.
 // This bridges the entity layer and the prompt layer without import cycles.
 func (cb *ContextBuilder) buildPromptContext(agent *entity.Agent, session *entity.Session) *prompt.PromptContext {
-	pc := &prompt.PromptContext{
-		Mode: prompt.PromptMode(agent.EffectivePromptMode()),
-	}
+	pc := &prompt.PromptContext{}
 
 	// Map Agent → AgentPromptInfo.
 	if agent != nil {
+		pc.Mode = prompt.PromptMode(agent.EffectivePromptMode())
 		info := &prompt.AgentPromptInfo{
 			ID:           agent.ID,
 			Name:         agent.Name,
@@ -238,6 +264,9 @@ func (cb *ContextBuilder) buildPromptContext(agent *entity.Agent, session *entit
 			}
 		}
 		pc.Agent = info
+	} else {
+		// Set a default mode when agent is nil
+		pc.Mode = prompt.PromptMode("")
 	}
 
 	// Map Session → SessionID.

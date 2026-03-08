@@ -320,6 +320,83 @@ func (x *Capability) GetDescription() string {
 	return ""
 }
 
+// InstalledSkill 节点上安装的 Skill 描述 (来自 SKILL.md front-matter)
+type InstalledSkill struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`                 // Skill 名称 (from front-matter "name")
+	Description   string                 `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`   // Skill 名称 (from front-matter "description")
+	Capabilities  []string               `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"` // Skill 提供的能力标签 (from front-matter "capabilities")
+	Version       string                 `protobuf:"bytes,4,opt,name=version,proto3" json:"version,omitempty"`           // Skill 版本 (from front-matter "version")
+	Path          string                 `protobuf:"bytes,5,opt,name=path,proto3" json:"path,omitempty"`                 // Skill 在节点上的路径
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *InstalledSkill) Reset() {
+	*x = InstalledSkill{}
+	mi := &file_golem_golem_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *InstalledSkill) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*InstalledSkill) ProtoMessage() {}
+
+func (x *InstalledSkill) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use InstalledSkill.ProtoReflect.Descriptor instead.
+func (*InstalledSkill) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *InstalledSkill) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *InstalledSkill) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *InstalledSkill) GetCapabilities() []string {
+	if x != nil {
+		return x.Capabilities
+	}
+	return nil
+}
+
+func (x *InstalledSkill) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *InstalledSkill) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
 // SystemInfo 节点系统信息 (静态, 注册时上报)
 type SystemInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -335,7 +412,7 @@ type SystemInfo struct {
 
 func (x *SystemInfo) Reset() {
 	*x = SystemInfo{}
-	mi := &file_golem_golem_proto_msgTypes[1]
+	mi := &file_golem_golem_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -347,7 +424,7 @@ func (x *SystemInfo) String() string {
 func (*SystemInfo) ProtoMessage() {}
 
 func (x *SystemInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[1]
+	mi := &file_golem_golem_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -360,7 +437,7 @@ func (x *SystemInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SystemInfo.ProtoReflect.Descriptor instead.
 func (*SystemInfo) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{1}
+	return file_golem_golem_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *SystemInfo) GetCpuCores() int32 {
@@ -407,24 +484,25 @@ func (x *SystemInfo) GetHostname() string {
 
 // NodeInfo 节点注册信息 (静态 + 半静态)
 type NodeInfo struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                                                   // 节点唯一 ID
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                                                               // 节点可读名称
-	Address       string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`                                                                         // 节点地址 (ip:port)
-	Status        NodeStatus             `protobuf:"varint,4,opt,name=status,proto3,enum=golem.NodeStatus" json:"status,omitempty"`                                                    // 节点状态
-	SystemInfo    *SystemInfo            `protobuf:"bytes,5,opt,name=system_info,json=systemInfo,proto3" json:"system_info,omitempty"`                                                 // 系统信息
-	Capabilities  []*Capability          `protobuf:"bytes,6,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                                               // 已注册的能力列表
-	Labels        map[string]string      `protobuf:"bytes,7,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 用户自定义标签
-	Version       string                 `protobuf:"bytes,8,opt,name=version,proto3" json:"version,omitempty"`                                                                         // Golem 版本号
-	RegisteredAt  *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=registered_at,json=registeredAt,proto3" json:"registered_at,omitempty"`
-	LastSeenAt    *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=last_seen_at,json=lastSeenAt,proto3" json:"last_seen_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state           protoimpl.MessageState `protogen:"open.v1"`
+	Id              string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                                                   // 节点唯一 ID
+	Name            string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`                                                                               // 节点可读名称
+	Address         string                 `protobuf:"bytes,3,opt,name=address,proto3" json:"address,omitempty"`                                                                         // 节点地址 (ip:port)
+	Status          NodeStatus             `protobuf:"varint,4,opt,name=status,proto3,enum=golem.NodeStatus" json:"status,omitempty"`                                                    // 节点状态
+	SystemInfo      *SystemInfo            `protobuf:"bytes,5,opt,name=system_info,json=systemInfo,proto3" json:"system_info,omitempty"`                                                 // 系统信息
+	Capabilities    []*Capability          `protobuf:"bytes,6,rep,name=capabilities,proto3" json:"capabilities,omitempty"`                                                               // 已注册的能力列表
+	Labels          map[string]string      `protobuf:"bytes,7,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 用户自定义标签
+	Version         string                 `protobuf:"bytes,8,opt,name=version,proto3" json:"version,omitempty"`                                                                         // Golem 版本号
+	RegisteredAt    *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=registered_at,json=registeredAt,proto3" json:"registered_at,omitempty"`
+	LastSeenAt      *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=last_seen_at,json=lastSeenAt,proto3" json:"last_seen_at,omitempty"`
+	InstalledSkills []*InstalledSkill      `protobuf:"bytes,11,rep,name=installed_skills,json=installedSkills,proto3" json:"installed_skills,omitempty"` // 节点上安装的 Skills
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *NodeInfo) Reset() {
 	*x = NodeInfo{}
-	mi := &file_golem_golem_proto_msgTypes[2]
+	mi := &file_golem_golem_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -436,7 +514,7 @@ func (x *NodeInfo) String() string {
 func (*NodeInfo) ProtoMessage() {}
 
 func (x *NodeInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[2]
+	mi := &file_golem_golem_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -449,7 +527,7 @@ func (x *NodeInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeInfo.ProtoReflect.Descriptor instead.
 func (*NodeInfo) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{2}
+	return file_golem_golem_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *NodeInfo) GetId() string {
@@ -522,6 +600,13 @@ func (x *NodeInfo) GetLastSeenAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *NodeInfo) GetInstalledSkills() []*InstalledSkill {
+	if x != nil {
+		return x.InstalledSkills
+	}
+	return nil
+}
+
 // NodeLoadInfo 节点负载信息 (动态, 心跳上报)
 type NodeLoadInfo struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -536,7 +621,7 @@ type NodeLoadInfo struct {
 
 func (x *NodeLoadInfo) Reset() {
 	*x = NodeLoadInfo{}
-	mi := &file_golem_golem_proto_msgTypes[3]
+	mi := &file_golem_golem_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -548,7 +633,7 @@ func (x *NodeLoadInfo) String() string {
 func (*NodeLoadInfo) ProtoMessage() {}
 
 func (x *NodeLoadInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[3]
+	mi := &file_golem_golem_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -561,7 +646,7 @@ func (x *NodeLoadInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NodeLoadInfo.ProtoReflect.Descriptor instead.
 func (*NodeLoadInfo) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{3}
+	return file_golem_golem_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *NodeLoadInfo) GetCpuPercent() float64 {
@@ -624,7 +709,7 @@ type Task struct {
 
 func (x *Task) Reset() {
 	*x = Task{}
-	mi := &file_golem_golem_proto_msgTypes[4]
+	mi := &file_golem_golem_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -636,7 +721,7 @@ func (x *Task) String() string {
 func (*Task) ProtoMessage() {}
 
 func (x *Task) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[4]
+	mi := &file_golem_golem_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -649,7 +734,7 @@ func (x *Task) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Task.ProtoReflect.Descriptor instead.
 func (*Task) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{4}
+	return file_golem_golem_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Task) GetId() string {
@@ -777,7 +862,7 @@ type TaskProgress struct {
 
 func (x *TaskProgress) Reset() {
 	*x = TaskProgress{}
-	mi := &file_golem_golem_proto_msgTypes[5]
+	mi := &file_golem_golem_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -789,7 +874,7 @@ func (x *TaskProgress) String() string {
 func (*TaskProgress) ProtoMessage() {}
 
 func (x *TaskProgress) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[5]
+	mi := &file_golem_golem_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -802,7 +887,7 @@ func (x *TaskProgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskProgress.ProtoReflect.Descriptor instead.
 func (*TaskProgress) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{5}
+	return file_golem_golem_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *TaskProgress) GetTaskId() string {
@@ -846,7 +931,7 @@ type TaskResult struct {
 
 func (x *TaskResult) Reset() {
 	*x = TaskResult{}
-	mi := &file_golem_golem_proto_msgTypes[6]
+	mi := &file_golem_golem_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -858,7 +943,7 @@ func (x *TaskResult) String() string {
 func (*TaskResult) ProtoMessage() {}
 
 func (x *TaskResult) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[6]
+	mi := &file_golem_golem_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -871,7 +956,7 @@ func (x *TaskResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TaskResult.ProtoReflect.Descriptor instead.
 func (*TaskResult) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{6}
+	return file_golem_golem_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *TaskResult) GetTaskId() string {
@@ -912,7 +997,7 @@ type BaseResp struct {
 
 func (x *BaseResp) Reset() {
 	*x = BaseResp{}
-	mi := &file_golem_golem_proto_msgTypes[7]
+	mi := &file_golem_golem_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -924,7 +1009,7 @@ func (x *BaseResp) String() string {
 func (*BaseResp) ProtoMessage() {}
 
 func (x *BaseResp) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[7]
+	mi := &file_golem_golem_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -937,7 +1022,7 @@ func (x *BaseResp) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BaseResp.ProtoReflect.Descriptor instead.
 func (*BaseResp) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{7}
+	return file_golem_golem_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *BaseResp) GetStatusMessage() string {
@@ -965,7 +1050,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_golem_golem_proto_msgTypes[8]
+	mi := &file_golem_golem_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +1062,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[8]
+	mi := &file_golem_golem_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1075,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{8}
+	return file_golem_golem_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *RegisterRequest) GetJoinToken() string {
@@ -1026,7 +1111,7 @@ type RegisterResponse struct {
 
 func (x *RegisterResponse) Reset() {
 	*x = RegisterResponse{}
-	mi := &file_golem_golem_proto_msgTypes[9]
+	mi := &file_golem_golem_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1038,7 +1123,7 @@ func (x *RegisterResponse) String() string {
 func (*RegisterResponse) ProtoMessage() {}
 
 func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[9]
+	mi := &file_golem_golem_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1051,7 +1136,7 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{9}
+	return file_golem_golem_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *RegisterResponse) GetAccepted() bool {
@@ -1093,7 +1178,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_golem_golem_proto_msgTypes[10]
+	mi := &file_golem_golem_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1105,7 +1190,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[10]
+	mi := &file_golem_golem_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1118,7 +1203,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{10}
+	return file_golem_golem_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *HeartbeatRequest) GetNodeId() string {
@@ -1157,7 +1242,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_golem_golem_proto_msgTypes[11]
+	mi := &file_golem_golem_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1169,7 +1254,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[11]
+	mi := &file_golem_golem_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1182,7 +1267,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{11}
+	return file_golem_golem_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *HeartbeatResponse) GetAcknowledged() bool {
@@ -1230,7 +1315,7 @@ type DeregisterRequest struct {
 
 func (x *DeregisterRequest) Reset() {
 	*x = DeregisterRequest{}
-	mi := &file_golem_golem_proto_msgTypes[12]
+	mi := &file_golem_golem_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1242,7 +1327,7 @@ func (x *DeregisterRequest) String() string {
 func (*DeregisterRequest) ProtoMessage() {}
 
 func (x *DeregisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[12]
+	mi := &file_golem_golem_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1255,7 +1340,7 @@ func (x *DeregisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeregisterRequest.ProtoReflect.Descriptor instead.
 func (*DeregisterRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{12}
+	return file_golem_golem_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeregisterRequest) GetNodeId() string {
@@ -1282,7 +1367,7 @@ type DeregisterResponse struct {
 
 func (x *DeregisterResponse) Reset() {
 	*x = DeregisterResponse{}
-	mi := &file_golem_golem_proto_msgTypes[13]
+	mi := &file_golem_golem_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1294,7 +1379,7 @@ func (x *DeregisterResponse) String() string {
 func (*DeregisterResponse) ProtoMessage() {}
 
 func (x *DeregisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[13]
+	mi := &file_golem_golem_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1307,7 +1392,7 @@ func (x *DeregisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeregisterResponse.ProtoReflect.Descriptor instead.
 func (*DeregisterResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{13}
+	return file_golem_golem_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *DeregisterResponse) GetSuccess() bool {
@@ -1334,7 +1419,7 @@ type ReportTaskResultRequest struct {
 
 func (x *ReportTaskResultRequest) Reset() {
 	*x = ReportTaskResultRequest{}
-	mi := &file_golem_golem_proto_msgTypes[14]
+	mi := &file_golem_golem_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1346,7 +1431,7 @@ func (x *ReportTaskResultRequest) String() string {
 func (*ReportTaskResultRequest) ProtoMessage() {}
 
 func (x *ReportTaskResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[14]
+	mi := &file_golem_golem_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1359,7 +1444,7 @@ func (x *ReportTaskResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskResultRequest.ProtoReflect.Descriptor instead.
 func (*ReportTaskResultRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{14}
+	return file_golem_golem_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ReportTaskResultRequest) GetNodeId() string {
@@ -1386,7 +1471,7 @@ type ReportTaskResultResponse struct {
 
 func (x *ReportTaskResultResponse) Reset() {
 	*x = ReportTaskResultResponse{}
-	mi := &file_golem_golem_proto_msgTypes[15]
+	mi := &file_golem_golem_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1398,7 +1483,7 @@ func (x *ReportTaskResultResponse) String() string {
 func (*ReportTaskResultResponse) ProtoMessage() {}
 
 func (x *ReportTaskResultResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[15]
+	mi := &file_golem_golem_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1411,7 +1496,7 @@ func (x *ReportTaskResultResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskResultResponse.ProtoReflect.Descriptor instead.
 func (*ReportTaskResultResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{15}
+	return file_golem_golem_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ReportTaskResultResponse) GetAcknowledged() bool {
@@ -1438,7 +1523,7 @@ type ReportTaskProgressRequest struct {
 
 func (x *ReportTaskProgressRequest) Reset() {
 	*x = ReportTaskProgressRequest{}
-	mi := &file_golem_golem_proto_msgTypes[16]
+	mi := &file_golem_golem_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1450,7 +1535,7 @@ func (x *ReportTaskProgressRequest) String() string {
 func (*ReportTaskProgressRequest) ProtoMessage() {}
 
 func (x *ReportTaskProgressRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[16]
+	mi := &file_golem_golem_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1463,7 +1548,7 @@ func (x *ReportTaskProgressRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskProgressRequest.ProtoReflect.Descriptor instead.
 func (*ReportTaskProgressRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{16}
+	return file_golem_golem_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *ReportTaskProgressRequest) GetNodeId() string {
@@ -1490,7 +1575,7 @@ type ReportTaskProgressResponse struct {
 
 func (x *ReportTaskProgressResponse) Reset() {
 	*x = ReportTaskProgressResponse{}
-	mi := &file_golem_golem_proto_msgTypes[17]
+	mi := &file_golem_golem_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1502,7 +1587,7 @@ func (x *ReportTaskProgressResponse) String() string {
 func (*ReportTaskProgressResponse) ProtoMessage() {}
 
 func (x *ReportTaskProgressResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[17]
+	mi := &file_golem_golem_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1515,7 +1600,7 @@ func (x *ReportTaskProgressResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportTaskProgressResponse.ProtoReflect.Descriptor instead.
 func (*ReportTaskProgressResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{17}
+	return file_golem_golem_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ReportTaskProgressResponse) GetAcknowledged() bool {
@@ -1541,7 +1626,7 @@ type DispatchTaskRequest struct {
 
 func (x *DispatchTaskRequest) Reset() {
 	*x = DispatchTaskRequest{}
-	mi := &file_golem_golem_proto_msgTypes[18]
+	mi := &file_golem_golem_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1553,7 +1638,7 @@ func (x *DispatchTaskRequest) String() string {
 func (*DispatchTaskRequest) ProtoMessage() {}
 
 func (x *DispatchTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[18]
+	mi := &file_golem_golem_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1566,7 +1651,7 @@ func (x *DispatchTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DispatchTaskRequest.ProtoReflect.Descriptor instead.
 func (*DispatchTaskRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{18}
+	return file_golem_golem_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *DispatchTaskRequest) GetTask() *Task {
@@ -1589,7 +1674,7 @@ type DispatchTaskResponse struct {
 
 func (x *DispatchTaskResponse) Reset() {
 	*x = DispatchTaskResponse{}
-	mi := &file_golem_golem_proto_msgTypes[19]
+	mi := &file_golem_golem_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1601,7 +1686,7 @@ func (x *DispatchTaskResponse) String() string {
 func (*DispatchTaskResponse) ProtoMessage() {}
 
 func (x *DispatchTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[19]
+	mi := &file_golem_golem_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1614,7 +1699,7 @@ func (x *DispatchTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DispatchTaskResponse.ProtoReflect.Descriptor instead.
 func (*DispatchTaskResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{19}
+	return file_golem_golem_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *DispatchTaskResponse) GetAccepted() bool {
@@ -1655,7 +1740,7 @@ type CancelTaskRequest struct {
 
 func (x *CancelTaskRequest) Reset() {
 	*x = CancelTaskRequest{}
-	mi := &file_golem_golem_proto_msgTypes[20]
+	mi := &file_golem_golem_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1667,7 +1752,7 @@ func (x *CancelTaskRequest) String() string {
 func (*CancelTaskRequest) ProtoMessage() {}
 
 func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[20]
+	mi := &file_golem_golem_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1680,7 +1765,7 @@ func (x *CancelTaskRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskRequest.ProtoReflect.Descriptor instead.
 func (*CancelTaskRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{20}
+	return file_golem_golem_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CancelTaskRequest) GetTaskId() string {
@@ -1707,7 +1792,7 @@ type CancelTaskResponse struct {
 
 func (x *CancelTaskResponse) Reset() {
 	*x = CancelTaskResponse{}
-	mi := &file_golem_golem_proto_msgTypes[21]
+	mi := &file_golem_golem_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1719,7 +1804,7 @@ func (x *CancelTaskResponse) String() string {
 func (*CancelTaskResponse) ProtoMessage() {}
 
 func (x *CancelTaskResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[21]
+	mi := &file_golem_golem_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1732,7 +1817,7 @@ func (x *CancelTaskResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelTaskResponse.ProtoReflect.Descriptor instead.
 func (*CancelTaskResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{21}
+	return file_golem_golem_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *CancelTaskResponse) GetSuccess() bool {
@@ -1758,7 +1843,7 @@ type DrainNodeRequest struct {
 
 func (x *DrainNodeRequest) Reset() {
 	*x = DrainNodeRequest{}
-	mi := &file_golem_golem_proto_msgTypes[22]
+	mi := &file_golem_golem_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1770,7 +1855,7 @@ func (x *DrainNodeRequest) String() string {
 func (*DrainNodeRequest) ProtoMessage() {}
 
 func (x *DrainNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[22]
+	mi := &file_golem_golem_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1783,7 +1868,7 @@ func (x *DrainNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainNodeRequest.ProtoReflect.Descriptor instead.
 func (*DrainNodeRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{22}
+	return file_golem_golem_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DrainNodeRequest) GetNodeId() string {
@@ -1803,7 +1888,7 @@ type DrainNodeResponse struct {
 
 func (x *DrainNodeResponse) Reset() {
 	*x = DrainNodeResponse{}
-	mi := &file_golem_golem_proto_msgTypes[23]
+	mi := &file_golem_golem_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1815,7 +1900,7 @@ func (x *DrainNodeResponse) String() string {
 func (*DrainNodeResponse) ProtoMessage() {}
 
 func (x *DrainNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[23]
+	mi := &file_golem_golem_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1828,7 +1913,7 @@ func (x *DrainNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DrainNodeResponse.ProtoReflect.Descriptor instead.
 func (*DrainNodeResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{23}
+	return file_golem_golem_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DrainNodeResponse) GetSuccess() bool {
@@ -1856,7 +1941,7 @@ type ListNodesRequest struct {
 
 func (x *ListNodesRequest) Reset() {
 	*x = ListNodesRequest{}
-	mi := &file_golem_golem_proto_msgTypes[24]
+	mi := &file_golem_golem_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1868,7 +1953,7 @@ func (x *ListNodesRequest) String() string {
 func (*ListNodesRequest) ProtoMessage() {}
 
 func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[24]
+	mi := &file_golem_golem_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1881,7 +1966,7 @@ func (x *ListNodesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesRequest.ProtoReflect.Descriptor instead.
 func (*ListNodesRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{24}
+	return file_golem_golem_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ListNodesRequest) GetStatusFilter() NodeStatus {
@@ -1917,7 +2002,7 @@ type ListNodesResponse struct {
 
 func (x *ListNodesResponse) Reset() {
 	*x = ListNodesResponse{}
-	mi := &file_golem_golem_proto_msgTypes[25]
+	mi := &file_golem_golem_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1929,7 +2014,7 @@ func (x *ListNodesResponse) String() string {
 func (*ListNodesResponse) ProtoMessage() {}
 
 func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[25]
+	mi := &file_golem_golem_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1942,7 +2027,7 @@ func (x *ListNodesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListNodesResponse.ProtoReflect.Descriptor instead.
 func (*ListNodesResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{25}
+	return file_golem_golem_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListNodesResponse) GetNodes() []*NodeInfo {
@@ -1982,7 +2067,7 @@ type GetNodeRequest struct {
 
 func (x *GetNodeRequest) Reset() {
 	*x = GetNodeRequest{}
-	mi := &file_golem_golem_proto_msgTypes[26]
+	mi := &file_golem_golem_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1994,7 +2079,7 @@ func (x *GetNodeRequest) String() string {
 func (*GetNodeRequest) ProtoMessage() {}
 
 func (x *GetNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[26]
+	mi := &file_golem_golem_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2007,7 +2092,7 @@ func (x *GetNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeRequest.ProtoReflect.Descriptor instead.
 func (*GetNodeRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{26}
+	return file_golem_golem_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *GetNodeRequest) GetNodeId() string {
@@ -2028,7 +2113,7 @@ type GetNodeResponse struct {
 
 func (x *GetNodeResponse) Reset() {
 	*x = GetNodeResponse{}
-	mi := &file_golem_golem_proto_msgTypes[27]
+	mi := &file_golem_golem_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2040,7 +2125,7 @@ func (x *GetNodeResponse) String() string {
 func (*GetNodeResponse) ProtoMessage() {}
 
 func (x *GetNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[27]
+	mi := &file_golem_golem_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2053,7 +2138,7 @@ func (x *GetNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetNodeResponse.ProtoReflect.Descriptor instead.
 func (*GetNodeResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{27}
+	return file_golem_golem_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *GetNodeResponse) GetNodeInfo() *NodeInfo {
@@ -2087,7 +2172,7 @@ type CordonNodeRequest struct {
 
 func (x *CordonNodeRequest) Reset() {
 	*x = CordonNodeRequest{}
-	mi := &file_golem_golem_proto_msgTypes[28]
+	mi := &file_golem_golem_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2099,7 +2184,7 @@ func (x *CordonNodeRequest) String() string {
 func (*CordonNodeRequest) ProtoMessage() {}
 
 func (x *CordonNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[28]
+	mi := &file_golem_golem_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2112,7 +2197,7 @@ func (x *CordonNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CordonNodeRequest.ProtoReflect.Descriptor instead.
 func (*CordonNodeRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{28}
+	return file_golem_golem_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *CordonNodeRequest) GetNodeId() string {
@@ -2139,7 +2224,7 @@ type CordonNodeResponse struct {
 
 func (x *CordonNodeResponse) Reset() {
 	*x = CordonNodeResponse{}
-	mi := &file_golem_golem_proto_msgTypes[29]
+	mi := &file_golem_golem_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2151,7 +2236,7 @@ func (x *CordonNodeResponse) String() string {
 func (*CordonNodeResponse) ProtoMessage() {}
 
 func (x *CordonNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[29]
+	mi := &file_golem_golem_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2164,7 +2249,7 @@ func (x *CordonNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CordonNodeResponse.ProtoReflect.Descriptor instead.
 func (*CordonNodeResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{29}
+	return file_golem_golem_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *CordonNodeResponse) GetSuccess() bool {
@@ -2190,7 +2275,7 @@ type UncordonNodeRequest struct {
 
 func (x *UncordonNodeRequest) Reset() {
 	*x = UncordonNodeRequest{}
-	mi := &file_golem_golem_proto_msgTypes[30]
+	mi := &file_golem_golem_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2202,7 +2287,7 @@ func (x *UncordonNodeRequest) String() string {
 func (*UncordonNodeRequest) ProtoMessage() {}
 
 func (x *UncordonNodeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[30]
+	mi := &file_golem_golem_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2215,7 +2300,7 @@ func (x *UncordonNodeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UncordonNodeRequest.ProtoReflect.Descriptor instead.
 func (*UncordonNodeRequest) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{30}
+	return file_golem_golem_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *UncordonNodeRequest) GetNodeId() string {
@@ -2235,7 +2320,7 @@ type UncordonNodeResponse struct {
 
 func (x *UncordonNodeResponse) Reset() {
 	*x = UncordonNodeResponse{}
-	mi := &file_golem_golem_proto_msgTypes[31]
+	mi := &file_golem_golem_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2247,7 +2332,7 @@ func (x *UncordonNodeResponse) String() string {
 func (*UncordonNodeResponse) ProtoMessage() {}
 
 func (x *UncordonNodeResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_golem_golem_proto_msgTypes[31]
+	mi := &file_golem_golem_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2260,7 +2345,7 @@ func (x *UncordonNodeResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UncordonNodeResponse.ProtoReflect.Descriptor instead.
 func (*UncordonNodeResponse) Descriptor() ([]byte, []int) {
-	return file_golem_golem_proto_rawDescGZIP(), []int{31}
+	return file_golem_golem_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *UncordonNodeResponse) GetSuccess() bool {
@@ -2277,6 +2362,457 @@ func (x *UncordonNodeResponse) GetBaseResp() *BaseResp {
 	return nil
 }
 
+// BootstrapToken 引导令牌元信息
+type BootstrapToken struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`                                                                                   // 6字符 ID
+	ExpiresAt     *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`                                                    // 过期时间
+	Usages        int32                  `protobuf:"varint,3,opt,name=usages,proto3" json:"usages,omitempty"`                                                                          // 剩余使用次数（0=无限）
+	MaxUsages     int32                  `protobuf:"varint,4,opt,name=max_usages,json=maxUsages,proto3" json:"max_usages,omitempty"`                                                   // 最大使用次数
+	Description   string                 `protobuf:"bytes,5,opt,name=description,proto3" json:"description,omitempty"`                                                                 // 描述
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`                                                    // 创建时间
+	CreatedBy     string                 `protobuf:"bytes,7,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`                                                    // 创建者
+	Labels        map[string]string      `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 标签
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BootstrapToken) Reset() {
+	*x = BootstrapToken{}
+	mi := &file_golem_golem_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BootstrapToken) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BootstrapToken) ProtoMessage() {}
+
+func (x *BootstrapToken) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BootstrapToken.ProtoReflect.Descriptor instead.
+func (*BootstrapToken) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *BootstrapToken) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *BootstrapToken) GetExpiresAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return nil
+}
+
+func (x *BootstrapToken) GetUsages() int32 {
+	if x != nil {
+		return x.Usages
+	}
+	return 0
+}
+
+func (x *BootstrapToken) GetMaxUsages() int32 {
+	if x != nil {
+		return x.MaxUsages
+	}
+	return 0
+}
+
+func (x *BootstrapToken) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *BootstrapToken) GetCreatedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return nil
+}
+
+func (x *BootstrapToken) GetCreatedBy() string {
+	if x != nil {
+		return x.CreatedBy
+	}
+	return ""
+}
+
+func (x *BootstrapToken) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+// CreateTokenRequest 创建 Bootstrap Token 请求
+type CreateTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Ttl           *durationpb.Duration   `protobuf:"bytes,1,opt,name=ttl,proto3" json:"ttl,omitempty"`                                                                                 // 有效期
+	MaxUsages     int32                  `protobuf:"varint,2,opt,name=max_usages,json=maxUsages,proto3" json:"max_usages,omitempty"`                                                   // 最大使用次数（0=无限）
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`                                                                 // 描述
+	Labels        map[string]string      `protobuf:"bytes,4,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // 标签
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateTokenRequest) Reset() {
+	*x = CreateTokenRequest{}
+	mi := &file_golem_golem_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTokenRequest) ProtoMessage() {}
+
+func (x *CreateTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTokenRequest.ProtoReflect.Descriptor instead.
+func (*CreateTokenRequest) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *CreateTokenRequest) GetTtl() *durationpb.Duration {
+	if x != nil {
+		return x.Ttl
+	}
+	return nil
+}
+
+func (x *CreateTokenRequest) GetMaxUsages() int32 {
+	if x != nil {
+		return x.MaxUsages
+	}
+	return 0
+}
+
+func (x *CreateTokenRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateTokenRequest) GetLabels() map[string]string {
+	if x != nil {
+		return x.Labels
+	}
+	return nil
+}
+
+// CreateTokenResponse 创建 Bootstrap Token 响应
+type CreateTokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`                          // 完整 Token（仅此一次返回明文）
+	TokenInfo     *BootstrapToken        `protobuf:"bytes,2,opt,name=token_info,json=tokenInfo,proto3" json:"token_info,omitempty"` // Token 元信息
+	BaseResp      *BaseResp              `protobuf:"bytes,255,opt,name=base_resp,json=baseResp,proto3" json:"base_resp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateTokenResponse) Reset() {
+	*x = CreateTokenResponse{}
+	mi := &file_golem_golem_proto_msgTypes[35]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateTokenResponse) ProtoMessage() {}
+
+func (x *CreateTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[35]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateTokenResponse.ProtoReflect.Descriptor instead.
+func (*CreateTokenResponse) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{35}
+}
+
+func (x *CreateTokenResponse) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *CreateTokenResponse) GetTokenInfo() *BootstrapToken {
+	if x != nil {
+		return x.TokenInfo
+	}
+	return nil
+}
+
+func (x *CreateTokenResponse) GetBaseResp() *BaseResp {
+	if x != nil {
+		return x.BaseResp
+	}
+	return nil
+}
+
+// ListTokensRequest 列出 Token 请求
+type ListTokensRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	PageSize      int32                  `protobuf:"varint,1,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageToken     string                 `protobuf:"bytes,2,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTokensRequest) Reset() {
+	*x = ListTokensRequest{}
+	mi := &file_golem_golem_proto_msgTypes[36]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTokensRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTokensRequest) ProtoMessage() {}
+
+func (x *ListTokensRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[36]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTokensRequest.ProtoReflect.Descriptor instead.
+func (*ListTokensRequest) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{36}
+}
+
+func (x *ListTokensRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+func (x *ListTokensRequest) GetPageToken() string {
+	if x != nil {
+		return x.PageToken
+	}
+	return ""
+}
+
+// ListTokensResponse 列出 Token 响应
+type ListTokensResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Tokens        []*BootstrapToken      `protobuf:"bytes,1,rep,name=tokens,proto3" json:"tokens,omitempty"`
+	NextPageToken string                 `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
+	TotalCount    int32                  `protobuf:"varint,3,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
+	BaseResp      *BaseResp              `protobuf:"bytes,255,opt,name=base_resp,json=baseResp,proto3" json:"base_resp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListTokensResponse) Reset() {
+	*x = ListTokensResponse{}
+	mi := &file_golem_golem_proto_msgTypes[37]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListTokensResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListTokensResponse) ProtoMessage() {}
+
+func (x *ListTokensResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[37]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListTokensResponse.ProtoReflect.Descriptor instead.
+func (*ListTokensResponse) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{37}
+}
+
+func (x *ListTokensResponse) GetTokens() []*BootstrapToken {
+	if x != nil {
+		return x.Tokens
+	}
+	return nil
+}
+
+func (x *ListTokensResponse) GetNextPageToken() string {
+	if x != nil {
+		return x.NextPageToken
+	}
+	return ""
+}
+
+func (x *ListTokensResponse) GetTotalCount() int32 {
+	if x != nil {
+		return x.TotalCount
+	}
+	return 0
+}
+
+func (x *ListTokensResponse) GetBaseResp() *BaseResp {
+	if x != nil {
+		return x.BaseResp
+	}
+	return nil
+}
+
+// DeleteTokenRequest 删除 Token 请求
+type DeleteTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	TokenId       string                 `protobuf:"bytes,1,opt,name=token_id,json=tokenId,proto3" json:"token_id,omitempty"` // Token ID（6字符）
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTokenRequest) Reset() {
+	*x = DeleteTokenRequest{}
+	mi := &file_golem_golem_proto_msgTypes[38]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTokenRequest) ProtoMessage() {}
+
+func (x *DeleteTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[38]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTokenRequest.ProtoReflect.Descriptor instead.
+func (*DeleteTokenRequest) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{38}
+}
+
+func (x *DeleteTokenRequest) GetTokenId() string {
+	if x != nil {
+		return x.TokenId
+	}
+	return ""
+}
+
+// DeleteTokenResponse 删除 Token 响应
+type DeleteTokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	BaseResp      *BaseResp              `protobuf:"bytes,255,opt,name=base_resp,json=baseResp,proto3" json:"base_resp,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteTokenResponse) Reset() {
+	*x = DeleteTokenResponse{}
+	mi := &file_golem_golem_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteTokenResponse) ProtoMessage() {}
+
+func (x *DeleteTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_golem_golem_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteTokenResponse.ProtoReflect.Descriptor instead.
+func (*DeleteTokenResponse) Descriptor() ([]byte, []int) {
+	return file_golem_golem_proto_rawDescGZIP(), []int{39}
+}
+
+func (x *DeleteTokenResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *DeleteTokenResponse) GetBaseResp() *BaseResp {
+	if x != nil {
+		return x.BaseResp
+	}
+	return nil
+}
+
 var File_golem_golem_proto protoreflect.FileDescriptor
 
 const file_golem_golem_proto_rawDesc = "" +
@@ -2286,7 +2822,13 @@ const file_golem_golem_proto_rawDesc = "" +
 	"Capability\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x18\n" +
 	"\aversion\x18\x02 \x01(\tR\aversion\x12 \n" +
-	"\vdescription\x18\x03 \x01(\tR\vdescription\"\xa8\x01\n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\"\x98\x01\n" +
+	"\x0eInstalledSkill\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\"\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\x12\x18\n" +
+	"\aversion\x18\x04 \x01(\tR\aversion\x12\x12\n" +
+	"\x04path\x18\x05 \x01(\tR\x04path\"\xa8\x01\n" +
 	"\n" +
 	"SystemInfo\x12\x1b\n" +
 	"\tcpu_cores\x18\x01 \x01(\x05R\bcpuCores\x12\x1b\n" +
@@ -2295,7 +2837,7 @@ const file_golem_golem_proto_rawDesc = "" +
 	"diskFreeMb\x12\x0e\n" +
 	"\x02os\x18\x04 \x01(\tR\x02os\x12\x12\n" +
 	"\x04arch\x18\x05 \x01(\tR\x04arch\x12\x1a\n" +
-	"\bhostname\x18\x06 \x01(\tR\bhostname\"\xe7\x03\n" +
+	"\bhostname\x18\x06 \x01(\tR\bhostname\"\xa9\x04\n" +
 	"\bNodeInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n" +
@@ -2309,7 +2851,8 @@ const file_golem_golem_proto_rawDesc = "" +
 	"\rregistered_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\fregisteredAt\x12<\n" +
 	"\flast_seen_at\x18\n" +
 	" \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"lastSeenAt\x1a9\n" +
+	"lastSeenAt\x12@\n" +
+	"\x10installed_skills\x18\v \x03(\v2\x15.golem.InstalledSkillR\x0finstalledSkills\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbe\x01\n" +
@@ -2446,6 +2989,51 @@ const file_golem_golem_proto_rawDesc = "" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\"_\n" +
 	"\x14UncordonNodeResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12-\n" +
+	"\tbase_resp\x18\xff\x01 \x01(\v2\x0f.golem.BaseRespR\bbaseResp\"\x84\x03\n" +
+	"\x0eBootstrapToken\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x129\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x16\n" +
+	"\x06usages\x18\x03 \x01(\x05R\x06usages\x12\x1d\n" +
+	"\n" +
+	"max_usages\x18\x04 \x01(\x05R\tmaxUsages\x12 \n" +
+	"\vdescription\x18\x05 \x01(\tR\vdescription\x129\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x1d\n" +
+	"\n" +
+	"created_by\x18\a \x01(\tR\tcreatedBy\x129\n" +
+	"\x06labels\x18\b \x03(\v2!.golem.BootstrapToken.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xfc\x01\n" +
+	"\x12CreateTokenRequest\x12+\n" +
+	"\x03ttl\x18\x01 \x01(\v2\x19.google.protobuf.DurationR\x03ttl\x12\x1d\n" +
+	"\n" +
+	"max_usages\x18\x02 \x01(\x05R\tmaxUsages\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12=\n" +
+	"\x06labels\x18\x04 \x03(\v2%.golem.CreateTokenRequest.LabelsEntryR\x06labels\x1a9\n" +
+	"\vLabelsEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x90\x01\n" +
+	"\x13CreateTokenResponse\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\x124\n" +
+	"\n" +
+	"token_info\x18\x02 \x01(\v2\x15.golem.BootstrapTokenR\ttokenInfo\x12-\n" +
+	"\tbase_resp\x18\xff\x01 \x01(\v2\x0f.golem.BaseRespR\bbaseResp\"O\n" +
+	"\x11ListTokensRequest\x12\x1b\n" +
+	"\tpage_size\x18\x01 \x01(\x05R\bpageSize\x12\x1d\n" +
+	"\n" +
+	"page_token\x18\x02 \x01(\tR\tpageToken\"\xbb\x01\n" +
+	"\x12ListTokensResponse\x12-\n" +
+	"\x06tokens\x18\x01 \x03(\v2\x15.golem.BootstrapTokenR\x06tokens\x12&\n" +
+	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +
+	"\vtotal_count\x18\x03 \x01(\x05R\n" +
+	"totalCount\x12-\n" +
+	"\tbase_resp\x18\xff\x01 \x01(\v2\x0f.golem.BaseRespR\bbaseResp\"/\n" +
+	"\x12DeleteTokenRequest\x12\x19\n" +
+	"\btoken_id\x18\x01 \x01(\tR\atokenId\"^\n" +
+	"\x13DeleteTokenResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12-\n" +
 	"\tbase_resp\x18\xff\x01 \x01(\v2\x0f.golem.BaseRespR\bbaseResp*\x8e\x01\n" +
 	"\n" +
 	"NodeStatus\x12\x1b\n" +
@@ -2484,13 +3072,17 @@ const file_golem_golem_proto_rawDesc = "" +
 	"\n" +
 	"Deregister\x12\x18.golem.DeregisterRequest\x1a\x19.golem.DeregisterResponse\x12S\n" +
 	"\x10ReportTaskResult\x12\x1e.golem.ReportTaskResultRequest\x1a\x1f.golem.ReportTaskResultResponse\x12Y\n" +
-	"\x12ReportTaskProgress\x12 .golem.ReportTaskProgressRequest\x1a!.golem.ReportTaskProgressResponse2\x9c\x02\n" +
+	"\x12ReportTaskProgress\x12 .golem.ReportTaskProgressRequest\x1a!.golem.ReportTaskProgressResponse2\xeb\x03\n" +
 	"\x14HivemindAdminService\x12>\n" +
 	"\tListNodes\x12\x17.golem.ListNodesRequest\x1a\x18.golem.ListNodesResponse\x128\n" +
 	"\aGetNode\x12\x15.golem.GetNodeRequest\x1a\x16.golem.GetNodeResponse\x12A\n" +
 	"\n" +
 	"CordonNode\x12\x18.golem.CordonNodeRequest\x1a\x19.golem.CordonNodeResponse\x12G\n" +
-	"\fUncordonNode\x12\x1a.golem.UncordonNodeRequest\x1a\x1b.golem.UncordonNodeResponseB-Z+github.com/kiosk404/echoryn/pkg/proto/golemb\x06proto3"
+	"\fUncordonNode\x12\x1a.golem.UncordonNodeRequest\x1a\x1b.golem.UncordonNodeResponse\x12D\n" +
+	"\vCreateToken\x12\x19.golem.CreateTokenRequest\x1a\x1a.golem.CreateTokenResponse\x12A\n" +
+	"\n" +
+	"ListTokens\x12\x18.golem.ListTokensRequest\x1a\x19.golem.ListTokensResponse\x12D\n" +
+	"\vDeleteToken\x12\x19.golem.DeleteTokenRequest\x1a\x1a.golem.DeleteTokenResponseB-Z+github.com/kiosk404/echoryn/pkg/proto/golemb\x06proto3"
 
 var (
 	file_golem_golem_proto_rawDescOnce sync.Once
@@ -2505,111 +3097,138 @@ func file_golem_golem_proto_rawDescGZIP() []byte {
 }
 
 var file_golem_golem_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_golem_golem_proto_msgTypes = make([]protoimpl.MessageInfo, 34)
+var file_golem_golem_proto_msgTypes = make([]protoimpl.MessageInfo, 44)
 var file_golem_golem_proto_goTypes = []any{
 	(NodeStatus)(0),                    // 0: golem.NodeStatus
 	(TaskStatus)(0),                    // 1: golem.TaskStatus
 	(TaskPriority)(0),                  // 2: golem.TaskPriority
 	(HeartbeatAction)(0),               // 3: golem.HeartbeatAction
 	(*Capability)(nil),                 // 4: golem.Capability
-	(*SystemInfo)(nil),                 // 5: golem.SystemInfo
-	(*NodeInfo)(nil),                   // 6: golem.NodeInfo
-	(*NodeLoadInfo)(nil),               // 7: golem.NodeLoadInfo
-	(*Task)(nil),                       // 8: golem.Task
-	(*TaskProgress)(nil),               // 9: golem.TaskProgress
-	(*TaskResult)(nil),                 // 10: golem.TaskResult
-	(*BaseResp)(nil),                   // 11: golem.BaseResp
-	(*RegisterRequest)(nil),            // 12: golem.RegisterRequest
-	(*RegisterResponse)(nil),           // 13: golem.RegisterResponse
-	(*HeartbeatRequest)(nil),           // 14: golem.HeartbeatRequest
-	(*HeartbeatResponse)(nil),          // 15: golem.HeartbeatResponse
-	(*DeregisterRequest)(nil),          // 16: golem.DeregisterRequest
-	(*DeregisterResponse)(nil),         // 17: golem.DeregisterResponse
-	(*ReportTaskResultRequest)(nil),    // 18: golem.ReportTaskResultRequest
-	(*ReportTaskResultResponse)(nil),   // 19: golem.ReportTaskResultResponse
-	(*ReportTaskProgressRequest)(nil),  // 20: golem.ReportTaskProgressRequest
-	(*ReportTaskProgressResponse)(nil), // 21: golem.ReportTaskProgressResponse
-	(*DispatchTaskRequest)(nil),        // 22: golem.DispatchTaskRequest
-	(*DispatchTaskResponse)(nil),       // 23: golem.DispatchTaskResponse
-	(*CancelTaskRequest)(nil),          // 24: golem.CancelTaskRequest
-	(*CancelTaskResponse)(nil),         // 25: golem.CancelTaskResponse
-	(*DrainNodeRequest)(nil),           // 26: golem.DrainNodeRequest
-	(*DrainNodeResponse)(nil),          // 27: golem.DrainNodeResponse
-	(*ListNodesRequest)(nil),           // 28: golem.ListNodesRequest
-	(*ListNodesResponse)(nil),          // 29: golem.ListNodesResponse
-	(*GetNodeRequest)(nil),             // 30: golem.GetNodeRequest
-	(*GetNodeResponse)(nil),            // 31: golem.GetNodeResponse
-	(*CordonNodeRequest)(nil),          // 32: golem.CordonNodeRequest
-	(*CordonNodeResponse)(nil),         // 33: golem.CordonNodeResponse
-	(*UncordonNodeRequest)(nil),        // 34: golem.UncordonNodeRequest
-	(*UncordonNodeResponse)(nil),       // 35: golem.UncordonNodeResponse
-	nil,                                // 36: golem.NodeInfo.LabelsEntry
-	nil,                                // 37: golem.Task.MetadataEntry
-	(*timestamppb.Timestamp)(nil),      // 38: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),        // 39: google.protobuf.Duration
+	(*InstalledSkill)(nil),             // 5: golem.InstalledSkill
+	(*SystemInfo)(nil),                 // 6: golem.SystemInfo
+	(*NodeInfo)(nil),                   // 7: golem.NodeInfo
+	(*NodeLoadInfo)(nil),               // 8: golem.NodeLoadInfo
+	(*Task)(nil),                       // 9: golem.Task
+	(*TaskProgress)(nil),               // 10: golem.TaskProgress
+	(*TaskResult)(nil),                 // 11: golem.TaskResult
+	(*BaseResp)(nil),                   // 12: golem.BaseResp
+	(*RegisterRequest)(nil),            // 13: golem.RegisterRequest
+	(*RegisterResponse)(nil),           // 14: golem.RegisterResponse
+	(*HeartbeatRequest)(nil),           // 15: golem.HeartbeatRequest
+	(*HeartbeatResponse)(nil),          // 16: golem.HeartbeatResponse
+	(*DeregisterRequest)(nil),          // 17: golem.DeregisterRequest
+	(*DeregisterResponse)(nil),         // 18: golem.DeregisterResponse
+	(*ReportTaskResultRequest)(nil),    // 19: golem.ReportTaskResultRequest
+	(*ReportTaskResultResponse)(nil),   // 20: golem.ReportTaskResultResponse
+	(*ReportTaskProgressRequest)(nil),  // 21: golem.ReportTaskProgressRequest
+	(*ReportTaskProgressResponse)(nil), // 22: golem.ReportTaskProgressResponse
+	(*DispatchTaskRequest)(nil),        // 23: golem.DispatchTaskRequest
+	(*DispatchTaskResponse)(nil),       // 24: golem.DispatchTaskResponse
+	(*CancelTaskRequest)(nil),          // 25: golem.CancelTaskRequest
+	(*CancelTaskResponse)(nil),         // 26: golem.CancelTaskResponse
+	(*DrainNodeRequest)(nil),           // 27: golem.DrainNodeRequest
+	(*DrainNodeResponse)(nil),          // 28: golem.DrainNodeResponse
+	(*ListNodesRequest)(nil),           // 29: golem.ListNodesRequest
+	(*ListNodesResponse)(nil),          // 30: golem.ListNodesResponse
+	(*GetNodeRequest)(nil),             // 31: golem.GetNodeRequest
+	(*GetNodeResponse)(nil),            // 32: golem.GetNodeResponse
+	(*CordonNodeRequest)(nil),          // 33: golem.CordonNodeRequest
+	(*CordonNodeResponse)(nil),         // 34: golem.CordonNodeResponse
+	(*UncordonNodeRequest)(nil),        // 35: golem.UncordonNodeRequest
+	(*UncordonNodeResponse)(nil),       // 36: golem.UncordonNodeResponse
+	(*BootstrapToken)(nil),             // 37: golem.BootstrapToken
+	(*CreateTokenRequest)(nil),         // 38: golem.CreateTokenRequest
+	(*CreateTokenResponse)(nil),        // 39: golem.CreateTokenResponse
+	(*ListTokensRequest)(nil),          // 40: golem.ListTokensRequest
+	(*ListTokensResponse)(nil),         // 41: golem.ListTokensResponse
+	(*DeleteTokenRequest)(nil),         // 42: golem.DeleteTokenRequest
+	(*DeleteTokenResponse)(nil),        // 43: golem.DeleteTokenResponse
+	nil,                                // 44: golem.NodeInfo.LabelsEntry
+	nil,                                // 45: golem.Task.MetadataEntry
+	nil,                                // 46: golem.BootstrapToken.LabelsEntry
+	nil,                                // 47: golem.CreateTokenRequest.LabelsEntry
+	(*timestamppb.Timestamp)(nil),      // 48: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),        // 49: google.protobuf.Duration
 }
 var file_golem_golem_proto_depIdxs = []int32{
 	0,  // 0: golem.NodeInfo.status:type_name -> golem.NodeStatus
-	5,  // 1: golem.NodeInfo.system_info:type_name -> golem.SystemInfo
+	6,  // 1: golem.NodeInfo.system_info:type_name -> golem.SystemInfo
 	4,  // 2: golem.NodeInfo.capabilities:type_name -> golem.Capability
-	36, // 3: golem.NodeInfo.labels:type_name -> golem.NodeInfo.LabelsEntry
-	38, // 4: golem.NodeInfo.registered_at:type_name -> google.protobuf.Timestamp
-	38, // 5: golem.NodeInfo.last_seen_at:type_name -> google.protobuf.Timestamp
-	1,  // 6: golem.Task.status:type_name -> golem.TaskStatus
-	2,  // 7: golem.Task.priority:type_name -> golem.TaskPriority
-	39, // 8: golem.Task.timeout:type_name -> google.protobuf.Duration
-	38, // 9: golem.Task.created_at:type_name -> google.protobuf.Timestamp
-	38, // 10: golem.Task.started_at:type_name -> google.protobuf.Timestamp
-	38, // 11: golem.Task.completed_at:type_name -> google.protobuf.Timestamp
-	37, // 12: golem.Task.metadata:type_name -> golem.Task.MetadataEntry
-	6,  // 13: golem.RegisterRequest.node_info:type_name -> golem.NodeInfo
-	7,  // 14: golem.RegisterRequest.load_info:type_name -> golem.NodeLoadInfo
-	11, // 15: golem.RegisterResponse.base_resp:type_name -> golem.BaseResp
-	7,  // 16: golem.HeartbeatRequest.load_info:type_name -> golem.NodeLoadInfo
-	38, // 17: golem.HeartbeatRequest.timestamp:type_name -> google.protobuf.Timestamp
-	3,  // 18: golem.HeartbeatResponse.action:type_name -> golem.HeartbeatAction
-	8,  // 19: golem.HeartbeatResponse.dispatch_task:type_name -> golem.Task
-	11, // 20: golem.DeregisterResponse.base_resp:type_name -> golem.BaseResp
-	10, // 21: golem.ReportTaskResultRequest.task_result:type_name -> golem.TaskResult
-	11, // 22: golem.ReportTaskResultResponse.base_resp:type_name -> golem.BaseResp
-	9,  // 23: golem.ReportTaskProgressRequest.task_progress:type_name -> golem.TaskProgress
-	11, // 24: golem.ReportTaskProgressResponse.base_resp:type_name -> golem.BaseResp
-	8,  // 25: golem.DispatchTaskRequest.task:type_name -> golem.Task
-	10, // 26: golem.DispatchTaskResponse.task_result:type_name -> golem.TaskResult
-	11, // 27: golem.DispatchTaskResponse.base_resp:type_name -> golem.BaseResp
-	11, // 28: golem.CancelTaskResponse.base_resp:type_name -> golem.BaseResp
-	11, // 29: golem.DrainNodeResponse.base_resp:type_name -> golem.BaseResp
-	0,  // 30: golem.ListNodesRequest.status_filter:type_name -> golem.NodeStatus
-	6,  // 31: golem.ListNodesResponse.nodes:type_name -> golem.NodeInfo
-	11, // 32: golem.ListNodesResponse.base_resp:type_name -> golem.BaseResp
-	6,  // 33: golem.GetNodeResponse.node_info:type_name -> golem.NodeInfo
-	7,  // 34: golem.GetNodeResponse.load_info:type_name -> golem.NodeLoadInfo
-	11, // 35: golem.GetNodeResponse.base_resp:type_name -> golem.BaseResp
-	11, // 36: golem.CordonNodeResponse.base_resp:type_name -> golem.BaseResp
-	11, // 37: golem.UncordonNodeResponse.base_resp:type_name -> golem.BaseResp
-	12, // 38: golem.GolemNodeService.Register:input_type -> golem.RegisterRequest
-	14, // 39: golem.GolemNodeService.Heartbeat:input_type -> golem.HeartbeatRequest
-	16, // 40: golem.GolemNodeService.Deregister:input_type -> golem.DeregisterRequest
-	18, // 41: golem.GolemNodeService.ReportTaskResult:input_type -> golem.ReportTaskResultRequest
-	20, // 42: golem.GolemNodeService.ReportTaskProgress:input_type -> golem.ReportTaskProgressRequest
-	28, // 43: golem.HivemindAdminService.ListNodes:input_type -> golem.ListNodesRequest
-	30, // 44: golem.HivemindAdminService.GetNode:input_type -> golem.GetNodeRequest
-	32, // 45: golem.HivemindAdminService.CordonNode:input_type -> golem.CordonNodeRequest
-	34, // 46: golem.HivemindAdminService.UncordonNode:input_type -> golem.UncordonNodeRequest
-	13, // 47: golem.GolemNodeService.Register:output_type -> golem.RegisterResponse
-	15, // 48: golem.GolemNodeService.Heartbeat:output_type -> golem.HeartbeatResponse
-	17, // 49: golem.GolemNodeService.Deregister:output_type -> golem.DeregisterResponse
-	19, // 50: golem.GolemNodeService.ReportTaskResult:output_type -> golem.ReportTaskResultResponse
-	21, // 51: golem.GolemNodeService.ReportTaskProgress:output_type -> golem.ReportTaskProgressResponse
-	29, // 52: golem.HivemindAdminService.ListNodes:output_type -> golem.ListNodesResponse
-	31, // 53: golem.HivemindAdminService.GetNode:output_type -> golem.GetNodeResponse
-	33, // 54: golem.HivemindAdminService.CordonNode:output_type -> golem.CordonNodeResponse
-	35, // 55: golem.HivemindAdminService.UncordonNode:output_type -> golem.UncordonNodeResponse
-	47, // [47:56] is the sub-list for method output_type
-	38, // [38:47] is the sub-list for method input_type
-	38, // [38:38] is the sub-list for extension type_name
-	38, // [38:38] is the sub-list for extension extendee
-	0,  // [0:38] is the sub-list for field type_name
+	44, // 3: golem.NodeInfo.labels:type_name -> golem.NodeInfo.LabelsEntry
+	48, // 4: golem.NodeInfo.registered_at:type_name -> google.protobuf.Timestamp
+	48, // 5: golem.NodeInfo.last_seen_at:type_name -> google.protobuf.Timestamp
+	5,  // 6: golem.NodeInfo.installed_skills:type_name -> golem.InstalledSkill
+	1,  // 7: golem.Task.status:type_name -> golem.TaskStatus
+	2,  // 8: golem.Task.priority:type_name -> golem.TaskPriority
+	49, // 9: golem.Task.timeout:type_name -> google.protobuf.Duration
+	48, // 10: golem.Task.created_at:type_name -> google.protobuf.Timestamp
+	48, // 11: golem.Task.started_at:type_name -> google.protobuf.Timestamp
+	48, // 12: golem.Task.completed_at:type_name -> google.protobuf.Timestamp
+	45, // 13: golem.Task.metadata:type_name -> golem.Task.MetadataEntry
+	7,  // 14: golem.RegisterRequest.node_info:type_name -> golem.NodeInfo
+	8,  // 15: golem.RegisterRequest.load_info:type_name -> golem.NodeLoadInfo
+	12, // 16: golem.RegisterResponse.base_resp:type_name -> golem.BaseResp
+	8,  // 17: golem.HeartbeatRequest.load_info:type_name -> golem.NodeLoadInfo
+	48, // 18: golem.HeartbeatRequest.timestamp:type_name -> google.protobuf.Timestamp
+	3,  // 19: golem.HeartbeatResponse.action:type_name -> golem.HeartbeatAction
+	9,  // 20: golem.HeartbeatResponse.dispatch_task:type_name -> golem.Task
+	12, // 21: golem.DeregisterResponse.base_resp:type_name -> golem.BaseResp
+	11, // 22: golem.ReportTaskResultRequest.task_result:type_name -> golem.TaskResult
+	12, // 23: golem.ReportTaskResultResponse.base_resp:type_name -> golem.BaseResp
+	10, // 24: golem.ReportTaskProgressRequest.task_progress:type_name -> golem.TaskProgress
+	12, // 25: golem.ReportTaskProgressResponse.base_resp:type_name -> golem.BaseResp
+	9,  // 26: golem.DispatchTaskRequest.task:type_name -> golem.Task
+	11, // 27: golem.DispatchTaskResponse.task_result:type_name -> golem.TaskResult
+	12, // 28: golem.DispatchTaskResponse.base_resp:type_name -> golem.BaseResp
+	12, // 29: golem.CancelTaskResponse.base_resp:type_name -> golem.BaseResp
+	12, // 30: golem.DrainNodeResponse.base_resp:type_name -> golem.BaseResp
+	0,  // 31: golem.ListNodesRequest.status_filter:type_name -> golem.NodeStatus
+	7,  // 32: golem.ListNodesResponse.nodes:type_name -> golem.NodeInfo
+	12, // 33: golem.ListNodesResponse.base_resp:type_name -> golem.BaseResp
+	7,  // 34: golem.GetNodeResponse.node_info:type_name -> golem.NodeInfo
+	8,  // 35: golem.GetNodeResponse.load_info:type_name -> golem.NodeLoadInfo
+	12, // 36: golem.GetNodeResponse.base_resp:type_name -> golem.BaseResp
+	12, // 37: golem.CordonNodeResponse.base_resp:type_name -> golem.BaseResp
+	12, // 38: golem.UncordonNodeResponse.base_resp:type_name -> golem.BaseResp
+	48, // 39: golem.BootstrapToken.expires_at:type_name -> google.protobuf.Timestamp
+	48, // 40: golem.BootstrapToken.created_at:type_name -> google.protobuf.Timestamp
+	46, // 41: golem.BootstrapToken.labels:type_name -> golem.BootstrapToken.LabelsEntry
+	49, // 42: golem.CreateTokenRequest.ttl:type_name -> google.protobuf.Duration
+	47, // 43: golem.CreateTokenRequest.labels:type_name -> golem.CreateTokenRequest.LabelsEntry
+	37, // 44: golem.CreateTokenResponse.token_info:type_name -> golem.BootstrapToken
+	12, // 45: golem.CreateTokenResponse.base_resp:type_name -> golem.BaseResp
+	37, // 46: golem.ListTokensResponse.tokens:type_name -> golem.BootstrapToken
+	12, // 47: golem.ListTokensResponse.base_resp:type_name -> golem.BaseResp
+	12, // 48: golem.DeleteTokenResponse.base_resp:type_name -> golem.BaseResp
+	13, // 49: golem.GolemNodeService.Register:input_type -> golem.RegisterRequest
+	15, // 50: golem.GolemNodeService.Heartbeat:input_type -> golem.HeartbeatRequest
+	17, // 51: golem.GolemNodeService.Deregister:input_type -> golem.DeregisterRequest
+	19, // 52: golem.GolemNodeService.ReportTaskResult:input_type -> golem.ReportTaskResultRequest
+	21, // 53: golem.GolemNodeService.ReportTaskProgress:input_type -> golem.ReportTaskProgressRequest
+	29, // 54: golem.HivemindAdminService.ListNodes:input_type -> golem.ListNodesRequest
+	31, // 55: golem.HivemindAdminService.GetNode:input_type -> golem.GetNodeRequest
+	33, // 56: golem.HivemindAdminService.CordonNode:input_type -> golem.CordonNodeRequest
+	35, // 57: golem.HivemindAdminService.UncordonNode:input_type -> golem.UncordonNodeRequest
+	38, // 58: golem.HivemindAdminService.CreateToken:input_type -> golem.CreateTokenRequest
+	40, // 59: golem.HivemindAdminService.ListTokens:input_type -> golem.ListTokensRequest
+	42, // 60: golem.HivemindAdminService.DeleteToken:input_type -> golem.DeleteTokenRequest
+	14, // 61: golem.GolemNodeService.Register:output_type -> golem.RegisterResponse
+	16, // 62: golem.GolemNodeService.Heartbeat:output_type -> golem.HeartbeatResponse
+	18, // 63: golem.GolemNodeService.Deregister:output_type -> golem.DeregisterResponse
+	20, // 64: golem.GolemNodeService.ReportTaskResult:output_type -> golem.ReportTaskResultResponse
+	22, // 65: golem.GolemNodeService.ReportTaskProgress:output_type -> golem.ReportTaskProgressResponse
+	30, // 66: golem.HivemindAdminService.ListNodes:output_type -> golem.ListNodesResponse
+	32, // 67: golem.HivemindAdminService.GetNode:output_type -> golem.GetNodeResponse
+	34, // 68: golem.HivemindAdminService.CordonNode:output_type -> golem.CordonNodeResponse
+	36, // 69: golem.HivemindAdminService.UncordonNode:output_type -> golem.UncordonNodeResponse
+	39, // 70: golem.HivemindAdminService.CreateToken:output_type -> golem.CreateTokenResponse
+	41, // 71: golem.HivemindAdminService.ListTokens:output_type -> golem.ListTokensResponse
+	43, // 72: golem.HivemindAdminService.DeleteToken:output_type -> golem.DeleteTokenResponse
+	61, // [61:73] is the sub-list for method output_type
+	49, // [49:61] is the sub-list for method input_type
+	49, // [49:49] is the sub-list for extension type_name
+	49, // [49:49] is the sub-list for extension extendee
+	0,  // [0:49] is the sub-list for field type_name
 }
 
 func init() { file_golem_golem_proto_init() }
@@ -2623,7 +3242,7 @@ func file_golem_golem_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_golem_golem_proto_rawDesc), len(file_golem_golem_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   34,
+			NumMessages:   44,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

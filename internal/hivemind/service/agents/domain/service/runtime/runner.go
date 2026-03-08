@@ -265,6 +265,8 @@ func (r *AgentRunner) executeRun(
 
 	// Build PromptContext with tool summaries for the PromptPipeline.
 	promptCtx := r.buildPromptContext(agent, session, tools)
+	logger.InfoX(pkg.ModuleName, "[AgentRunner] promptCtx built: mode=%s tools=%d clusterInfo=%v agent=%v",
+		promptCtx.Mode, len(promptCtx.Tools), promptCtx.ClusterInfo != nil, promptCtx.Agent != nil)
 
 	// Build LLM context with pruning.
 	buildResult := r.contextBuilder.Build(agent, session, userInput, injectedMessages, windowInfo, promptCtx)

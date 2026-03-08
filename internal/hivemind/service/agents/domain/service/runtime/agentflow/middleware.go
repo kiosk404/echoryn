@@ -112,11 +112,7 @@ func (m *TrimToolCallNamesMiddleware) ProcessChunk(chunk *schema.Message) *schem
 	return &cleaned
 }
 
-// ---------------------------------------------------------------------------
-// ChunkLoggerMiddleware
-// ---------------------------------------------------------------------------
-//
-// Aligned with OpenClaw's anthropicPayloadLogger / cacheTrace (debug tools).
+// ChunkLoggerMiddleware Aligned with OpenClaw's anthropicPayloadLogger / cacheTrace (debug tools).
 // Logs streaming chunk metadata for debugging/diagnostics.
 //
 // Unlike OpenClaw's JSONL file writers, Echoryn uses the structured logger

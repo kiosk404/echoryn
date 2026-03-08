@@ -4,12 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/dispatcher"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/tokenmanager"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
+	"github.com/kiosk404/echoryn/pkg/utils/iputil"
+	"google.golang.org/grpc/peer"
 )
 
 // nodeStream holds a node's active heartbeat stream and pending task channels.
@@ -23,7 +27,9 @@ type nodeStream struct {
 // It manages per-node heartbeat streams for both heartbeat and task dispatch.
 type NodeServiceHandler struct {
 	pb.UnimplementedGolemNodeServiceServer
-	registry registry.Registry
+	registry     registry.Registry
+	tokenManager tokenmanager.TokenManager
+	devMode      bool // when true, loopback clients can register without join token
 
 	streamsMu sync.RWMutex
 	streams   map[string]*nodeStream // nodeID → stream info
@@ -32,20 +38,58 @@ type NodeServiceHandler struct {
 var _ dispatcher.StreamManager = (*NodeServiceHandler)(nil)
 
 // NewNodeServiceHandler creates a new NodeServiceHandler.
-func NewNodeServiceHandler(reg registry.Registry) *NodeServiceHandler {
+func NewNodeServiceHandler(reg registry.Registry, tm tokenmanager.TokenManager, devMode bool) *NodeServiceHandler {
 	return &NodeServiceHandler{
-		registry: reg,
-		streams:  make(map[string]*nodeStream),
+		registry:     reg,
+		tokenManager: tm,
+		devMode:      devMode,
+		streams:      make(map[string]*nodeStream),
 	}
 }
 
 // Register handles a Golem node registration request.
+// A valid join-token (bootstrap token) is REQUIRED for registration
+// unless dev-mode is enabled AND the client connects from a loopback address.
 func (h *NodeServiceHandler) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
 	if req.NodeInfo == nil {
 		return &pb.RegisterResponse{
 			Accepted:     false,
 			RejectReason: "node_info is required",
 		}, nil
+	}
+
+	// Determine whether this request can skip token validation (dev-mode + loopback)
+	skipTokenAuth := false
+	if h.devMode && req.JoinToken == "" {
+		if iputil.IsLoopBackIP(getGrpcClientIP(ctx)) {
+			skipTokenAuth = true
+			logger.Info("[GolemNodeService] dev-mode: allowing token-less registration for loopback node %s", req.NodeInfo.Id)
+		}
+	}
+
+	if !skipTokenAuth {
+		// Validate Bootstrap Token if provided - required for all non-dev-mode registrations.
+		if req.JoinToken == "" {
+			logger.Warn("[GolemNodeService] registration rejected for %s: missing join token", req.NodeInfo.Id)
+			return &pb.RegisterResponse{
+				Accepted:     false,
+				RejectReason: "join_token is required for node registration",
+			}, nil
+		}
+
+		bt, err := h.tokenManager.ValidateBootstrapToken(ctx, req.JoinToken)
+		if err != nil {
+			logger.Warn("[GolemNodeService] join token validation failed for %s: %v", req.NodeInfo.Id, err)
+			return &pb.RegisterResponse{
+				Accepted:     false,
+				RejectReason: fmt.Sprintf("invalid join token: %v", err),
+			}, nil
+		}
+
+		// Consume one usage.
+		if err = h.tokenManager.ConsumeToken(ctx, bt.ID); err != nil {
+			logger.Warn("[GolemNodeService] join token consume failed for %s:%w", req.NodeInfo.Id, err)
+		}
 	}
 
 	err := h.registry.RegisterNode(ctx, req.NodeInfo, req.LoadInfo)
@@ -56,6 +100,9 @@ func (h *NodeServiceHandler) Register(ctx context.Context, req *pb.RegisterReque
 			RejectReason: err.Error(),
 		}, nil
 	}
+
+	logger.Info("[GolemNodeService] register success: id=%s name=%s caps=%d skills=%d",
+		req.NodeInfo.Id, req.NodeInfo.Name, len(req.NodeInfo.Capabilities), len(req.NodeInfo.InstalledSkills))
 
 	return &pb.RegisterResponse{
 		Accepted: true,
@@ -305,4 +352,17 @@ func (h *NodeServiceHandler) ReportTaskProgress(ctx context.Context, req *pb.Rep
 		Acknowledged: true,
 		BaseResp:     &pb.BaseResp{StatusCode: 0, StatusMessage: "ok"},
 	}, nil
+}
+
+// getGrpcClientIP
+func getGrpcClientIP(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p.Addr == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(p.Addr.String())
+	if err != nil {
+		return ""
+	}
+	return host
 }

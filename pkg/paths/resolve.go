@@ -220,6 +220,18 @@ func ResolveGolemSkillsDir() string {
 	return filepath.Join(ResolveGolemDataDir(), "skills")
 }
 
+// ResolveCredentialsDir returns the credentials directory.
+// Layout: <stateDir>/credentials
+func ResolveCredentialsDir() string {
+	return filepath.Join(ResolveStateDir(), "credentials")
+}
+
+// ResolveAdminTokenPath returns the admin token file path.
+// Layout: <stateDir>/credentials/admin_token
+func ResolveAdminTokenPath() string {
+	return filepath.Join(ResolveCredentialsDir(), "admin_token")
+}
+
 // DefaultAgentID returns the default agent identifier.
 func DefaultAgentID() string {
 	return defaultAgentID

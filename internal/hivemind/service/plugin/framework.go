@@ -182,6 +182,8 @@ func (f *Framework) probeAndRegister(p Plugin) {
 	// Probe PromptProvider - register sections/mutators into the shared pipeline.
 	if f.promptPipeLine != nil {
 		if pp, ok := p.(PromptProvider); ok {
+			seciotns := pp.PromptSections()
+			logger.Info("[Plugin] probeAdnRegister: plugin %q implements PromptProvider, %d sections", name, len(seciotns))
 			for _, section := range pp.PromptSections() {
 				f.promptPipeLine.RegisterSection(section)
 			}
@@ -191,6 +193,8 @@ func (f *Framework) probeAndRegister(p Plugin) {
 				f.promptPipeLine.RegisterMutator(mutator)
 			}
 		}
+	} else {
+		logger.Warn("[Plugin] probeAndRegister: promptPipeline is nil, skipping PromptProvider probe for %q", name)
 	}
 }
 

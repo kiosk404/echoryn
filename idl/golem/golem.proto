@@ -58,6 +58,15 @@ message Capability {
   string description = 3;  // 能力描述
 }
 
+// InstalledSkill 节点上安装的 Skill 描述 (来自 SKILL.md front-matter)
+message InstalledSkill {
+  string name = 1;     // Skill 名称 (from front-matter "name")
+  string description = 2; // Skill 名称 (from front-matter "description")
+  repeated string capabilities = 3; // Skill 提供的能力标签 (from front-matter "capabilities")
+  string version = 4; // Skill 版本 (from front-matter "version")
+  string path = 5; // Skill 在节点上的路径
+}
+
 // SystemInfo 节点系统信息 (静态, 注册时上报)
 message SystemInfo {
   int32  cpu_cores    = 1;  // CPU 核心数
@@ -80,6 +89,7 @@ message NodeInfo {
   string              version      = 8;   // Golem 版本号
   google.protobuf.Timestamp registered_at = 9;
   google.protobuf.Timestamp last_seen_at  = 10;
+  repeated InstalledSkill installed_skills = 11;  // 节点上安装的 Skills
 }
 
 // NodeLoadInfo 节点负载信息 (动态, 心跳上报)
@@ -148,13 +158,19 @@ service GolemNodeService {
 }
 
 // ==========================================================================
-// HivemindAdminService — 管理面 API, 供 echoctl / echadm 使用
+// HivemindAdminService — 管理面 API, 供 echo 使用
 // ==========================================================================
 service HivemindAdminService {
+  // Node management
   rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
   rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
   rpc CordonNode(CordonNodeRequest) returns (CordonNodeResponse);
   rpc UncordonNode(UncordonNodeRequest) returns (UncordonNodeResponse);
+
+  // Token management
+  rpc CreateToken(CreateTokenRequest) returns (CreateTokenResponse);
+  rpc ListTokens(ListTokensRequest) returns (ListTokensResponse);
+  rpc DeleteToken(DeleteTokenRequest) returns (DeleteTokenResponse);
 }
 
 // ==========================================================================
@@ -290,6 +306,63 @@ message UncordonNodeRequest {
 }
 
 message UncordonNodeResponse {
+  bool     success   = 1;
+  BaseResp base_resp = 255;
+}
+
+
+// ==========================================================================
+// Bootstrap Token — Token 管理相关消息
+// ==========================================================================
+
+// BootstrapToken 引导令牌元信息
+message BootstrapToken {
+  string              id           = 1;   // 6字符 ID
+  google.protobuf.Timestamp expires_at = 2;   // 过期时间
+  int32               usages       = 3;   // 剩余使用次数（0=无限）
+  int32               max_usages   = 4;   // 最大使用次数
+  string              description  = 5;   // 描述
+  google.protobuf.Timestamp created_at = 6;   // 创建时间
+  string              created_by   = 7;   // 创建者
+  map<string, string> labels       = 8;   // 标签
+}
+
+// CreateTokenRequest 创建 Bootstrap Token 请求
+message CreateTokenRequest {
+  google.protobuf.Duration ttl         = 1;   // 有效期
+  int32                    max_usages  = 2;   // 最大使用次数（0=无限）
+  string                   description = 3;   // 描述
+  map<string, string>      labels      = 4;   // 标签
+}
+
+// CreateTokenResponse 创建 Bootstrap Token 响应
+message CreateTokenResponse {
+  string          token       = 1;   // 完整 Token（仅此一次返回明文）
+  BootstrapToken  token_info  = 2;   // Token 元信息
+  BaseResp        base_resp   = 255;
+}
+
+// ListTokensRequest 列出 Token 请求
+message ListTokensRequest {
+  int32  page_size  = 1;
+  string page_token = 2;
+}
+
+// ListTokensResponse 列出 Token 响应
+message ListTokensResponse {
+  repeated BootstrapToken tokens          = 1;
+  string                  next_page_token = 2;
+  int32                   total_count     = 3;
+  BaseResp                base_resp       = 255;
+}
+
+// DeleteTokenRequest 删除 Token 请求
+message DeleteTokenRequest {
+  string token_id = 1;  // Token ID（6字符）
+}
+
+// DeleteTokenResponse 删除 Token 响应
+message DeleteTokenResponse {
   bool     success   = 1;
   BaseResp base_resp = 255;
 }

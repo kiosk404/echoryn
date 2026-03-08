@@ -109,16 +109,22 @@ func (p *Pipeline) Assemble(ctx context.Context, pc *PromptContext) (string, err
 	}
 
 	threshold := priorityThreshold(pc.Mode)
+	logger.Info("[PromptPipeline] Assemble: node=%s threshold=%d sections=%d clusterInfo=%v",
+		pc.Mode, threshold, len(allSections), pc.ClusterInfo != nil)
 	var buf strings.Builder
 
 	for _, section := range allSections {
 		// PromptMode filter: skip sections above the threshold.
 		if section.Priority() > threshold {
+			logger.Debug("[PromptPipeline] skipping section %q (priority=%d > threshold=%d)",
+				section.Name(), section.Priority(), threshold)
 			continue
 		}
 
 		// Dynamic enable check.
 		if !section.Enabled(ctx, pc) {
+			logger.Debug("[PromptPipeline] skipping section %q disabled",
+				section.Name())
 			continue
 		}
 
@@ -129,6 +135,7 @@ func (p *Pipeline) Assemble(ctx context.Context, pc *PromptContext) (string, err
 			continue
 		}
 		if text == "" {
+			logger.Info("[PromptPipeline] section rendered (%d chars)", section.Name(), len(text))
 			continue
 		}
 

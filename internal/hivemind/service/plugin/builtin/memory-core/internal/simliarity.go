@@ -54,8 +54,14 @@ func TruncateUTF8Safe(s string, maxChars int) string {
 	if maxChars <= 0 {
 		return s
 	}
-	runes := []rune(s)
+	// Fast path: if byte length <= maxChars, then rune length must also be <= maxChars
+	// because each rune is at least one byte in UTF-8.
 	if len(s) <= maxChars {
+		return s
+	}
+	// Need to check rune length for multibyte characters
+	runes := []rune(s)
+	if len(runes) <= maxChars {
 		return s
 	}
 	return string(runes[:maxChars])

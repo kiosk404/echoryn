@@ -17,6 +17,7 @@ import (
 	llmentity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask/entity"
 	memorycore "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core"
 	mementity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core/entity"
+	skillsplugin "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/skills"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
 	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
 )
@@ -81,6 +82,14 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 			"config":     resolveGolemClusterConfig(opts),
 			"registry":   golemModule.Registry,
 			"dispatcher": golemModule.Dispatcher,
+		})
+
+	// --- skills: bridges file-system skills (SKILL.md) to agent runtime ---
+	registry.Register(
+		skillsplugin.PluginDefinition(),
+		skillsplugin.Factory,
+		plugin.PluginArgs{
+			"config": resolveSkillsConfig(opts),
 		})
 
 	return registry
@@ -383,5 +392,42 @@ func resolveGolemClusterConfig(opts *genericoptions.PluginsOptions) *golemcluste
 			cfg.Enabled = b
 		}
 	}
+	return cfg
+}
+
+// resolveSkillsConfig extracts skills config from PluginsOptions.entries["skills"].config,
+// falling back to defaults if not specified.
+func resolveSkillsConfig(opts *genericoptions.PluginsOptions) *skillsplugin.Config {
+	cfg := skillsplugin.DefaultConfig()
+	if opts == nil {
+		return cfg
+	}
+
+	entry, ok := opts.Entries[skillsplugin.PluginName]
+	if !ok || entry.Config == nil {
+		return cfg
+	}
+
+	if v, ok := entry.Config["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.Enabled = b
+		}
+	}
+	if v, ok := entry.Config["global_skills_dir"]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			cfg.GlobalSkillsDir = s
+		}
+	}
+	if v, ok := entry.Config["project_skills_dir"]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			cfg.ProjectSkillsDir = s
+		}
+	}
+	if v, ok := entry.Config["hot_reload"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.HotReload = b
+		}
+	}
+
 	return cfg
 }

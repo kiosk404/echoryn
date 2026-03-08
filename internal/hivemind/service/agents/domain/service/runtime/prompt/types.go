@@ -132,6 +132,16 @@ type GolemInfo struct {
 	Status string            `json:"status"` // "Ready" / "NotReady"
 	Skills []string          `json:"skills"` // e.g., ["browser", "code_edit", "terminal"]
 	Labels map[string]string `json:"labels,omitempty"`
+
+	// InstalledSkills provides detailed skill metadata (from SKILL.md front-matter)
+	InstalledSkills []GolemSkillInfo `json:"installed_skills,omitempty"`
+}
+
+// GolemSkillInfo describes a skill installed on a Golem node.
+type GolemSkillInfo struct {
+	Name         string   `json:"name"`
+	Description  string   `json:"description"`
+	Capabilities []string `json:"capabilities"`
 }
 
 // PromptContext is the data envelope passed to every PromptSection.Render().

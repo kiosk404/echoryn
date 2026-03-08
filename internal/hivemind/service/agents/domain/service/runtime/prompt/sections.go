@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kiosk404/echoryn/pkg/logger"
 	"github.com/kiosk404/echoryn/pkg/version"
 )
 
@@ -70,7 +71,17 @@ func (s *ClusterAwarenessSection) Name() string  { return "cluster_awareness" }
 func (s *ClusterAwarenessSection) Priority() int { return 150 }
 
 func (s *ClusterAwarenessSection) Enabled(_ context.Context, pc *PromptContext) bool {
-	return pc.ClusterInfo != nil && len(pc.ClusterInfo.Golems) > 0
+	enabled := pc.ClusterInfo != nil && len(pc.ClusterInfo.Golems) > 0
+	logger.Info("[ClusterAwareness] Enabled: clusterInfo=%v golems=%d → enabled=%v",
+		pc.ClusterInfo != nil,
+		func() int {
+			if pc.ClusterInfo != nil {
+				return len(pc.ClusterInfo.Golems)
+			}
+			return 0
+		}(),
+		enabled)
+	return enabled
 }
 
 func (s *ClusterAwarenessSection) Render(_ context.Context, pc *PromptContext) (string, error) {
@@ -80,17 +91,30 @@ func (s *ClusterAwarenessSection) Render(_ context.Context, pc *PromptContext) (
 	buf.WriteString("Connected Golem nodes:\n")
 
 	for _, g := range pc.ClusterInfo.Golems {
-		skills := "none"
+		capabilities := "none"
 		if len(g.Skills) > 0 {
-			skills = strings.Join(g.Skills, ", ")
+			capabilities = strings.Join(g.Skills, ", ")
 		}
-		buf.WriteString(fmt.Sprintf("- **%s** [%s]: %s\n", g.Name, g.Status, skills))
+		buf.WriteString(fmt.Sprintf("- **%s** (id: `%s`) [%s]: capabilities=[%s]\n", g.Name, g.ID, g.Status, capabilities))
+
+		// Show installed skills with descriptions.
+		if len(g.InstalledSkills) > 0 {
+			buf.WriteString(fmt.Sprintf("  Installed skills (%d):\n", len(g.InstalledSkills)))
+			for _, sk := range g.InstalledSkills {
+				buf.WriteString(fmt.Sprintf("  - `%s`: %s\n", sk.Name, sk.Description))
+				if len(sk.Capabilities) > 0 {
+					buf.WriteString(fmt.Sprintf("    provides: %s\n", strings.Join(sk.Capabilities, ", ")))
+				}
+			}
+		} else {
+			buf.WriteString("  Installed skills: (none)\n")
+		}
 	}
 
 	buf.WriteString("\nWhen a task requires capabilities beyond direct LLM interaction ")
 	buf.WriteString("(e.g., browsing the web, editing code on a remote machine), ")
-	buf.WriteString("you can dispatch it to the appropriate Golem node. ")
-	buf.WriteString("Golem nodes have no autonomous will — they only execute your instructions.")
+	buf.WriteString("you can dispatch it to the appropriate Golem node that has the matching skill. ")
+	buf.WriteString("Use `cluster_list_nodes` to see node details, and `cluster_dispatch_task` to send work.")
 
 	return buf.String(), nil
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/kiosk404/echoryn/internal/hivemind/config"
@@ -14,6 +16,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/scheduler"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/tokenmanager"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
 	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
@@ -67,8 +70,9 @@ func (c *ExtraConfig) complete() *completedExtraConfig {
 }
 
 // New create a grpcAPIServer instance.
-func (c *completedExtraConfig) New() (*genericapiserver.GRPCAPIServer, error) {
+func (c *completedExtraConfig) New(extraOpts ...grpc.ServerOption) (*genericapiserver.GRPCAPIServer, error) {
 	opts := []grpc.ServerOption{grpc.MaxRecvMsgSize(c.MaxMsgSize)}
+	opts = append(opts, extraOpts...)
 	grpcServer := grpc.NewServer(opts...)
 
 	reflection.Register(grpcServer)
@@ -101,7 +105,40 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 	if err != nil {
 		return nil, err
 	}
-	extraServer, err := extraConfig.complete().New()
+
+	// Initialize Golem subsystem (registry + dispatcher + scheduler + tokenmanager)
+	// Must be created before gRPC server so the auth interceptor can reference TokenManager.
+	golemCfg := &golem.Config{
+		Registry:  registry.Config{},
+		Scheduler: scheduler.DefaultSchedulerConfig(),
+		TokenManager: tokenmanager.Config{
+			DefaultTTL:    24 * time.Hour,
+			MaxTTL:        168 * time.Hour,
+			CleanupPeriod: time.Hour,
+		},
+	}
+	golemModule, err := golemCfg.Complete().New()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Golem subsystem: %w", err)
+	}
+	if err := golemModule.Start(context.Background()); err != nil {
+		return nil, fmt.Errorf("failed to start Golem subsystem: %w", err)
+	}
+	logger.Info("[Hivemind] Golem subsystem initialized successfully (admin_token available)")
+
+	// Persist admin token to credentials file for easy access.
+	adminTokenPath := paths.ResolveAdminTokenPath()
+	if err := os.WriteFile(adminTokenPath, []byte(golemModule.TokenManager.AdminToken()), 0o600); err != nil {
+		logger.Warn("[Hivemind] failed to write admin token to %s:%v", adminTokenPath, err)
+	} else {
+		logger.Info("[Hivemind] Admin token saved to: %s", adminTokenPath)
+	}
+
+	// Create gRPC server with Admin Auth interceptors.
+	extraServer, err := extraConfig.complete().New(
+		grpc.ChainUnaryInterceptor(grpchandler.AdminAuthUnaryInterceptor(golemModule.TokenManager)),
+		grpc.ChainStreamInterceptor(grpchandler.AdminAuthStreamInterceptor(golemModule.TokenManager)),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -116,23 +153,10 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 	}
 	logger.Info("LLM module initialized successfully")
 
-	// Initialize Golem subsystem (registry + dispatcher + scheduler)
-	golemCfg := &golem.Config{
-		Registry:  registry.Config{},
-		Scheduler: scheduler.DefaultSchedulerConfig(),
-	}
-	golemModule, err := golemCfg.Complete().New()
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Golem subsystem: %w", err)
-	}
-	if err := golemModule.Start(context.Background()); err != nil {
-		return nil, fmt.Errorf("failed to start Golem subsystem: %w", err)
-	}
-	logger.Info("[Hivemind] Golem subsystem initialized successfully")
-
 	// Register Golem gRPC services on the gRPC server
-	nodeServiceHandler := grpchandler.NewNodeServiceHandler(golemModule.Registry)
-	adminServiceHandler := grpchandler.NewAdminServiceHandler(golemModule.Registry)
+	devMode := cfg.GolemOptions != nil && cfg.GolemOptions.DevMode
+	nodeServiceHandler := grpchandler.NewNodeServiceHandler(golemModule.Registry, golemModule.TokenManager, devMode)
+	adminServiceHandler := grpchandler.NewAdminServiceHandler(golemModule.Registry, golemModule.TokenManager)
 	pb.RegisterGolemNodeServiceServer(extraServer.Server, nodeServiceHandler)
 	pb.RegisterHivemindAdminServiceServer(extraServer.Server, adminServiceHandler)
 
@@ -140,6 +164,9 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 	// This enables task dispatch through the heartbeat bidirectional stream.
 	golemModule.BindStreamManager(nodeServiceHandler)
 	logger.Info("[Hivemind] Golem gRPC services registered (GolemNodeService + HivemindAdminService + stream-based dispatch)")
+	if devMode {
+		logger.Warn("[Hivemind] Golem dev-mode ENABLED: loopback nodes can register without join token")
+	}
 
 	pluginCfg := &plugin.Config{
 		SlotConfig: plugin.SlotConfig{
@@ -173,6 +200,12 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		}
 		logger.Info("[Hivemind] Plugin framework initialized successfully (%d plugins loaded)",
 			pluginFramework.Registry().Len())
+
+		// Bind SkillsEnricher: probe initialized plugins for the registry.SkillsEnricher
+		// interface and inject it into the Golem Registry. This allows the Registry to
+		// enrich Golem node registrations with Hivemind-side skills even when nodes
+		// don't report their own skills (e.g. no local skills directory).
+		injectSkillsEnricher(pluginFramework, golemModule)
 	} else {
 		logger.Info("[Hivemind] Plugin framework disabled (plugins.enabled=false), skipping plugin loading")
 	}
@@ -203,6 +236,8 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		return nil, fmt.Errorf("failed to create Agents module: %w", err)
 	}
 	logger.Info("[Hivemind] Agents module initialized successfully")
+	logger.Info("[Hivemind] Pipeline status: sections=%d mutators=%d",
+		promptPipeline.SectionCount(), promptPipeline.MutatorCount())
 
 	server := &apiServer{
 		gs:               gs,
@@ -295,6 +330,34 @@ func buildExtraConfig(cfg *config.Config) (*ExtraConfig, error) {
 		Addr:       fmt.Sprintf("%s:%d", cfg.GRPCOptions.BindAddress, cfg.GRPCOptions.BindPort),
 		MaxMsgSize: cfg.GRPCOptions.MaxMsgSize,
 	}, nil
+}
+
+// --- Skills Enricher injection ---
+
+// injectSkillsEnricher probes all initialized plugins for the registry.SkillsEnricher
+// interface and binds the first match to the Golem Registry.
+// injectSkillsEnricher probes all initialized plugins for the registry.SkillsEnricher
+// interface and binds the first match to the Golem Registry.
+func injectSkillsEnricher(pf *plugin.Framework, gm *golem.Module) {
+	if pf == nil || gm == nil {
+		return
+	}
+
+	reg := pf.Registry()
+	for _, name := range reg.PluginNames() {
+		p, ok := reg.GetPlugin(name)
+		if !ok {
+			continue
+		}
+		if enricher, ok := p.(registry.SkillsEnricher); ok {
+			gm.Registry.SetSkillsEnricher(enricher)
+			globalSkills := enricher.GetGlobalSkills()
+			logger.Info("[Hivemind] injected SkillsEnricher from plugin %q into Golem Registry (%d global skills)",
+				name, len(globalSkills))
+			return
+		}
+	}
+	logger.Debug("[Hivemind] no SkillsEnricher found among initialized plugins")
 }
 
 // --- IM Channel Gateway ---

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kiosk404/echoryn/internal/echoadm/utils/templates"
 	"github.com/kiosk404/echoryn/internal/echoctl/cmd/util"
+	"github.com/kiosk404/echoryn/internal/echoctl/utils/templates"
 	"github.com/kiosk404/echoryn/pkg/cli/genericclioptions"
 	"github.com/spf13/cobra"
 )

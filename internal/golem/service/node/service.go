@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
+	"github.com/kiosk404/echoryn/pkg/skills"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -159,17 +160,60 @@ func (s *Service) register(ctx context.Context) error {
 		RegisteredAt: timestamppb.Now(),
 	}
 
-	// Add capabilities based on registered skills (for now, builtin shell + fileops).
-	nodeInfo.Capabilities = []*pb.Capability{
-		{Name: "shell", Version: "1.0", Description: "Execute shell commands"},
-		{Name: "fileops", Version: "1.0", Description: "File operations (read/write/delete/search)"},
+	// Builtin capabilities always present.
+	capMap := map[string]*pb.Capability{
+		"shell":   {Name: "shell", Version: "1.0", Description: "Execute shell commands"},
+		"fileops": {Name: "fileops", Version: "1.0", Description: "File operations (read/write/delete/search)"},
+	}
+
+	// Scan skills directory to discover installed skills and their capabilities.
+	logger.Info("[Golem] skills scan: cfg.SkillsDir=%q", s.cfg.SkillsDir)
+	if s.cfg.SkillsDir != "" {
+		loader := skills.NewLoader(skills.WithGlobalSkillsDir(s.cfg.SkillsDir))
+		logger.Info("[Golem] skills scan: loader globalDir=%s, projectDir=%s", loader.GlobalDir(), loader.ProjectDir())
+		metadata, err := loader.LoadMetadataOnly(ctx)
+		if err != nil {
+			logger.Warn("[Golem] failed to load skills metadata: %v", err)
+		} else {
+			logger.Info("[Golem] skills scan: loaded %d metadata entries", len(metadata))
+			for _, m := range metadata {
+				logger.Info("[Golem] skills scan: adding skill %q (desc=%s, caps=%v, path=%s)",
+					m.Name, m.Description[:min(len(m.Description), 50)], m.Capabilities, m.Path)
+				nodeInfo.InstalledSkills = append(nodeInfo.InstalledSkills, &pb.InstalledSkill{
+					Name:         m.Name,
+					Description:  m.Description,
+					Capabilities: m.Capabilities,
+					Path:         m.Path,
+				})
+				// Merge skill-provided capabilities into the capability map.
+				for _, capName := range m.Capabilities {
+					if _, exists := capMap[capName]; !exists {
+						capMap[capName] = &pb.Capability{
+							Name:        capName,
+							Version:     "1.0",
+							Description: fmt.Sprintf("Provided by skill %q", m.Name),
+						}
+					}
+				}
+			}
+			logger.Info("[Golem] discovered %d skill(s) from %s, nodeInfo.InstalledSkills=%d",
+				len(metadata), s.cfg.SkillsDir, len(nodeInfo.InstalledSkills))
+		}
+	} else {
+		logger.Warn("[Golem] skills scan: SkillsDir is empty, skipping skills discovery")
+	}
+
+	// Flatten capability map to slice.
+	for _, cap := range capMap {
+		nodeInfo.Capabilities = append(nodeInfo.Capabilities, cap)
 	}
 
 	loadInfo := s.collectLoadInfo()
 
 	resp, err := s.client.Register(ctx, &pb.RegisterRequest{
-		NodeInfo: nodeInfo,
-		LoadInfo: loadInfo,
+		JoinToken: s.cfg.JoinToken,
+		NodeInfo:  nodeInfo,
+		LoadInfo:  loadInfo,
 	})
 	if err != nil {
 		return fmt.Errorf("register RPC failed: %w", err)

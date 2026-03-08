@@ -187,16 +187,24 @@ func (p *golemClusterPlugin) PromptSections() []prompt.PromptSection {
 
 // nodeInfo is the JSON output for a single node in tool results.
 type nodeInfo struct {
-	ID           string   `json:"id"`
+	ID              string          `json:"id"`
+	Name            string          `json:"name"`
+	Status          string          `json:"status"`
+	Address         string          `json:"address"`
+	Capabilities    []string        `json:"capabilities"`
+	InstalledSkills []nodeSkillInfo `json:"installed_skills,omitempty"`
+	Version         string          `json:"version"`
+	Cordoned        bool            `json:"cordoned"`
+	RunningTasks    int32           `json:"running_tasks"`
+	CPUPercent      float64         `json:"cpu_percent,omitempty"`
+	MemPercent      float64         `json:"memory_percent,omitempty"`
+}
+
+// nodeSkillInfo describes a skill installed on a Golem node (for tool output).
+type nodeSkillInfo struct {
 	Name         string   `json:"name"`
-	Status       string   `json:"status"`
-	Address      string   `json:"address"`
-	Capabilities []string `json:"capabilities"`
-	Version      string   `json:"version"`
-	Cordoned     bool     `json:"cordoned"`
-	RunningTasks int32    `json:"running_tasks"`
-	CPUPercent   float64  `json:"cpu_percent,omitempty"`
-	MemPercent   float64  `json:"memory_percent,omitempty"`
+	Description  string   `json:"description"`
+	Capabilities []string `json:"capabilities,omitempty"`
 }
 
 func (p *golemClusterPlugin) handleListNodes(ctx context.Context, params map[string]interface{}) (interface{}, error) {
@@ -229,14 +237,15 @@ func (p *golemClusterPlugin) handleListNodes(ctx context.Context, params map[str
 	result := make([]nodeInfo, 0, len(nodes))
 	for _, n := range nodes {
 		info := nodeInfo{
-			ID:           n.Spec.NodeID,
-			Name:         n.Spec.NodeName,
-			Status:       nodeStatusLabel(n),
-			Address:      n.Spec.GRPCAddress,
-			Capabilities: capNames(n),
-			Version:      n.Spec.Version,
-			Cordoned:     n.Spec.Cordoned,
-			RunningTasks: n.Status.RunningTasks,
+			ID:              n.Spec.NodeID,
+			Name:            n.Spec.NodeName,
+			Status:          nodeStatusLabel(n),
+			Address:         n.Spec.GRPCAddress,
+			Capabilities:    capNames(n),
+			InstalledSkills: installedSkillInfos(n),
+			Version:         n.Spec.Version,
+			Cordoned:        n.Spec.Cordoned,
+			RunningTasks:    n.Status.RunningTasks,
 		}
 		if n.Status.Load != nil {
 			info.CPUPercent = n.Status.Load.CpuPercent
@@ -272,14 +281,15 @@ func (p *golemClusterPlugin) handleGetNode(ctx context.Context, params map[strin
 	}
 
 	info := nodeInfo{
-		ID:           n.Spec.NodeID,
-		Name:         n.Spec.NodeName,
-		Status:       nodeStatusLabel(n),
-		Address:      n.Spec.GRPCAddress,
-		Capabilities: capNames(n),
-		Version:      n.Spec.Version,
-		Cordoned:     n.Spec.Cordoned,
-		RunningTasks: n.Status.RunningTasks,
+		ID:              n.Spec.NodeID,
+		Name:            n.Spec.NodeName,
+		Status:          nodeStatusLabel(n),
+		Address:         n.Spec.GRPCAddress,
+		Capabilities:    capNames(n),
+		InstalledSkills: installedSkillInfos(n),
+		Version:         n.Spec.Version,
+		Cordoned:        n.Spec.Cordoned,
+		RunningTasks:    n.Status.RunningTasks,
 	}
 	if n.Status.Load != nil {
 		info.CPUPercent = n.Status.Load.CpuPercent
@@ -341,19 +351,33 @@ func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[
 		return nil, err
 	}
 
-	// Check that the node has the required capability.
+	// Check that the node has the required capability or installed skill.
 	node, _ := p.registry.GetNode(nodeID)
 	if node != nil {
-		caps := capNames(node)
-		hasCap := false
-		for _, c := range caps {
-			if strings.EqualFold(c, skillName) {
-				hasCap = true
+		hasMatch := false
+		// Check capabilities.
+		for _, c := range node.Spec.Capabilities {
+			if strings.EqualFold(c.Name, skillName) {
+				hasMatch = true
 				break
 			}
 		}
-		if !hasCap {
-			return nil, fmt.Errorf("node %q does not have capability %q (available: %v)", nodeIDOrName, skillName, caps)
+		// Check installed skills (by name).
+		if !hasMatch {
+			for _, sk := range node.Spec.InstalledSkills {
+				if strings.EqualFold(sk.Name, skillName) {
+					hasMatch = true
+					break
+				}
+			}
+		}
+		if !hasMatch {
+			caps := capNames(node)
+			skillNames := make([]string, len(node.Spec.InstalledSkills))
+			for i, sk := range node.Spec.InstalledSkills {
+				skillNames[i] = sk.Name
+			}
+			return nil, fmt.Errorf("node %q does not have capability or skill %q (capabilities: %v, skills: %v)", nodeIDOrName, skillName, caps, skillNames)
 		}
 	}
 
@@ -451,6 +475,7 @@ func (s *clusterInfoInjector) Enabled(_ context.Context, _ *prompt.PromptContext
 
 func (s *clusterInfoInjector) Render(_ context.Context, pc *prompt.PromptContext) (string, error) {
 	if s.plugin.registry == nil {
+		logger.Warn("[golem-cluster] clusterInfoInjector.Render: registry is nil!")
 		return "", nil
 	}
 
@@ -460,7 +485,10 @@ func (s *clusterInfoInjector) Render(_ context.Context, pc *prompt.PromptContext
 		return "", nil
 	}
 
+	logger.Info("[golem-cluster] clusterInfoInjector.Render: found %d nodes in registry", len(nodes))
+
 	if len(nodes) == 0 {
+		logger.Info("[golem-cluster] clusterInfoInjector.Render: no nodes registered, returning empty")
 		return "", nil
 	}
 
@@ -472,12 +500,25 @@ func (s *clusterInfoInjector) Render(_ context.Context, pc *prompt.PromptContext
 		Version:    v.GitVersion,
 	}
 	for _, n := range nodes {
-		clusterInfo.Golems = append(clusterInfo.Golems, prompt.GolemInfo{
+		logger.Info("[golem-cluster] Render: node %s has %d capabilities, %d InstalledSkills",
+			n.Spec.NodeName, len(n.Spec.Capabilities), len(n.Spec.InstalledSkills))
+		golemInfo := prompt.GolemInfo{
 			ID:     n.Spec.NodeID,
 			Name:   n.Spec.NodeName,
 			Status: nodeStatusLabel(n),
 			Skills: capNames(n),
-		})
+		}
+		// Populate installed skills from the node's registered InstalledSkills.
+		for _, sk := range n.Spec.InstalledSkills {
+			golemInfo.InstalledSkills = append(golemInfo.InstalledSkills, prompt.GolemSkillInfo{
+				Name:         sk.Name,
+				Description:  sk.Description,
+				Capabilities: sk.Capabilities,
+			})
+		}
+		logger.Info("[golem-cluster] Render: golemInfo for %s: Skills=%v, InstalledSkills=%d",
+			n.Spec.NodeName, golemInfo.Skills, len(golemInfo.InstalledSkills))
+		clusterInfo.Golems = append(clusterInfo.Golems, golemInfo)
 	}
 	pc.ClusterInfo = clusterInfo
 
@@ -512,4 +553,19 @@ func capNames(n *registry.NodeState) []string {
 		names = append(names, c.Name)
 	}
 	return names
+}
+
+func installedSkillInfos(n *registry.NodeState) []nodeSkillInfo {
+	if len(n.Spec.InstalledSkills) == 0 {
+		return nil
+	}
+	skills := make([]nodeSkillInfo, len(n.Spec.InstalledSkills))
+	for i, sk := range n.Spec.InstalledSkills {
+		skills[i] = nodeSkillInfo{
+			Name:         sk.Name,
+			Description:  sk.Description,
+			Capabilities: sk.Capabilities,
+		}
+	}
+	return skills
 }

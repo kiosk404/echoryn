@@ -6,9 +6,10 @@ import (
 	"io"
 	"os"
 
-	"github.com/kiosk404/echoryn/internal/echoadm/utils/templates"
 	"github.com/kiosk404/echoryn/internal/echoctl/cmd/chat"
+	"github.com/kiosk404/echoryn/internal/echoctl/cmd/token"
 	cmdutil "github.com/kiosk404/echoryn/internal/echoctl/cmd/util"
+	"github.com/kiosk404/echoryn/internal/echoctl/utils/templates"
 	genericapiserver "github.com/kiosk404/echoryn/internal/pkg/server"
 	"github.com/kiosk404/echoryn/pkg/cli/genericclioptions"
 	"github.com/kiosk404/echoryn/pkg/utils/cliflag"
@@ -27,14 +28,14 @@ func NewEchoCtlCommand(in io.Reader, out, err io.Writer) *cobra.Command {
 	cmds := &cobra.Command{
 		Use:   "echoctl",
 		Short: "echoctl manages golem nodes in the echoryn realm",
-		Long: templates.LongDesc(fmt.Sprintf(`%s
+		Long: templates.LongDesc(fmt.Sprintf(`
 		echoctl is the CLI tool for managing golem nodes in the echoryn realm.
 
 		It allows you to jion a node to a hivemind realm using a secret token,
 		initialize the local node environment, and run pre-flight checks to verify that
 		the node is ready to join the realm's eligibility requirements.
 		Find more information at:
-			https://github.com/kiosk404/echoryn/blob/master/docs/guide/en-US/cmd/echoctl/echoctl.md`, Banner())),
+			https://github.com/kiosk404/echoryn/blob/master/docs/guide/en-US/cmd/echoctl/echoctl.md`)),
 		Run: runHelp,
 		// Hook before and after Run initialize and write profiles to disk,
 		// respectively.
@@ -67,7 +68,7 @@ func NewEchoCtlCommand(in io.Reader, out, err io.Writer) *cobra.Command {
 	cmds.SetGlobalNormalizationFunc(cliflag.WarnWordSepNormalizeFunc)
 
 	ioStreams := genericclioptions.IOStreams{In: in, Out: out, ErrOut: err}
-	f := cmdutil.NewDefaultFactory()
+	f := cmdutil.NewDefaultFactory(HiveMindAddrPtr())
 
 	groups := templates.CommandGroups{
 		{
@@ -76,11 +77,27 @@ func NewEchoCtlCommand(in io.Reader, out, err io.Writer) *cobra.Command {
 				chat.NewCmdInfo(f, ioStreams),
 			},
 		},
+		{
+			Message: "Cluster Management Commands:",
+			Commands: []*cobra.Command{
+				token.NewCmdToken(f, ioStreams),
+			},
+		},
 	}
 	groups.Add(cmds)
 
 	filters := []string{"options"}
 	templates.ActsAsRootCommand(cmds, filters, groups...)
+
+	// Inject banner before help output for the root command only.
+	// Must be after ActsAsRootCommand which overrides SetHelpFunc.
+	wrappedHelp := cmds.HelpFunc()
+	cmds.SetHelpFunc(func(command *cobra.Command, strings []string) {
+		if command.Name() == "echoctl" {
+			fmt.Print(Banner())
+		}
+		wrappedHelp(command, strings)
+	})
 
 	verflag.AddFlags(cmds.PersistentFlags())
 
@@ -88,5 +105,6 @@ func NewEchoCtlCommand(in io.Reader, out, err io.Writer) *cobra.Command {
 }
 
 func runHelp(cmd *cobra.Command, args []string) {
+	fmt.Print(Banner())
 	_ = cmd.Help()
 }

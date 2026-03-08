@@ -54,9 +54,11 @@ func (p *RegistryProfileProvider) ListProfiles(ctx context.Context) ([]NodeProfi
 	profiles := make([]NodeProfile, len(nodes))
 	for i, node := range nodes {
 		profiles[i] = NodeProfile{
-			NodeState:   node,
-			HealthScore: calculateHealthScore(node),
-			LastUpdated: time.Now(),
+			NodeState:       node,
+			HealthScore:     calculateHealthScore(node),
+			InstalledSkills: toSchedulerSkills(node),
+			Tags:            node.Spec.Labels,
+			LastUpdated:     time.Now(),
 			// InstalledSkills, SupportedFeatures, Tags would be populated
 			// from additional data sources in a real implementation
 		}
@@ -70,10 +72,30 @@ func (p *RegistryProfileProvider) GetProfile(ctx context.Context, nodeID string)
 		return nil, err
 	}
 	return &NodeProfile{
-		NodeState:   node,
-		HealthScore: calculateHealthScore(node),
-		LastUpdated: time.Now(),
+		NodeState:       node,
+		HealthScore:     calculateHealthScore(node),
+		InstalledSkills: toSchedulerSkills(node),
+		Tags:            node.Spec.Labels,
+		LastUpdated:     time.Now(),
 	}, nil
+}
+
+// toSchedulerSkills converts proto InstalledSkills to scheduler SkillInfo.
+func toSchedulerSkills(node *registry.NodeState) []SkillInfo {
+	if len(node.Spec.InstalledSkills) == 0 {
+		return nil
+	}
+
+	skills := make([]SkillInfo, len(node.Spec.InstalledSkills))
+	for i, s := range node.Spec.InstalledSkills {
+		skills[i] = SkillInfo{
+			ID:           s.Name, // Use name as ID (skills are identified by name)
+			Name:         s.Name,
+			Version:      s.Version,
+			Capabilities: s.Capabilities,
+		}
+	}
+	return skills
 }
 
 func calculateHealthScore(node *registry.NodeState) float64 {

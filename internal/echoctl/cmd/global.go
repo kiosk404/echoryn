@@ -15,6 +15,8 @@ func addGlobalFlags(flags *pflag.FlagSet) {
 		"Address of the hivemind central server (host:port)")
 }
 
-func GetHiveMindAddr() string {
-	return globalEchorynHiveMindAddr
+// HiveMindAddrPtr returns a pointer to the global Hivemind address variable.
+// Used to pass to Factory so subcommands can access it without importing this package.
+func HiveMindAddrPtr() *string {
+	return &globalEchorynHiveMindAddr
 }

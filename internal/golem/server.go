@@ -85,6 +85,7 @@ func createGolemServer(cfg *config.Config) (*golemServer, error) {
 		MaxConcurrentTasks: int32(cfg.MaxConcurrentTasks),
 		WorkspaceDir:       workspaceDir,
 		SkillsDir:          skillsDir,
+		JoinToken:          cfg.JoinToken,
 	}
 	nodeService, err := nodeCfg.Complete().New()
 	if err != nil {

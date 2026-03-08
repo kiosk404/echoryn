@@ -3,12 +3,14 @@
 //   - registry: Node registration and state management
 //   - dispatcher: Stream-based task dispatch to Golem nodes via heartbeat streams
 //   - scheduler: Task scheduling with AI-driven node selection
+//   - tokenmanager: Bootstrap Token management for node joining
 //
 // The typical initialization flow is:
 //
-//	registry := registry.Config{...}.Complete().New()
-//	dispatcher := dispatcher.NewStreamDispatcher(streamManager)
-//	scheduler := scheduler.DefaultSchedulerConfig().Complete(profileProvider, dispatcher).New()
+//		registry := registry.Config{...}.Complete().New()
+//	 tokenManager := tokenmanager.Config{...}.Complete().New()
+//		dispatcher := dispatcher.NewStreamDispatcher(streamManager)
+//		scheduler := scheduler.DefaultSchedulerConfig().Complete(profileProvider, dispatcher).New()
 package golem
 
 import (
@@ -18,33 +20,38 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/dispatcher"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/scheduler"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/tokenmanager"
 )
 
 // Config holds the complete configuration for the Golem subsystem.
 type Config struct {
-	Registry  registry.Config
-	Scheduler scheduler.SchedulerConfig
+	Registry     registry.Config
+	Scheduler    scheduler.SchedulerConfig
+	TokenManager tokenmanager.Config
 }
 
 // CompletedConfig is a sealed configuration ready for use.
 type CompletedConfig struct {
-	registryConfig  *registry.CompletedConfig
-	schedulerConfig *scheduler.SchedulerConfig
+	registryConfig     *registry.CompletedConfig
+	schedulerConfig    *scheduler.SchedulerConfig
+	tokenManagerConfig *tokenmanager.CompletedConfig
 }
 
 // Complete validates and fills in default values.
 func (c *Config) Complete() *CompletedConfig {
 	return &CompletedConfig{
-		registryConfig:  c.Registry.Complete(),
-		schedulerConfig: &c.Scheduler,
+		registryConfig:     c.Registry.Complete(),
+		schedulerConfig:    &c.Scheduler,
+		tokenManagerConfig: c.TokenManager.Complete(),
 	}
 }
 
 // Module is the assembled Golem subsystem.
 type Module struct {
-	Registry   registry.Registry
-	Dispatcher dispatcher.Dispatcher
-	Scheduler  scheduler.Scheduler
+	Registry     registry.Registry
+	Dispatcher   dispatcher.Dispatcher
+	Scheduler    scheduler.Scheduler
+	TokenManager tokenmanager.TokenManager
 
 	profileProvider *scheduler.RegistryProfileProvider
 
@@ -61,13 +68,19 @@ func (c *CompletedConfig) New() (*Module, error) {
 		return nil, fmt.Errorf("golem: failed to create registry: %w", err)
 	}
 
-	// 2. Create profile provider (adapts registry to scheduler's interface).
+	// 2. Create token manager.
+	tm, err := c.tokenManagerConfig.New()
+	if err != nil {
+		return nil, fmt.Errorf("golem: failed to create token manager: %w", err)
+	}
+
+	// 3. Create profile provider (adapts registry to scheduler's interface).
 	profileProvider := scheduler.NewRegistryProfileProvider(reg)
 
-	// 3. Create stream dispatcher (StreamManager will be bound later).
+	// 4. Create stream dispatcher (StreamManager will be bound later).
 	disp := dispatcher.NewStreamDispatcher(nil) // StreamManager set via BindStreamManager()
 
-	// 4. Create scheduler.
+	// 5. Create scheduler.
 	schedConfig, err := c.schedulerConfig.Complete(profileProvider, disp)
 	if err != nil {
 		return nil, fmt.Errorf("golem: failed to complete scheduler config: %w", err)
@@ -78,6 +91,7 @@ func (c *CompletedConfig) New() (*Module, error) {
 		Registry:         reg,
 		Dispatcher:       disp,
 		Scheduler:        sched,
+		TokenManager:     tm,
 		profileProvider:  profileProvider,
 		streamDispatcher: disp,
 	}, nil
@@ -92,6 +106,9 @@ func (m *Module) BindStreamManager(mgr dispatcher.StreamManager) {
 
 // Start starts all components of the Golem subsystem.
 func (m *Module) Start(ctx context.Context) error {
+	if err := m.TokenManager.Start(ctx); err != nil {
+		return fmt.Errorf("golem: failed to start token manager: %w", err)
+	}
 	if err := m.Registry.Start(ctx); err != nil {
 		return fmt.Errorf("golem: failed to start registry: %w", err)
 	}
@@ -116,6 +133,9 @@ func (m *Module) Stop(ctx context.Context) error {
 	}
 	if err := m.Registry.Stop(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("registry: %w", err))
+	}
+	if err := m.TokenManager.Stop(ctx); err != nil {
+		errs = append(errs, fmt.Errorf("tokenmanager: %w", err))
 	}
 
 	if len(errs) > 0 {

@@ -7,7 +7,7 @@ import (
 	"text/template"
 	"unicode"
 
-	"github.com/kiosk404/echoryn/internal/echoadm/utils/term"
+	"github.com/kiosk404/echoryn/pkg/utils/term"
 	"github.com/spf13/cobra"
 	flag "github.com/spf13/pflag"
 )

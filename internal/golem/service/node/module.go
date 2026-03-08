@@ -15,6 +15,7 @@ type Config struct {
 	MaxConcurrentTasks int32
 	WorkspaceDir       string
 	SkillsDir          string
+	JoinToken          string // Bootstrap Token for registration; empty = no auth (local dev)
 }
 
 // CompletedConfig is the result of calling Complete on Config.

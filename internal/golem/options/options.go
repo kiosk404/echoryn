@@ -15,6 +15,10 @@ type Options struct {
 	// HivemindAddress is the gRPC address of the Hivemind control plane.
 	HivemindAddress string `json:"hivemind-address" mapstructure:"hivemind-address"`
 
+	// JoinToken is the Bootstrap Token for registering with Hivemind.
+	// Required unless Hivemind has golem.dev-mode enabled and Golem connects from loopback
+	JoinToken string `json:"join-token" mapstructure:"join-token"`
+
 	// Node configuration.
 	NodeName           string            `json:"node-name"           mapstructure:"node-name"`
 	NodeLabels         map[string]string `json:"node-labels"         mapstructure:"node-labels"`
@@ -68,6 +72,8 @@ func (o *Options) Flags() (fss cliflag.NamedFlagSets) {
 		"Timeout for initial gRPC connection to Hivemind.")
 	fs.StringVar(&o.ReconnectInterval, "reconnect-interval", o.ReconnectInterval,
 		"Interval between reconnection attempts to Hivemind.")
+	fs.StringVar(&o.JoinToken, "join-token", o.JoinToken,
+		"Bootstrap Token for registering with Hivemind, Required unless hivemind has golem.dev-mode enabled.")
 	fs.StringVar(&o.HeartbeatInterval, "heartbeat-interval", o.HeartbeatInterval,
 		"Interval between heartbeat messages sent to Hivemind.")
 

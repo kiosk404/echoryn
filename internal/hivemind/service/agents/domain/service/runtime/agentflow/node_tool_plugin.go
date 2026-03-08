@@ -3,6 +3,8 @@ package agentflow
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -45,7 +47,13 @@ func (p *PluginTool) InvokableRun(ctx context.Context, argumentsInJSON string, o
 	var params map[string]interface{}
 	if argumentsInJSON != "" && argumentsInJSON != "{}" {
 		if err := json.Unmarshal([]byte(argumentsInJSON), &params); err != nil {
-			return "", fmt.Errorf("failed to unmarshal arguments JSON: %w", err)
+			// LLM-generated JSON may contain invalid escape sequences (e.g. shell
+			// commands with unescaped backslashes). Attempt to sanitize and retry
+			// before giving up.
+			sanitized := sanitizeJSON(argumentsInJSON)
+			if err = json.Unmarshal([]byte(sanitized), &params); err != nil {
+				return "", fmt.Errorf("failed to unmarshal arguments JSON: %w", err)
+			}
 		}
 	}
 
@@ -96,6 +104,30 @@ func AdaptPluginTools(registry *pluginPkg.Registry, toolNames []string) []tool.B
 	}
 
 	return tools
+}
+
+// invalidEscapeRe matches a backslash followed by a character that is Not a Valid
+// JSON escape (\", \\, \/, \b, \f, \n, \r, \t, \uXXXX). Inside JSON strings LLMs
+// sometimes produce bare backslashes (e.g. grep patterns like `server\|foo`) which
+// violate RFC 8259 and cause parsers like sonic to reject the payload.
+
+var InvalidEscapeRe = regexp.MustCompile(`\\([^"\\/bfnrtu])`)
+
+// sanitizeJSON attempts to fix common LLM-generated JSON issues:
+//  1. Invalid escape sequences inside string values (e.g. \| , \' , \> etc.)
+//     are converted to valid double-backslash escapes (\\| , \\' , \\>).
+//  2. Unescaped control characters (tabs, newlines) inside strings are replaced
+//     with their JSON escape equivalents.
+func sanitizeJSON(s string) string {
+	// Step 1: replace raw control characters that may appear inside string values.
+	s = strings.ReplaceAll(s, "\t", `\t`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+
+	// Step2:
+	s = InvalidEscapeRe.ReplaceAllString(s, `\\$1`)
+
+	return s
 }
 
 // toSchemaDataType converts a string type name to the corresponding Eino schema.DataType.

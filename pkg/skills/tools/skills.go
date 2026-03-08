@@ -8,7 +8,10 @@ import (
 // NewSkillTools creates all skill-related tools for an agent.
 // Returns a slice of tools that can be added to the agent's tool list
 func NewSkillTools(registry *skills.Registry) []tool.BaseTool {
-	return []tool.BaseTool{}
+	return []tool.BaseTool{
+		NewListSkillsTool(registry),
+		NewViewSkillTool(registry),
+	}
 }
 
 // ToolNames returns the names of all skill-related tools.

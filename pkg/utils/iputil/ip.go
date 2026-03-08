@@ -48,3 +48,9 @@ func RemoteIP(req *http.Request) string {
 
 	return remoteAddr
 }
+
+// IsLoopBackIP 本地IP
+func IsLoopBackIP(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}

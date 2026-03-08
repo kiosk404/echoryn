@@ -78,10 +78,10 @@ func checkErr(err error, handleErr func(string, int)) {
 	case errors.Is(err, ErrExit):
 		handleErr("", DefaultErrorExitCode)
 	default:
-		var err errorx.Aggregate
+		var errs errorx.Aggregate
 		switch {
-		case errors.As(err, &err):
-			handleErr(MultipleErrors(``, err.Errors()), DefaultErrorExitCode)
+		case errors.As(err, &errs):
+			handleErr(MultipleErrors(``, errs.Errors()), DefaultErrorExitCode)
 		default: // for any other error type
 			msg, ok := StandardErrorMessage(err)
 			if !ok {
