@@ -23,6 +23,10 @@ Like Ultron can switch between different mechanical bodies to execute tasks, Ech
 
 The platform provides a complete infrastructure for AI agents, including LLM integration, plugin systems, memory management, and distributed task execution.
 
+## Language Versions
+- [English Version](../README.md) - English documentation (main)
+- [中文版本](docs/README_ZH.md) - Chinese documentation
+
 ## 🚀 Features
 
 ### Core Architecture
@@ -375,10 +379,6 @@ go test ./internal/hivemind/...
 ```
 
 ## 📚 Documentation
-
-### Language Versions
-- [English Version](../README.md) - English documentation (main)
-- [中文版本](docs/README_ZH.md) - Chinese documentation
 
 ### Core Specifications
 - [Plugin System Specification](docs/ECHORYN_HIVEMIND_MEMORY.md) - Detailed plugin architecture
