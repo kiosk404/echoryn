@@ -1,6 +1,6 @@
 <h1 align="center">Echoryn 项目</h1>
 
-<p align="center">通过 Go 语言重新构建 Openclaw，一个为 AI 虚拟角色提供灵魂容器的平台，将它们带入我们的世界。</p>
+<p align="center">用 Go 重构 Openclaw，打造 AI 虚拟角色的灵魂容器。</p>
 
 <p align="center">
   <strong>🚧 开发进行中 (WIP) – 项目尚未完成。</strong>
@@ -11,12 +11,15 @@
 [![Go 版本](https://img.shields.io/badge/Go-1.25.0-blue)](https://golang.org/)
 [![许可证](https://img.shields.io/badge/许可证-MIT-green)](../LICENSE)
 [![Go 报告卡](https://goreportcard.com/badge/github.com/kiosk404/echoryn)](https://goreportcard.com/report/github.com/kiosk404/echoryn)
+[![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/kiosk404/echoryn)
 
 </div>
 
 ## ✨ 概述
 
-**Echoryn** 是一个分布式 AI 虚拟角色容器平台，旨在为 AI 智能体提供一个"灵魂容器"，将它们带入我们的世界。受 Openclaw 项目启发，Echoryn 通过类似 Kubernetes 的架构，使用 Hivemind（中央协调）和 Golem（工作节点）来创建、部署和管理 AI 虚拟角色。
+**Echoryn** 是一个分布式 AI 虚拟角色容器平台，旨在为 AI 智能体提供一个"灵魂容器"，将它们带入我们的世界。受 Openclaw 项目和《复仇者联盟》中奥创的启发，Echoryn 采用了中心智能体（Hivemind）与可更换机器身体（Golem）的架构设计，类似 Kubernetes 的协调模式。
+
+如同奥创可以随时切换不同的机械躯体执行任务，Echoryn 的 Hivemind（蜂巢智心）作为中心智能体，能够协调多个 Golem（傀儡）工作节点，实现智能体的分布式任务执行。Hivemind 负责决策、记忆和调度，而 Golem 则作为可互换的"身体"执行具体操作。
 
 该平台为 AI 智能体提供了完整的基础设施，包括 LLM 集成、插件系统、内存管理和分布式任务执行。
 
