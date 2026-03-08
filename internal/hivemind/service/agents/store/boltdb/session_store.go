@@ -6,6 +6,7 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg/errno"
 	"github.com/kiosk404/echoryn/pkg/utils/json"
 )
 
@@ -36,7 +37,7 @@ func (s *SessionStore) Get(_ context.Context, id string) (*entity.Session, error
 		b := tx.Bucket(bucketSessionStore)
 		data := b.Get([]byte(id))
 		if data == nil {
-			return fmt.Errorf("session %q not found", id)
+			return errno.ErrSessionNotFound
 		}
 		return json.Unmarshal(data, &session)
 	})

@@ -153,6 +153,13 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 	}
 	logger.Info("LLM module initialized successfully")
 
+	// Bind LLM manager to Golem scheduler to enable LLMMode scheduling.
+	if err := golemModule.BindLLMManager(llmModule.Manager); err != nil {
+		logger.Warn("[Hivemind] failed to bind LLM manager to Golem scheduler: %v", err)
+	} else {
+		logger.Info("[Hivemind] LLM-enhanced scheduling enabled for Golem subsystem")
+	}
+
 	// Register Golem gRPC services on the gRPC server
 	devMode := cfg.GolemOptions != nil && cfg.GolemOptions.DevMode
 	nodeServiceHandler := grpchandler.NewNodeServiceHandler(golemModule.Registry, golemModule.TokenManager, devMode)
@@ -170,7 +177,8 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 
 	pluginCfg := &plugin.Config{
 		SlotConfig: plugin.SlotConfig{
-			"memory": cfg.PluginOptions.Slots.Memory,
+			"memory":  cfg.PluginOptions.Slots.Memory,
+			"channel": cfg.PluginOptions.Slots.Channel,
 		},
 		RuntimeAPI: plugin.NewRuntimeAPI(&modelManagerAdapter{llmModule.Manager}),
 	}
@@ -179,36 +187,6 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 	// PromptPipeline is always created (builtin sections work without plugins).
 	promptPipeline := prompt.NewDefaultPipeline()
 	pluginFramework.SetPromptPipeline(promptPipeline)
-
-	if cfg.PluginOptions.Enabled {
-		// Register in-tree (built-in) plugins.
-		// All plugin configurations are sourced from PluginOptions.Entries,
-		// following OpenClaw's plugins.entries[pluginID].config pattern.
-		inTreeRegistry := builtin.NewInTreeRegistry(cfg.PluginOptions, golemModule)
-		if err := inTreeRegistry.ApplyTo(pluginFramework); err != nil {
-			return nil, fmt.Errorf("failed to register in-tree plugins: %w", err)
-		}
-
-		// Initialize all plugins (slot resolution → factory → Init).
-		if err := pluginFramework.Init(); err != nil {
-			return nil, fmt.Errorf("failed to initialize plugin framework: %w", err)
-		}
-
-		// Start plugin lifecycle (services, hooks).
-		if err := pluginFramework.Start(context.Background()); err != nil {
-			return nil, fmt.Errorf("failed to start plugin framework: %w", err)
-		}
-		logger.Info("[Hivemind] Plugin framework initialized successfully (%d plugins loaded)",
-			pluginFramework.Registry().Len())
-
-		// Bind SkillsEnricher: probe initialized plugins for the registry.SkillsEnricher
-		// interface and inject it into the Golem Registry. This allows the Registry to
-		// enrich Golem node registrations with Hivemind-side skills even when nodes
-		// don't report their own skills (e.g. no local skills directory).
-		injectSkillsEnricher(pluginFramework, golemModule)
-	} else {
-		logger.Info("[Hivemind] Plugin framework disabled (plugins.enabled=false), skipping plugin loading")
-	}
 
 	// Initialize MCP module (K8S-style: Config → Complete → New).
 	// Load MCP configuration from standalone file (Claude Desktop compatible format).
@@ -254,6 +232,42 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 	// Create ChannelManager + Dispatcher, then inject the manager into
 	// channel plugins via k8s-style interface probe (ChannelManagerSetter).
 	server.initChannelGateway()
+
+	if cfg.PluginOptions.Enabled {
+		// Register in-tree (built-in) plugins.
+		// All plugin configurations are sourced from PluginOptions.Entries,
+		// following OpenClaw's plugins.entries[pluginID].config pattern.
+		inTreeRegistry := builtin.NewInTreeRegistry(cfg.PluginOptions, golemModule)
+		if err := inTreeRegistry.ApplyTo(pluginFramework); err != nil {
+			return nil, fmt.Errorf("failed to register in-tree plugins: %w", err)
+		}
+
+		// Initialize all plugins (slot resolution → factory → Init).
+		if err := pluginFramework.Init(); err != nil {
+			return nil, fmt.Errorf("failed to initialize plugin framework: %w", err)
+		}
+
+		// Initialize IM channel gateway BEFORE starting plugins.
+		// This ensures ChannelManager is injected into channel plugins before
+		// HookServerStart fires during pluginFramework.Start().
+		server.initChannelGateway()
+
+		// Start plugin lifecycle (services, hooks).
+		// HookServerStart fires here — channel plugins register with the already-injected ChannelManager.
+		if err := pluginFramework.Start(context.Background()); err != nil {
+			return nil, fmt.Errorf("failed to start plugin framework: %w", err)
+		}
+		logger.Info("[Hivemind] Plugin framework initialized successfully (%d plugins loaded)",
+			pluginFramework.Registry().Len())
+
+		// Bind SkillsEnricher: probe initialized plugins for the registry.SkillsEnricher
+		// interface and inject it into the Golem Registry. This allows the Registry to
+		// enrich Golem node registrations with Hivemind-side skills even when nodes
+		// don't report their own skills (e.g. no local skills directory).
+		injectSkillsEnricher(pluginFramework, golemModule)
+	} else {
+		logger.Info("[Hivemind] Plugin framework disabled (plugins.enabled=false), skipping plugin loading")
+	}
 
 	return server, nil
 }

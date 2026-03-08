@@ -82,6 +82,7 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 			"config":     resolveGolemClusterConfig(opts),
 			"registry":   golemModule.Registry,
 			"dispatcher": golemModule.Dispatcher,
+			"scheduler":  golemModule.Scheduler,
 		})
 
 	// --- skills: bridges file-system skills (SKILL.md) to agent runtime ---
@@ -90,6 +91,22 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		skillsplugin.Factory,
 		plugin.PluginArgs{
 			"config": resolveSkillsConfig(opts),
+		})
+
+	// --- channel-feishu: Feishu/Lark IM integration (websocket/webhook) ---
+	registry.Register(
+		feishuchannel.PluginDefinition(),
+		feishuchannel.Factory,
+		plugin.PluginArgs{
+			"config": resolveFeishuConfig(opts),
+		})
+
+	// --- channel-telegram: Telegram Bot integration ---
+	registry.Register(
+		telegramchannel.PluginDefinition(),
+		telegramchannel.Factory,
+		plugin.PluginArgs{
+			"config": resolveTelegramConfig(opts),
 		})
 
 	return registry

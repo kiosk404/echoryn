@@ -73,6 +73,8 @@ func (s *Service) SetStatus(status pb.NodeStatus) {
 }
 
 // Start connects to Hivemind, registers the node, and starts the heartbeat loop.
+// Registration is handled by the heartbeat loop itself, which re-registers.
+// before each heartbeat stream to handle Hivemind restarts gracefully.
 func (s *Service) Start(ctx context.Context) error {
 	// Connect to Hivemind gRPC.
 	dialCtx, dialCancel := context.WithTimeout(ctx, s.cfg.ConnectTimeout)
@@ -89,13 +91,7 @@ func (s *Service) Start(ctx context.Context) error {
 	s.client = pb.NewGolemNodeServiceClient(conn)
 	logger.Info("[Golem] connected to Hivemind at %s", s.cfg.HivemindAddress)
 
-	// Register this node.
-	if err := s.register(ctx); err != nil {
-		s.conn.Close()
-		return fmt.Errorf("node registration failed: %w", err)
-	}
-
-	// Start heartbeat in background.
+	// Start heartbeat in background. (include registration).
 	hbCtx, hbCancel := context.WithCancel(context.Background())
 	s.cancel = hbCancel
 	go s.heartbeatLoop(hbCtx)

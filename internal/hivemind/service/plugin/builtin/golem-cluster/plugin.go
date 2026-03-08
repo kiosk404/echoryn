@@ -19,7 +19,9 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/dispatcher"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/scheduler"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
+	"github.com/kiosk404/echoryn/internal/pkg/protocol"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
 	"github.com/kiosk404/echoryn/pkg/version"
@@ -61,6 +63,7 @@ type golemClusterPlugin struct {
 	cfg        *Config
 	registry   registry.Registry
 	dispatcher dispatcher.Dispatcher
+	scheduler  scheduler.Scheduler
 }
 
 // Factory is the PluginFactory for golem-cluster.
@@ -72,11 +75,15 @@ func Factory(args plugin.PluginArgs, handle plugin.Handle) (plugin.Plugin, error
 
 	var reg registry.Registry
 	var disp dispatcher.Dispatcher
+	var sched scheduler.Scheduler
 	if r, ok := args["registry"].(registry.Registry); ok {
 		reg = r
 	}
 	if d, ok := args["dispatcher"].(dispatcher.Dispatcher); ok {
 		disp = d
+	}
+	if s, ok := args["scheduler"].(scheduler.Scheduler); ok {
+		sched = s
 	}
 
 	if !cfg.Enabled {
@@ -87,6 +94,7 @@ func Factory(args plugin.PluginArgs, handle plugin.Handle) (plugin.Plugin, error
 		cfg:        cfg,
 		registry:   reg,
 		dispatcher: disp,
+		scheduler:  sched,
 	}, nil
 }
 
@@ -160,6 +168,44 @@ func (p *golemClusterPlugin) Init(api plugin.PluginAPI) error {
 			},
 		},
 		Handler: p.handleDispatchTask,
+	})
+
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "cluster_execute_skill",
+		Description: "Execute a skill on the most suitable Golem node, automatically selected by the AI scheduler. Unlike cluster_dispatch_task which requires you to specify a node, this tool uses LLM-enhanced scheduling to find the best node for the task based on skills, capabilities, load, and semantic fit.",
+		Parameters: []plugin.ParameterDef{
+			{
+				Name:        "skill_name",
+				Type:        "string",
+				Description: "The skill to execute (e.g., 'shell', 'fileops', 'data-analysis'). The scheduler will find nodes that have this skill installed.",
+				Required:    true,
+			},
+			{
+				Name:        "payload",
+				Type:        "object",
+				Description: "JSON parameters for the skill. For 'shell' skill: {\"command\": \"<shell command>\"}. For 'fileops' skill: {\"operation\": \"read|write|list\", \"path\": \"<file path>\", \"content\": \"<optional content for write>\"}.",
+				Required:    true,
+			},
+			{
+				Name:        "description",
+				Type:        "string",
+				Description: "A human-readable description of what this task does. Used by the LLM scheduler to semantically match the best node. Example: 'Analyze user behavior data from the last 3 days'.",
+				Required:    false,
+			},
+			{
+				Name:        "timeout",
+				Type:        "string",
+				Description: "Optional execution timeout (e.g., '30s', '5m'). Defaults to '30s'.",
+				Required:    false,
+			},
+			{
+				Name:        "preferred_tags",
+				Type:        "object",
+				Description: "Optional tag preferences for node selection (e.g., {\"env\": \"prod\", \"region\": \"us-west\"}).",
+				Required:    false,
+			},
+		},
+		Handler: p.handleExecuteSkill,
 	})
 
 	return nil
@@ -427,6 +473,139 @@ func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[
 	} else {
 		result["success"] = resp.Accepted
 		result["output"] = "(no output)"
+	}
+
+	return result, nil
+}
+
+func (p *golemClusterPlugin) handleExecuteSkill(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+	if p.scheduler == nil {
+		return nil, fmt.Errorf("Scheduler not available — cluster_execute_skill requires the scheduler to be initialized")
+	}
+	if p.registry == nil || p.dispatcher == nil {
+		return nil, fmt.Errorf("Registry or Dispatcher not available")
+	}
+
+	// Parse required parameters.
+	skillName, _ := params["skill_name"].(string)
+	if skillName == "" {
+		return nil, fmt.Errorf("skill_name parameter is required")
+	}
+
+	// Parse payload.
+	var payloadBytes []byte
+	switch v := params["payload"].(type) {
+	case map[string]interface{}:
+		var err error
+		payloadBytes, err = json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal payload: %w", err)
+		}
+	case string:
+		payloadBytes = []byte(v)
+	default:
+		if v != nil {
+			b, err := json.Marshal(v)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal payload: %w", err)
+			}
+			payloadBytes = b
+		}
+	}
+
+	// Parse optional parameters.
+	description, _ := params["description"].(string)
+	timeoutStr, _ := params["timeout"].(string)
+	if timeoutStr == "" {
+		timeoutStr = "30s"
+	}
+	timeout, err := time.ParseDuration(timeoutStr)
+	if err != nil {
+		timeout = 30 * time.Second
+	}
+
+	// Parse preferred tags.
+	var preferredTags map[string]string
+	if tags, ok := params["preferred_tags"].(map[string]interface{}); ok {
+		preferredTags = make(map[string]string, len(tags))
+		for k, v := range tags {
+			if s, ok := v.(string); ok {
+				preferredTags[k] = s
+			}
+		}
+	}
+
+	// Build the protocol task.
+	task := &protocol.Task{
+		ID:        uuid.New().String(),
+		Name:      fmt.Sprintf("execute-%s", skillName),
+		SkillName: skillName,
+		Payload:   payloadBytes,
+		Status:    protocol.TaskStatusPending,
+		Priority:  protocol.TaskPriorityNormal,
+		Timeout:   timeout,
+	}
+
+	// Build the scheduling request with LLMMode.
+	reqBuilder := scheduler.NewScheduleRequest(task).
+		WithLLMMode().
+		WithRequiredSkills(skillName)
+
+	if len(preferredTags) > 0 {
+		reqBuilder.WithPreferredTags(preferredTags)
+	}
+	if description != "" {
+		reqBuilder.WithHints(&scheduler.ScheduleHints{
+			Description: description,
+		})
+	}
+
+	schedReq := reqBuilder.Build()
+
+	logger.Info("[golem-cluster] executing skill %q via LLM-enhanced scheduler (task_id=%s)", skillName, task.ID)
+
+	// Schedule the task — the scheduler will:
+	// 1. Filter candidates by hard constraints
+	// 2. LLM pre-filter the eligible nodes
+	// 3. AISelector score the remaining candidates
+	// 4. Dispatch to the best node
+	decision, err := p.scheduler.Schedule(ctx, schedReq)
+	if err != nil {
+		return nil, fmt.Errorf("scheduling failed: %w", err)
+	}
+
+	// Build result.
+	result := map[string]interface{}{
+		"task_id":       task.ID,
+		"selected_node": decision.SelectedNodeID,
+		"schedule_mode": string(decision.Mode),
+		"reason":        decision.Reason,
+		"candidates":    decision.CandidateCount,
+		"eligible":      decision.EligibleCount,
+		"latency_ms":    decision.Latency.Milliseconds(),
+		"skill":         skillName,
+		"success":       true,
+	}
+
+	// Include scoring breakdown if available.
+	if len(decision.Scores) > 0 {
+		scores := make([]map[string]interface{}, 0, len(decision.Scores))
+		for _, s := range decision.Scores {
+			if !s.Eligible {
+				continue
+			}
+			scores = append(scores, map[string]interface{}{
+				"node_id":    s.NodeID,
+				"total":      fmt.Sprintf("%.3f", s.TotalScore),
+				"capability": fmt.Sprintf("%.2f", s.CapabilityScore),
+				"skill":      fmt.Sprintf("%.2f", s.SkillScore),
+				"resource":   fmt.Sprintf("%.2f", s.ResourceScore),
+				"load":       fmt.Sprintf("%.2f", s.LoadScore),
+				"tag":        fmt.Sprintf("%.2f", s.TagScore),
+				"affinity":   fmt.Sprintf("%.2f", s.AffinityScore),
+			})
+		}
+		result["scoring_breakdown"] = scores
 	}
 
 	return result, nil

@@ -23,7 +23,7 @@ func PluginDefinition() plugin.Definition {
 		ID:          PluginName,
 		Name:        "Feishu Channel",
 		Kind:        Kind,
-		Description: "Feishu (Lark) IM channel integration via HTTP webhook + Bot API",
+		Description: "Feishu (Lark) IM channel integration via HTTP webhook or websocket + Bot API",
 	}
 }
 
@@ -100,7 +100,11 @@ func (p *feishuPlugin) Start(ctx context.Context) error {
 		return fmt.Errorf("channel-feishu: app_id and app_secret are required")
 	}
 
-	logger.Info("[ChannelFeishu] plugin started (listen=%s, path=%s)", p.cfg.ListenAddr, p.cfg.WebhookPath)
+	mode := p.cfg.ConnectionMode
+	if mode == "" {
+		mode = ConnectionModeWebsocket
+	}
+	logger.Info("[ChannelFeishu] plugin started (mode=%s, domain=%s)", mode, p.cfg.Domain)
 	return nil
 }
 

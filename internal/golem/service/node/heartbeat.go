@@ -20,6 +20,8 @@ type TaskHandler interface {
 
 // heartbeatLoop maintains a bidirectional heartbeat stream with Hivemind.
 // It reconnects automatically on stream failures.
+// On reconnect, it re-registers the node first to handle Hivemind restarts
+// where the in-memory registry is cleared.
 // The heartbeat stream is now the sole channel for receiving tasks from Hivemind.
 func (s *Service) heartbeatLoop(ctx context.Context) {
 	defer close(s.stopped)
@@ -30,6 +32,23 @@ func (s *Service) heartbeatLoop(ctx context.Context) {
 			logger.Info("[Golem] heartbeat loop stopped")
 			return
 		default:
+		}
+
+		// Re-register before establishing a new heartbeat stream.
+		// This ensures the node exits in the Hivemind registry even after.
+		// Hivemind restarts (which clears the in-memory registry)
+		if err := s.register(ctx); err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			logger.Warn("[Golem] re-register failed: %v, retrying in %s",
+				err, s.cfg.ReconnectInterval)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(s.cfg.ReconnectInterval):
+			}
+			continue
 		}
 
 		if err := s.runHeartbeatStream(ctx); err != nil {

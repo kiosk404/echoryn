@@ -21,6 +21,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/scheduler"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/tokenmanager"
+	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
 )
 
 // Config holds the complete configuration for the Golem subsystem.
@@ -57,10 +58,14 @@ type Module struct {
 
 	// streamDispatcher is kept for binding the StreamManager after handler creation.
 	streamDispatcher *dispatcher.StreamDispatcher
+
+	// schedulerConfig is retained for rebuilding the scheduler with LLM support.
+	schedulerConfig *scheduler.SchedulerConfig
 }
 
 // New creates a fully initialized Golem subsystem.
 // Note: The StreamManager must be bound after creation via BindStreamManager().
+// LLM scheduling support can be enabled post-creation via BindLLMManager().
 func (c *CompletedConfig) New() (*Module, error) {
 	// 1. Create registry.
 	reg, err := c.registryConfig.New()
@@ -80,7 +85,7 @@ func (c *CompletedConfig) New() (*Module, error) {
 	// 4. Create stream dispatcher (StreamManager will be bound later).
 	disp := dispatcher.NewStreamDispatcher(nil) // StreamManager set via BindStreamManager()
 
-	// 5. Create scheduler.
+	// 5. Create scheduler. (LLMManager will be bound later via BindLLMManager)
 	schedConfig, err := c.schedulerConfig.Complete(profileProvider, disp)
 	if err != nil {
 		return nil, fmt.Errorf("golem: failed to complete scheduler config: %w", err)
@@ -94,6 +99,7 @@ func (c *CompletedConfig) New() (*Module, error) {
 		TokenManager:     tm,
 		profileProvider:  profileProvider,
 		streamDispatcher: disp,
+		schedulerConfig:  c.schedulerConfig,
 	}, nil
 }
 
@@ -102,6 +108,26 @@ func (c *CompletedConfig) New() (*Module, error) {
 // since it implements the StreamManager interface.
 func (m *Module) BindStreamManager(mgr dispatcher.StreamManager) {
 	m.streamDispatcher.SetStreamManager(mgr)
+}
+
+// BindLLMManager enables LLMMode scheduling by rebuilding the scheduler with
+// LLM support. This must be called after the LLM module is initialized.
+// It follows the same lazy-binding pattern as BindStreamManager.
+func (m *Module) BindLLMManager(llmMgr llmService.ModelManager) error {
+	if llmMgr == nil {
+		return nil
+	}
+	if m.schedulerConfig == nil {
+		return fmt.Errorf("golem: schedulerConfig not available for LLM binding")
+	}
+
+	// Rebuild the scheduler with LLM support.
+	schedConfig, err := m.schedulerConfig.Complete(m.profileProvider, m.Dispatcher, llmMgr)
+	if err != nil {
+		return fmt.Errorf("golem: failed to rebuild scheduler with LLM support: %w", err)
+	}
+	m.Scheduler = schedConfig.New()
+	return nil
 }
 
 // Start starts all components of the Golem subsystem.

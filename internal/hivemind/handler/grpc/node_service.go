@@ -50,6 +50,8 @@ func NewNodeServiceHandler(reg registry.Registry, tm tokenmanager.TokenManager, 
 // Register handles a Golem node registration request.
 // A valid join-token (bootstrap token) is REQUIRED for registration
 // unless dev-mode is enabled AND the client connects from a loopback address.
+// If the node is already registered (re-registration after reconnect), token
+// validation is skipped to avoid consuming extra token usages.
 func (h *NodeServiceHandler) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
 	if req.NodeInfo == nil {
 		return &pb.RegisterResponse{
@@ -58,37 +60,50 @@ func (h *NodeServiceHandler) Register(ctx context.Context, req *pb.RegisterReque
 		}, nil
 	}
 
-	// Determine whether this request can skip token validation (dev-mode + loopback)
-	skipTokenAuth := false
-	if h.devMode && req.JoinToken == "" {
-		if iputil.IsLoopBackIP(getGrpcClientIP(ctx)) {
-			skipTokenAuth = true
-			logger.Info("[GolemNodeService] dev-mode: allowing token-less registration for loopback node %s", req.NodeInfo.Id)
+	// Check if this is a re-registration from a previously known node.
+	// If the node already exists in the registry, skip token auth entirely
+	// to avoid consuming extra token usages on reconnect / Hivemind restart.
+	isReRegister := false
+	if req.NodeInfo.Id != "" {
+		if _, err := h.registry.GetNode(req.NodeInfo.Id); err == nil {
+			isReRegister = true
+			logger.Info("[GolemNodeService] re-registration from known node %s, skipping token auth", req.NodeInfo.Id)
 		}
 	}
 
-	if !skipTokenAuth {
-		// Validate Bootstrap Token if provided - required for all non-dev-mode registrations.
-		if req.JoinToken == "" {
-			logger.Warn("[GolemNodeService] registration rejected for %s: missing join token", req.NodeInfo.Id)
-			return &pb.RegisterResponse{
-				Accepted:     false,
-				RejectReason: "join_token is required for node registration",
-			}, nil
+	if !isReRegister {
+		// Determine whether this request can skip token validation (dev-mode + loopback)
+		skipTokenAuth := false
+		if h.devMode && req.JoinToken == "" {
+			if iputil.IsLoopBackIP(getGrpcClientIP(ctx)) {
+				skipTokenAuth = true
+				logger.Info("[GolemNodeService] dev-mode: allowing token-less registration for loopback node %s", req.NodeInfo.Id)
+			}
 		}
 
-		bt, err := h.tokenManager.ValidateBootstrapToken(ctx, req.JoinToken)
-		if err != nil {
-			logger.Warn("[GolemNodeService] join token validation failed for %s: %v", req.NodeInfo.Id, err)
-			return &pb.RegisterResponse{
-				Accepted:     false,
-				RejectReason: fmt.Sprintf("invalid join token: %v", err),
-			}, nil
-		}
+		if !skipTokenAuth {
+			// Validate Bootstrap Token if provided - required for all non-dev-mode registrations.
+			if req.JoinToken == "" {
+				logger.Warn("[GolemNodeService] registration rejected for %s: missing join token", req.NodeInfo.Id)
+				return &pb.RegisterResponse{
+					Accepted:     false,
+					RejectReason: "join_token is required for node registration",
+				}, nil
+			}
 
-		// Consume one usage.
-		if err = h.tokenManager.ConsumeToken(ctx, bt.ID); err != nil {
-			logger.Warn("[GolemNodeService] join token consume failed for %s:%w", req.NodeInfo.Id, err)
+			bt, err := h.tokenManager.ValidateBootstrapToken(ctx, req.JoinToken)
+			if err != nil {
+				logger.Warn("[GolemNodeService] join token validation failed for %s: %v", req.NodeInfo.Id, err)
+				return &pb.RegisterResponse{
+					Accepted:     false,
+					RejectReason: fmt.Sprintf("invalid join token: %v", err),
+				}, nil
+			}
+
+			// Consume one usage.
+			if err = h.tokenManager.ConsumeToken(ctx, bt.ID); err != nil {
+				logger.Warn("[GolemNodeService] join token consume failed for %s:%w", req.NodeInfo.Id, err)
+			}
 		}
 	}
 
@@ -101,8 +116,13 @@ func (h *NodeServiceHandler) Register(ctx context.Context, req *pb.RegisterReque
 		}, nil
 	}
 
-	logger.Info("[GolemNodeService] register success: id=%s name=%s caps=%d skills=%d",
-		req.NodeInfo.Id, req.NodeInfo.Name, len(req.NodeInfo.Capabilities), len(req.NodeInfo.InstalledSkills))
+	if isReRegister {
+		logger.Info("[GolemNodeService] re-register success: id=%s name=%s caps=%d skills=%d",
+			req.NodeInfo.Id, req.NodeInfo.Name, len(req.NodeInfo.Capabilities), len(req.NodeInfo.InstalledSkills))
+	} else {
+		logger.Info("[GolemNodeService] register success: id=%s name=%s caps=%d skills=%d",
+			req.NodeInfo.Id, req.NodeInfo.Name, len(req.NodeInfo.Capabilities), len(req.NodeInfo.InstalledSkills))
+	}
 
 	return &pb.RegisterResponse{
 		Accepted: true,

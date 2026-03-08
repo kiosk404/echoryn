@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/dispatcher"
+	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
+	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
 	"github.com/kiosk404/echoryn/internal/pkg/protocol"
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -75,6 +77,14 @@ type SchedulerConfig struct {
 
 	// MonitorConfig configures the task execution monitor.
 	MonitorConfig MonitorConfig
+
+	// LLMModelRef specifies the model to use for LLM-based scheduling pre-filtering.
+	// If zero-valued, the default model will be used.
+	LLMModelRef llmEntity.ModelRef
+
+	// LLMTimeout is the timeout for LLM scheduling inference calls.
+	// Defaults to 30s if zero.
+	LLMTimeout time.Duration
 }
 
 // DefaultSchedulerConfig returns a SchedulerConfig with sensible defaults.
@@ -94,10 +104,12 @@ type CompletedSchedulerConfig struct {
 	config     SchedulerConfig
 	provider   ProfileProvider
 	dispatcher dispatcher.Dispatcher
+	llmManager llmService.ModelManager //optional: enables LLMMode scheduling
 }
 
 // Complete validates the configuration and seals it.
-func (c SchedulerConfig) Complete(provider ProfileProvider, dispatcher dispatcher.Dispatcher) (*CompletedSchedulerConfig, error) {
+func (c SchedulerConfig) Complete(provider ProfileProvider, dispatcher dispatcher.Dispatcher, llmManager ...llmService.ModelManager) (
+	*CompletedSchedulerConfig, error) {
 	if provider == nil {
 		return nil, fmt.Errorf("scheduler: ProfileProvider must not be nil")
 	}
@@ -110,11 +122,15 @@ func (c SchedulerConfig) Complete(provider ProfileProvider, dispatcher dispatche
 	if c.ScheduleLoopInterval <= 0 {
 		c.ScheduleLoopInterval = 500 * time.Millisecond
 	}
-	return &CompletedSchedulerConfig{
+	cc := &CompletedSchedulerConfig{
 		config:     c,
 		provider:   provider,
 		dispatcher: dispatcher,
-	}, nil
+	}
+	if len(llmManager) > 0 && llmManager[0] != nil {
+		cc.llmManager = llmManager[0]
+	}
+	return cc, nil
 }
 
 // New creates a fully initialised Scheduler from the completed configuration.
@@ -125,6 +141,19 @@ func (cc *CompletedSchedulerConfig) New() Scheduler {
 	directSel := NewDirectSelector(cc.provider)
 	aiSel := NewDefaultAISelector()
 
+	// Build LLM selector if ModelManager is available.
+	var llmSel NodeSelector
+	if cc.llmManager != nil {
+		var opts []LLMSelectorOption
+		if cc.config.LLMTimeout > 0 {
+			opts = append(opts, WithLLMTimeout(cc.config.LLMTimeout))
+		}
+		if cc.config.LLMModelRef.ProviderID != "" {
+			opts = append(opts, WithLLMModelRef(cc.config.LLMModelRef))
+		}
+		llmSel = NewLLMSelector(cc.llmManager, aiSel, opts...)
+	}
+
 	// Build monitor with the scheduler as event handler.
 	s := &defaultScheduler{
 		config:     cc.config,
@@ -133,6 +162,7 @@ func (cc *CompletedSchedulerConfig) New() Scheduler {
 		queue:      NewPriorityQueue(),
 		directSel:  directSel,
 		aiSel:      aiSel,
+		llmSel:     llmSel,
 		stats:      stats,
 		tasks:      make(map[string]*taskRecord),
 		stopCh:     make(chan struct{}),
@@ -161,6 +191,7 @@ type defaultScheduler struct {
 	queue      Queue
 	directSel  NodeSelector
 	aiSel      NodeSelector
+	llmSel     NodeSelector
 	monitor    Monitor
 	stats      *StatsCollector
 
@@ -372,6 +403,13 @@ func (s *defaultScheduler) tryDispatch(ctx context.Context, req *ScheduleRequest
 		selector = s.directSel
 	case AIMode:
 		selector = s.aiSel
+	case LLMMode:
+		if s.llmSel != nil {
+			selector = s.llmSel
+		} else {
+			// Fallback to AISelector if LLM is not configured.
+			selector = s.aiSel
+		}
 	default:
 		return nil, fmt.Errorf("unknown schedule mode %q", req.Mode)
 	}

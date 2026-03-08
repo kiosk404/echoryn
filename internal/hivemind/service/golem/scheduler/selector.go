@@ -8,8 +8,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
+	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
+	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
+	"github.com/kiosk404/echoryn/pkg/utils/json"
 )
 
 type NodeSelector interface {
@@ -583,3 +588,388 @@ func clamp(v, lo, hi float64) float64 {
 	}
 	return v
 }
+
+// --------------------------------------------------------------------------
+// LLMSelector — two-phase scheduling: LLM semantic pre-filter + AISelector scoring
+// --------------------------------------------------------------------------
+
+// LLMSelector implements NodeSelector for the LLMMode scheduling path.
+// It uses a two-phase approach:
+//  1. Hard-constraint filtering (same as AISelector)
+//  2. LLM semantic pre-filtering: calls a ChatModel to reason about which
+//     eligible nodes are best suited for the task, based on node descriptions,
+//     skills, and the task's intent.
+//  3. AISelector six-dimensional scoring on the LLM-filtered candidates.
+//
+// This provides the best of both worlds: LLM reasoning for semantic understanding
+// combined with quantitative scoring for the final decision.
+type LLMSelector struct {
+	llmManager llmService.ModelManager
+	modelRef   llmEntity.ModelRef
+	aiSelector *AISelector
+	timeout    time.Duration
+}
+
+// LLMSelectorOption configures a LLMSelector.
+type LLMSelectorOption func(*LLMSelector)
+
+// WithLLMTimeout sets the LLM call timeout.
+func WithLLMTimeout(d time.Duration) LLMSelectorOption {
+	return func(s *LLMSelector) {
+		s.timeout = d
+	}
+}
+
+// WithLLMModelRef overrides the model reference used for scheduling inference.
+func WithLLMModelRef(ref llmEntity.ModelRef) LLMSelectorOption {
+	return func(s *LLMSelector) {
+		s.modelRef = ref
+	}
+}
+
+// NewLLMSelector creates a LLMSelector that uses the given ModelManager for
+// semantic pre-filtering, then delegates to AISelector for quantitative scoring.
+func NewLLMSelector(llmMgr llmService.ModelManager, aiSel *AISelector, opts ...LLMSelectorOption) *LLMSelector {
+	s := &LLMSelector{
+		llmManager: llmMgr,
+		aiSelector: aiSel,
+		timeout:    30 * time.Second,
+	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
+// Name returns the selector name.
+func (s *LLMSelector) Name() string { return "llm" }
+
+// Select runs the two-phase scheduling: LLM pre-filter → AISelector scoring.
+func (s *LLMSelector) Select(ctx context.Context, req *ScheduleRequest, candidates []NodeProfile) (*ScheduleDecision, error) {
+	start := time.Now()
+
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("scheduler: LLMSelector received 0 candidates")
+	}
+
+	// Phase 1: Hard-constraint filtering (identical to AISelector).
+	checker := &constraintChecker{}
+	var eligible []NodeProfile
+	for i := range candidates {
+		if reason := checker.check(req, &candidates[i]); reason == "" {
+			eligible = append(eligible, candidates[i])
+		}
+	}
+
+	if len(eligible) == 0 {
+		return nil, fmt.Errorf("scheduler: no eligible Golem nodes among %d candidates", len(candidates))
+	}
+
+	// If only 1 eligible node, skip LLM and return directly.
+	if len(eligible) == 1 {
+		return &ScheduleDecision{
+			Mode:           LLMMode,
+			SelectedNodeID: eligible[0].Spec.NodeID,
+			Reason:         fmt.Sprintf("only 1 eligible node %q after constraint filtering, LLM pre-filter skipped", eligible[0].Spec.NodeID),
+			CandidateCount: len(candidates),
+			EligibleCount:  1,
+			DecidedAt:      time.Now(),
+			Latency:        time.Since(start),
+		}, nil
+	}
+
+	// Phase 2: LLM semantic pre-filtering.
+	llmFiltered, llmReason, err := s.llmPreFilter(ctx, req, eligible)
+	if err != nil {
+		// Fallback: if LLM fails, use all eligible nodes for AISelector.
+		llmFiltered = eligible
+		llmReason = fmt.Sprintf("LLM pre-filter failed (%v), falling back to all %d eligible nodes", err, len(eligible))
+	}
+
+	if len(llmFiltered) == 0 {
+		// LLM returned empty set — fallback to all eligible.
+		llmFiltered = eligible
+		llmReason = "LLM returned empty selection, falling back to all eligible nodes"
+	}
+
+	// Phase 3: AISelector six-dimensional scoring on LLM-filtered candidates.
+	decision, err := s.aiSelector.Select(ctx, req, llmFiltered)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: LLMSelector AISelector phase failed: %w", err)
+	}
+
+	// Enrich the decision with LLM context.
+	decision.Mode = LLMMode
+	decision.Reason = fmt.Sprintf("[LLM pre-filter: %s] %s", llmReason, decision.Reason)
+	decision.CandidateCount = len(candidates)
+	decision.Latency = time.Since(start)
+
+	return decision, nil
+}
+
+// llmPreFilter calls the ChatModel to semantically select the best candidate nodes.
+func (s *LLMSelector) llmPreFilter(ctx context.Context, req *ScheduleRequest, eligible []NodeProfile) ([]NodeProfile, string, error) {
+	// Build the ChatModel.
+	chatModel, err := s.buildChatModel(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to build chat model: %w", err)
+	}
+
+	// Build the prompt.
+	prompt := s.buildPrompt(req, eligible)
+
+	// Call the LLM with timeout.
+	llmCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	resp, err := chatModel.Generate(llmCtx, []*schema.Message{
+		{Role: schema.System, Content: llmSchedulerSystemPrompt},
+		{Role: schema.User, Content: prompt},
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("LLM generate failed: %w", err)
+	}
+
+	// Parse the LLM response.
+	selectedIDs, reason := s.parseResponse(resp.Content, eligible)
+
+	// Filter eligible nodes by LLM selection.
+	selectedSet := make(map[string]struct{}, len(selectedIDs))
+	for _, id := range selectedIDs {
+		selectedSet[id] = struct{}{}
+	}
+
+	var filtered []NodeProfile
+	for _, np := range eligible {
+		if _, ok := selectedSet[np.Spec.NodeID]; ok {
+			filtered = append(filtered, np)
+		}
+	}
+
+	return filtered, reason, nil
+}
+
+// buildChatModel constructs the Eino ChatModel for scheduling inference.
+func (s *LLMSelector) buildChatModel(ctx context.Context) (model.BaseChatModel, error) {
+	temperature := float32(0.1)
+	params := &llmEntity.LLMParams{
+		Temperature:    &temperature,
+		MaxTokens:      512,
+		ResponseFormat: llmEntity.ModelResponseFormatJSON,
+	}
+
+	// Use explicit model ref if set, otherwise use default.
+	if s.modelRef.ProviderID != "" && s.modelRef.ModelID != "" {
+		return s.llmManager.BuildChatModel(ctx, s.modelRef, params)
+	}
+	// Fallback to the default model.
+	return s.llmManager.GetDefaultChatModel(ctx)
+}
+
+// buildPrompt constructs the user prompt describing the task and candidates.
+func (s *LLMSelector) buildPrompt(req *ScheduleRequest, eligible []NodeProfile) string {
+	var b strings.Builder
+
+	// Task description.
+	b.WriteString("## Task Information\n")
+	if req.Task != nil {
+		if req.Task.Name != "" {
+			fmt.Fprintf(&b, "- Name: %s\n", req.Task.Name)
+		}
+		if req.Task.SkillName != "" {
+			fmt.Fprintf(&b, "- Skill: %s\n", req.Task.SkillName)
+		}
+	}
+	if len(req.RequiredSkills) > 0 {
+		fmt.Fprintf(&b, "- Required Skills: %s\n", strings.Join(req.RequiredSkills, ", "))
+	}
+	if len(req.RequiredCapabilities) > 0 {
+		fmt.Fprintf(&b, "- Required Capabilities: %s\n", strings.Join(req.RequiredCapabilities, ", "))
+	}
+	if req.Hints != nil && req.Hints.Description != "" {
+		fmt.Fprintf(&b, "- Description: %s\n", req.Hints.Description)
+	}
+	if req.Hints != nil && len(req.Hints.CustomContext) > 0 {
+		b.WriteString("- Custom Context:\n")
+		for k, v := range req.Hints.CustomContext {
+			fmt.Fprintf(&b, "  - %s: %s\n", k, v)
+		}
+	}
+	if len(req.PreferredTags) > 0 {
+		b.WriteString("- Preferred Tags:\n")
+		for k, v := range req.PreferredTags {
+			fmt.Fprintf(&b, "  - %s: %s\n", k, v)
+		}
+	}
+
+	// Candidate nodes.
+	b.WriteString("\n## Candidate Nodes\n")
+	for _, np := range eligible {
+		fmt.Fprintf(&b, "\n### Node: %s (ID: %s)\n", np.Spec.NodeName, np.Spec.NodeID)
+
+		// Skills.
+		if len(np.InstalledSkills) > 0 {
+			skillNames := make([]string, len(np.InstalledSkills))
+			for i, sk := range np.InstalledSkills {
+				skillNames[i] = sk.Name
+			}
+			fmt.Fprintf(&b, "- Installed Skills: %s\n", strings.Join(skillNames, ", "))
+		}
+
+		// Capabilities.
+		if len(np.Spec.Capabilities) > 0 {
+			capNames := make([]string, len(np.Spec.Capabilities))
+			for i, c := range np.Spec.Capabilities {
+				capNames[i] = c.Name
+			}
+			fmt.Fprintf(&b, "- Capabilities: %s\n", strings.Join(capNames, ", "))
+		}
+
+		// Tags / Labels.
+		if len(np.Tags) > 0 {
+			b.WriteString("- Tags: ")
+			tagParts := make([]string, 0, len(np.Tags))
+			for k, v := range np.Tags {
+				tagParts = append(tagParts, k+"="+v)
+			}
+			b.WriteString(strings.Join(tagParts, ", "))
+			b.WriteString("\n")
+		}
+
+		// Load info.
+		if np.Status.Load != nil {
+			fmt.Fprintf(&b, "- Load: CPU=%.1f%%, Memory=%.1f%%, ActiveTasks=%d, QueuedTasks=%d\n",
+				np.Status.Load.CpuPercent, np.Status.Load.MemoryPercent,
+				np.Status.Load.ActiveTasks, np.Status.Load.QueuedTasks)
+		}
+
+		// Description from node spec (if available via labels).
+		if desc, ok := np.Tags["description"]; ok {
+			fmt.Fprintf(&b, "- Description: %s\n", desc)
+		}
+	}
+
+	// Instruction.
+	fmt.Fprintf(&b, "\n## Instructions\n")
+	fmt.Fprintf(&b, "Select the node IDs that are most suitable for executing this task. Return a JSON object with:\n")
+	fmt.Fprintf(&b, "- \"selected_nodes\": array of node IDs (most suitable first)\n")
+	fmt.Fprintf(&b, "- \"reason\": brief explanation of your selection\n")
+	fmt.Fprintf(&b, "\nCandidate node IDs: %s\n", s.candidateIDList(eligible))
+
+	return b.String()
+}
+
+// candidateIDList returns a formatted list of candidate node IDs.
+func (s *LLMSelector) candidateIDList(eligible []NodeProfile) string {
+	ids := make([]string, len(eligible))
+	for i, np := range eligible {
+		ids[i] = np.Spec.NodeID
+	}
+	return strings.Join(ids, ", ")
+}
+
+// llmSchedulerResponse is the expected JSON response from the LLM.
+type llmSchedulerResponse struct {
+	SelectedNodes []string `json:"selected_nodes"`
+	Reason        string   `json:"reason"`
+}
+
+// parseResponse extracts node IDs from the LLM's JSON response.
+func (s *LLMSelector) parseResponse(content string, eligible []NodeProfile) ([]string, string) {
+	// Try to parse as JSON.
+	var resp llmSchedulerResponse
+	if err := json.Unmarshal([]byte(content), &resp); err != nil {
+		// Try to extract JSON from Markdown code block.
+		cleaned := extractJSON(content)
+		if err2 := json.Unmarshal([]byte(cleaned), &resp); err2 != nil {
+			// Fallback: return all eligible nodes.
+			ids := make([]string, len(eligible))
+			for i, np := range eligible {
+				ids[i] = np.Spec.NodeID
+			}
+			return ids, "LLM response parse failed, using all eligible nodes"
+		}
+	}
+
+	if len(resp.SelectedNodes) == 0 {
+		ids := make([]string, len(eligible))
+		for i, np := range eligible {
+			ids[i] = np.Spec.NodeID
+		}
+		return ids, "LLM returned empty selection, using all eligible nodes"
+	}
+
+	// Validate that all returned IDs are in the eligible set.
+	eligibleSet := make(map[string]struct{}, len(eligible))
+	for _, np := range eligible {
+		eligibleSet[np.Spec.NodeID] = struct{}{}
+	}
+
+	var validIDs []string
+	for _, id := range resp.SelectedNodes {
+		if _, ok := eligibleSet[id]; ok {
+			validIDs = append(validIDs, id)
+		}
+	}
+
+	if len(validIDs) == 0 {
+		ids := make([]string, len(eligible))
+		for i, np := range eligible {
+			ids[i] = np.Spec.NodeID
+		}
+		return ids, "LLM returned no valid node IDs, using all eligible nodes"
+	}
+
+	reason := resp.Reason
+	if reason == "" {
+		reason = fmt.Sprintf("LLM selected %d/%d eligible nodes", len(validIDs), len(eligible))
+	}
+	return validIDs, reason
+}
+
+// extractJSON attempts to extract a JSON block from a string that may be
+// wrapped in markdown code fences (```json ... ```).
+func extractJSON(s string) string {
+	s = strings.TrimSpace(s)
+	// Try to find ```json ... ```
+	if idx := strings.Index(s, "```json"); idx != -1 {
+		s = s[idx+7:]
+		if end := strings.Index(s, "```"); end != -1 {
+			return strings.TrimSpace(s[:end])
+		}
+	}
+	// Try to find ``` ... ```
+	if idx := strings.Index(s, "```"); idx != -1 {
+		s = s[idx+3:]
+		if end := strings.Index(s, "```"); end != -1 {
+			return strings.TrimSpace(s[:end])
+		}
+	}
+	// Try to find { ... }
+	if start := strings.Index(s, "{"); start != -1 {
+		if end := strings.LastIndex(s, "}"); end > start {
+			return s[start : end+1]
+		}
+	}
+	return s
+}
+
+// llmSchedulerSystemPrompt is the system prompt for the LLM scheduling agent.
+const llmSchedulerSystemPrompt = `You are an expert task scheduler for a distributed computing cluster.
+
+Your job is to analyze a task and a list of candidate worker nodes, then select the nodes that are most suitable for executing the task.
+
+Consider these factors when making your selection:
+1. **Skill Match**: Does the node have the required skills installed?
+2. **Capability Match**: Does the node advertise the required capabilities?
+3. **Semantic Fit**: Based on the task description and node description/tags, which nodes are semantically best suited?
+4. **Resource Availability**: Prefer nodes with lower load and more available resources.
+5. **Tag/Label Match**: Prefer nodes whose tags match the task's preferred tags (e.g., environment, region).
+6. **Anti-patterns**: Exclude nodes that are clearly unsuitable (e.g., staging nodes for production tasks).
+
+You MUST respond with a valid JSON object containing:
+- "selected_nodes": an array of node IDs ordered by suitability (most suitable first)
+- "reason": a brief explanation of your selection rationale
+
+Select at least 1 node. You may exclude nodes that are clearly unsuitable, but when in doubt, include them.
+Do NOT include any text outside the JSON object.`

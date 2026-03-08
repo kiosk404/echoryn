@@ -20,6 +20,12 @@ const (
 
 	// AIMode indicates that an AI-driven selector will autonomously pick the best Golem.
 	AIMode ScheduleMode = "ai"
+
+	// LLMMode indicates that an LLM will first semantically pre-filter candidate nodes,
+	// then the AISelector will score the remaining candidates with the six-dimensional model.
+	// This combines LLM reasoning (understanding task intent vs. node capabilities) with
+	// quantitative scoring for the final selection.
+	LLMMode ScheduleMode = "llm"
 )
 
 // ScheduleRequest encapsulates everything the scheduler needs to dispatch a task.

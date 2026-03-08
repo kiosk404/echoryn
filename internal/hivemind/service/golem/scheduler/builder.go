@@ -36,6 +36,15 @@ func (b *ScheduleRequestBuilder) WithAIMode() *ScheduleRequestBuilder {
 	return b
 }
 
+// WithLLMMode switches to LLM-enhanced scheduling.
+// The LLM first semantically pre-filters candidate nodes, then the AISelector
+// scores the remaining candidates with the six-dimensional model.
+func (b *ScheduleRequestBuilder) WithLLMMode() *ScheduleRequestBuilder {
+	b.request.Mode = LLMMode
+	b.request.TargetNodeID = ""
+	return b
+}
+
 // WithRequiredCapabilities sets the capabilities the target Golem must advertise.
 func (b *ScheduleRequestBuilder) WithRequiredCapabilities(caps ...string) *ScheduleRequestBuilder {
 	b.request.RequiredCapabilities = caps

@@ -392,6 +392,9 @@ func (r *AgentRunner) checkProactiveCompaction(
 }
 
 // resolveSession loads an existing session or creates a new one.
+// If sessionID is provided but not found, the new session reuses that ID
+// so that subsequent calls with the same sesionID find the same session
+// (e.g. IM channel conversations using "feishu:{chatID}" as a stable key)
 func (r *AgentRunner) resolveSession(ctx context.Context, agent *entity.Agent, sessionID string) (*entity.Session, error) {
 	if sessionID != "" {
 		session, err := r.sessionRepo.Get(ctx, sessionID)
@@ -403,8 +406,15 @@ func (r *AgentRunner) resolveSession(ctx context.Context, agent *entity.Agent, s
 		}
 	}
 
+	// Use the calller-provided sessionID when available so the mapping is stable.
+	// fall back a random UUID for callers that don't specify one.
+	id := sessionID
+	if id == "" {
+		id = uuid.New().String()
+	}
+
 	session := &entity.Session{
-		ID:        uuid.New().String(),
+		ID:        id,
 		AgentID:   agent.ID,
 		Messages:  make([]*entity.Message, 0),
 		Metadata:  make(map[string]string),

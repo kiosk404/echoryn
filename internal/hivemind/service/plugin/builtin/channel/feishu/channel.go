@@ -25,42 +25,80 @@ const (
 
 	// feishuTenantTokenURL is the Feishu API endpoint for obtaining tenant access tokens.
 	feishuTenantTokenURL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+
+	// larkSendMessageURL is the Lark (international) Bot API endpoint for sending messages.
+	larkSendMessageURL = "https://open.larksuite.com/open-apis/im/v1/messages"
+
+	// larkTenantTokenURL is the Lark (international) API endpoint for obtaining tenant access tokens.
+	larkTenantTokenURL = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
 )
 
 // feishuChannel implements gateway.Channel for the Feishu (Lark) platform.
 //
-// It starts an HTTP webhook server to receive Feishu Bot Event Callbacks,
-// normalizes them into InboundMessage, and forwards them to the dispatcher.
-//
-// Outbound messages are sent via the Feishu IM API (interactive card or text).
+// It supports two connection modes:
+// 1. WebSocket (default): Client connects to Feishu cloud, no public IP required.
+// 2. Webhook: Starts an HTTP server to receive callbacks, requires public IP.
 type feishuChannel struct {
 	cfg     *FeishuConfig
-	server  *http.Server
 	handler gateway.InboundHandler
 
-	// tenantToken cache
+	// WebSocket client (for websocket mode)
+	wsClient *feishuWSClient
+
+	// HTTP server (for webhook mode)
+	server *http.Server
+
+	// tenantToken cache (shared across modes)
 	mu           sync.RWMutex
 	tenantToken  string
 	tokenExpires time.Time
-
-	// dedup: track recently processed message IDs to avoid duplicates
-	processedMu  sync.Mutex
-	processedIDs map[string]time.Time
 }
 
 // newFeishuChannel creates a new Feishu channel.
 func newFeishuChannel(cfg *FeishuConfig) *feishuChannel {
 	return &feishuChannel{
-		cfg:          cfg,
-		processedIDs: make(map[string]time.Time),
+		cfg: cfg,
 	}
 }
 
 func (c *feishuChannel) ID() string { return ChannelID }
 
+// Start initializes the channel based on the configured connection mode.
 func (c *feishuChannel) Start(ctx context.Context, handler gateway.InboundHandler) error {
 	c.handler = handler
 
+	switch c.cfg.ConnectionMode {
+	case ConnectionModeWebsocket:
+		return c.startWebSocket(ctx)
+	case ConnectionModeWebhook:
+		return c.startWebhook(ctx)
+	default:
+		// Default to WebSocket
+		logger.Info("[Feishu] unknown connection mode '%s', defaulting to websocket", c.cfg.ConnectionMode)
+		return c.startWebSocket(ctx)
+	}
+}
+
+// Stop stops the channel based on the current connection mode.
+func (c *feishuChannel) Stop(ctx context.Context) error {
+	if c.wsClient != nil {
+		return c.wsClient.Stop(ctx)
+	}
+	if c.server != nil {
+		return c.server.Shutdown(ctx)
+	}
+	return nil
+}
+
+// startWebSocket starts the WebSocket client mode.
+func (c *feishuChannel) startWebSocket(ctx context.Context) error {
+	c.wsClient = newFeishuWSClient(c.cfg)
+	logger.Info("[Feishu] starting in WebSocket mode (domain=%s)", c.cfg.Domain)
+	return c.wsClient.Start(ctx, c.handler)
+}
+
+// startWebhook starts the HTTP webhook server mode.
+func (c *feishuChannel) startWebhook(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc(c.cfg.WebhookPath, c.handleWebhook)
 
@@ -76,16 +114,6 @@ func (c *feishuChannel) Start(ctx context.Context, handler gateway.InboundHandle
 		}
 	}()
 
-	// Clean up expired dedup entries periodically.
-	go c.dedupCleaner(ctx)
-
-	return nil
-}
-
-func (c *feishuChannel) Stop(ctx context.Context) error {
-	if c.server != nil {
-		return c.server.Shutdown(ctx)
-	}
 	return nil
 }
 
@@ -191,7 +219,7 @@ func (c *feishuChannel) processEvent(ctx context.Context, body []byte) {
 		ChannelID:  ChannelID,
 		ChatID:     msgEvent.Message.ChatID,
 		SenderID:   msgEvent.Sender.SenderID.OpenID,
-		SenderName: msgEvent.Sender.SenderID.OpenID, // Will be resolved later if needed.
+		SenderName: msgEvent.Sender.SenderID.OpenID,
 		Text:       text,
 		Timestamp:  time.Now(),
 		Extra: map[string]string{
@@ -207,38 +235,42 @@ func (c *feishuChannel) processEvent(ctx context.Context, body []byte) {
 	}
 }
 
-// isDuplicate checks if an event has already been processed (dedup).
-func (c *feishuChannel) isDuplicate(eventID string) bool {
-	c.processedMu.Lock()
-	defer c.processedMu.Unlock()
-
-	if _, exists := c.processedIDs[eventID]; exists {
-		return true
-	}
-	c.processedIDs[eventID] = time.Now()
-	return false
+// dedup for webhook mode
+type dedupEntry struct {
+	ts time.Time
 }
 
-// dedupCleaner periodically removes old entries from the dedup map.
-func (c *feishuChannel) dedupCleaner(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
+var (
+	webhookDedupMu  sync.Mutex
+	webhookDedupMap = make(map[string]dedupEntry)
+)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			c.processedMu.Lock()
-			cutoff := time.Now().Add(-10 * time.Minute)
-			for id, ts := range c.processedIDs {
-				if ts.Before(cutoff) {
-					delete(c.processedIDs, id)
-				}
+// isDuplicate checks if an event has already been processed (dedup).
+func (c *feishuChannel) isDuplicate(eventID string) bool {
+	webhookDedupMu.Lock()
+	defer webhookDedupMu.Unlock()
+
+	if entry, exists := webhookDedupMap[eventID]; exists {
+		// Check if entry is still valid (within 10 minutes)
+		if time.Since(entry.ts) < 10*time.Minute {
+			return true
+		}
+		// Entry expired, remove it
+		delete(webhookDedupMap, eventID)
+	}
+	webhookDedupMap[eventID] = dedupEntry{ts: time.Now()}
+
+	// Cleanup old entries periodically
+	if len(webhookDedupMap) > 1000 {
+		cutoff := time.Now().Add(-10 * time.Minute)
+		for id, entry := range webhookDedupMap {
+			if entry.ts.Before(cutoff) {
+				delete(webhookDedupMap, id)
 			}
-			c.processedMu.Unlock()
 		}
 	}
+
+	return false
 }
 
 // cleanBotMention removes @bot mention prefixes from text.
@@ -322,7 +354,7 @@ func (o *feishuOutbound) SendMarkdown(ctx context.Context, chatID string, markdo
 	return o.sendMessage(ctx, chatID, "interactive", string(cardJSON), opts)
 }
 
-// sendMessage sends a message via the Feishu IM API.
+// sendMessage sends a message via the Feishu/Lark IM API.
 func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, content string, opts *gateway.SendOptions) error {
 	token, err := o.channel.getTenantToken(ctx)
 	if err != nil {
@@ -342,7 +374,13 @@ func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, conte
 
 	payloadJSON, _ := json.Marshal(payload)
 
-	url := feishuSendMessageURL + "?receive_id_type=chat_id"
+	// Select URL based on domain
+	sendURL := feishuSendMessageURL
+	if o.channel.cfg.Domain == DomainLark {
+		sendURL = larkSendMessageURL
+	}
+
+	url := sendURL + "?receive_id_type=chat_id"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payloadJSON))
 	if err != nil {
 		return err
@@ -364,7 +402,7 @@ func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, conte
 	return nil
 }
 
-// getTenantToken obtains or refreshes the Feishu tenant access token.
+// getTenantToken obtains or refreshes the Feishu/Lark tenant access token.
 func (c *feishuChannel) getTenantToken(ctx context.Context) (string, error) {
 	c.mu.RLock()
 	if c.tenantToken != "" && time.Now().Before(c.tokenExpires) {
@@ -382,12 +420,18 @@ func (c *feishuChannel) getTenantToken(ctx context.Context) (string, error) {
 		return c.tenantToken, nil
 	}
 
+	// Select URL based on domain
+	tokenURL := feishuTenantTokenURL
+	if c.cfg.Domain == DomainLark {
+		tokenURL = larkTenantTokenURL
+	}
+
 	payload, _ := json.Marshal(map[string]string{
 		"app_id":     c.cfg.AppID,
 		"app_secret": c.cfg.AppSecret,
 	})
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, feishuTenantTokenURL, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, bytes.NewReader(payload))
 	if err != nil {
 		return "", err
 	}
