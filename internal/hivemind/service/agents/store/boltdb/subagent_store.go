@@ -23,6 +23,9 @@ func NewSubAgentStore(db *DB) *SubAgentStore {
 func (s *SubAgentStore) Save(_ context.Context, record *entity.SubAgentRecord) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSubAgents)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found; database may need re-initialization", bucketSubAgents)
+		}
 		data, err := json.Marshal(record)
 		if err != nil {
 			return fmt.Errorf("marshal subagent record: %w", err)
@@ -35,6 +38,9 @@ func (s *SubAgentStore) Get(_ context.Context, id string) (*entity.SubAgentRecor
 	var record entity.SubAgentRecord
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSubAgents)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found; database may need re-initialization", bucketSubAgents)
+		}
 		data := b.Get([]byte(id))
 		if data == nil {
 			return errno.ErrSubAgentNotFound
@@ -51,6 +57,9 @@ func (s *SubAgentStore) ListByParent(_ context.Context, parentSessionID string) 
 	var result []*entity.SubAgentRecord
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSubAgents)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found; database may need re-initialization", bucketSubAgents)
+		}
 		return b.ForEach(func(_, v []byte) error {
 			var record entity.SubAgentRecord
 			if err := json.Unmarshal(v, &record); err != nil {
@@ -69,6 +78,9 @@ func (s *SubAgentStore) ListNonTerminal(_ context.Context) ([]*entity.SubAgentRe
 	var result []*entity.SubAgentRecord
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketSubAgents)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found; database may need re-initialization", bucketSubAgents)
+		}
 		return b.ForEach(func(_, v []byte) error {
 			var record entity.SubAgentRecord
 			if err := json.Unmarshal(v, &record); err != nil {
@@ -85,6 +97,10 @@ func (s *SubAgentStore) ListNonTerminal(_ context.Context) ([]*entity.SubAgentRe
 
 func (s *SubAgentStore) Delete(_ context.Context, id string) error {
 	return s.db.Update(func(tx *bolt.Tx) error {
-		return tx.Bucket(bucketSubAgents).Delete([]byte(id))
+		b := tx.Bucket(bucketSubAgents)
+		if b == nil {
+			return fmt.Errorf("bucket %q not found; database may need re-initialization", bucketSubAgents)
+		}
+		return b.Delete([]byte(id))
 	})
 }

@@ -19,6 +19,7 @@ import (
 	mementity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core/entity"
 	skillsplugin "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/skills"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
+	websearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/gemini-web-search"
 	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
 )
 
@@ -91,6 +92,14 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		skillsplugin.Factory,
 		plugin.PluginArgs{
 			"config": resolveSkillsConfig(opts),
+		})
+
+	// --- web-search: web search via Gemini Google search grounding ---
+	registry.Register(
+		websearch.PluginDefinition(),
+		websearch.Factory,
+		plugin.PluginArgs{
+			"config": resolveWebSearchConfig(opts),
 		})
 
 	// --- channel-feishu: Feishu/Lark IM integration (websocket/webhook) ---
@@ -443,6 +452,54 @@ func resolveSkillsConfig(opts *genericoptions.PluginsOptions) *skillsplugin.Conf
 	if v, ok := entry.Config["hot_reload"]; ok {
 		if b, ok := v.(bool); ok {
 			cfg.HotReload = b
+		}
+	}
+
+	return cfg
+}
+
+// resolveWebSearchConfig extracts web-search config from PluginsOptions.entries["web-search"].config,
+// falling back to defaults if not specified.
+func resolveWebSearchConfig(opts *genericoptions.PluginsOptions) *websearch.Config {
+	cfg := websearch.DefaultConfig()
+	if opts == nil {
+		return cfg
+	}
+
+	entry, ok := opts.Entries[websearch.PluginName]
+	if !ok || entry.Config == nil {
+		return cfg
+	}
+
+	if v, ok := entry.Config["enabled"]; ok {
+		if b, ok := v.(bool); ok {
+			cfg.Enabled = b
+		}
+	}
+	if v, ok := entry.Config["provider"]; ok {
+		if s, ok := v.(string); ok && s != "" {
+			cfg.Provider = s
+		}
+	}
+	if v, ok := entry.Config["timeout_seconds"]; ok {
+		if f, ok := v.(float64); ok {
+			cfg.TimeoutSeconds = int(f)
+		}
+	}
+
+	// Resolve nested gemini config.
+	if geminiRaw, ok := entry.Config["gemini"]; ok {
+		if geminiMap, ok := geminiRaw.(map[string]interface{}); ok {
+			if v, ok := geminiMap["api_key"]; ok {
+				if s, ok := v.(string); ok {
+					cfg.Gemini.APIKey = s
+				}
+			}
+			if v, ok := geminiMap["model"]; ok {
+				if s, ok := v.(string); ok && s != "" {
+					cfg.Gemini.Model = s
+				}
+			}
 		}
 	}
 

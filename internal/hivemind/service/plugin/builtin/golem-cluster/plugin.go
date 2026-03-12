@@ -347,7 +347,19 @@ func (p *golemClusterPlugin) handleGetNode(ctx context.Context, params map[strin
 
 func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	if p.registry == nil || p.dispatcher == nil {
-		return nil, fmt.Errorf("Registry or Dispatcher not available")
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Golem cluster infrastructure (Registry/Dispatcher) is not available. No Golem nodes are connected. Please complete the task using other available tools instead.",
+		}, nil
+	}
+
+	// Pre-flight check: verify that at least one Golem node is registered.
+	if nodes, err := p.registry.ListNodes(nil); err != nil || len(nodes) == 0 {
+		logger.Warn("[golem-cluster] cluster_dispatch_task: no Golem nodes available, returning graceful error")
+		return map[string]interface{}{
+			"success": false,
+			"error":   "No Golem worker nodes are currently connected to the cluster. Cannot dispatch tasks. Please complete the task using other available tools (e.g., direct LLM generation, llm_task) instead of dispatching to Golem nodes.",
+		}, nil
 	}
 
 	// Parse required parameters.
@@ -394,7 +406,10 @@ func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[
 	// Resolve node ID (try direct lookup, then by name).
 	nodeID, err := p.resolveNodeID(nodeIDOrName)
 	if err != nil {
-		return nil, err
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Target node %q not found in the cluster. Use cluster_list_nodes to see available nodes.", nodeIDOrName),
+		}, nil
 	}
 
 	// Check that the node has the required capability or installed skill.
@@ -423,7 +438,10 @@ func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[
 			for i, sk := range node.Spec.InstalledSkills {
 				skillNames[i] = sk.Name
 			}
-			return nil, fmt.Errorf("node %q does not have capability or skill %q (capabilities: %v, skills: %v)", nodeIDOrName, skillName, caps, skillNames)
+			return map[string]interface{}{
+				"success": false,
+				"error":   fmt.Sprintf("Node %q does not have capability or skill %q (capabilities: %v, skills: %v). Use cluster_list_nodes to check available skills on each node.", nodeIDOrName, skillName, caps, skillNames),
+			}, nil
 		}
 	}
 
@@ -445,7 +463,11 @@ func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[
 
 	resp, err := p.dispatcher.Dispatch(dispatchCtx, nodeID, task)
 	if err != nil {
-		return nil, fmt.Errorf("failed to dispatch task to node %q: %w", nodeIDOrName, err)
+		logger.Warn("[golem-cluster] cluster_dispatch_task dispatch failed: %v", err)
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Failed to dispatch task to node %q: %v. The node may be offline or unreachable. Please try a different approach.", nodeIDOrName, err),
+		}, nil
 	}
 
 	if !resp.Accepted {
@@ -480,10 +502,27 @@ func (p *golemClusterPlugin) handleDispatchTask(ctx context.Context, params map[
 
 func (p *golemClusterPlugin) handleExecuteSkill(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	if p.scheduler == nil {
-		return nil, fmt.Errorf("Scheduler not available — cluster_execute_skill requires the scheduler to be initialized")
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Scheduler not available — cluster_execute_skill requires the scheduler to be initialized. No Golem nodes are connected to this Hivemind instance. Please complete the task using other available tools (e.g., direct LLM generation) instead of relying on Golem cluster execution.",
+		}, nil
 	}
 	if p.registry == nil || p.dispatcher == nil {
-		return nil, fmt.Errorf("Registry or Dispatcher not available")
+		return map[string]interface{}{
+			"success": false,
+			"error":   "Golem cluster infrastructure (Registry/Dispatcher) is not available. No Golem nodes are connected. Please complete the task using other available tools instead.",
+		}, nil
+	}
+
+	// Pre-flight check: verify that at least one Golem node is registered
+	// before doing any heavy work. This provides a fast, clear failure message
+	// to the LLM so it can choose an alternative approach.
+	if nodes, err := p.registry.ListNodes(nil); err != nil || len(nodes) == 0 {
+		logger.Warn("[golem-cluster] cluster_execute_skill: no Golem nodes available, returning graceful error")
+		return map[string]interface{}{
+			"success": false,
+			"error":   "No Golem worker nodes are currently connected to the cluster. Cannot execute remote skills. Please complete the task using other available tools (e.g., direct LLM generation, llm_task) instead of dispatching to Golem nodes.",
+		}, nil
 	}
 
 	// Parse required parameters.
@@ -571,7 +610,13 @@ func (p *golemClusterPlugin) handleExecuteSkill(ctx context.Context, params map[
 	// 4. Dispatch to the best node
 	decision, err := p.scheduler.Schedule(ctx, schedReq)
 	if err != nil {
-		return nil, fmt.Errorf("scheduling failed: %w", err)
+		// Return scheduling failures as a graceful result so the LLM can adapt
+		// instead of crashing the entire agent flow.
+		logger.Warn("[golem-cluster] cluster_execute_skill scheduling failed: %v", err)
+		return map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Golem scheduling failed: %v. No suitable Golem node could be found or dispatched to. Please complete the task using other available tools instead.", err),
+		}, nil
 	}
 
 	// Build result.
@@ -653,31 +698,38 @@ func (s *clusterInfoInjector) Enabled(_ context.Context, _ *prompt.PromptContext
 }
 
 func (s *clusterInfoInjector) Render(_ context.Context, pc *prompt.PromptContext) (string, error) {
+	// Always populate ClusterInfo — even when no nodes are registered.
+	// This allows ClusterAwarenessSection to render a "no nodes available" notice
+	// so the LLM knows not to attempt Golem-based tool calls.
+	v := version.Get()
+	clusterInfo := &prompt.ClusterInfo{
+		HivemindID: "hivemind-0",
+		Version:    v.GitVersion,
+	}
+
 	if s.plugin.registry == nil {
-		logger.Warn("[golem-cluster] clusterInfoInjector.Render: registry is nil!")
+		logger.Warn("[golem-cluster] clusterInfoInjector.Render: registry is nil, injecting empty ClusterInfo")
+		pc.ClusterInfo = clusterInfo
 		return "", nil
 	}
 
 	nodes, err := s.plugin.registry.ListNodes(nil)
 	if err != nil {
 		logger.Warn("[golem-cluster] failed to list nodes for prompt injection: %v", err)
+		pc.ClusterInfo = clusterInfo
 		return "", nil
 	}
 
 	logger.Info("[golem-cluster] clusterInfoInjector.Render: found %d nodes in registry", len(nodes))
 
 	if len(nodes) == 0 {
-		logger.Info("[golem-cluster] clusterInfoInjector.Render: no nodes registered, returning empty")
+		logger.Info("[golem-cluster] clusterInfoInjector.Render: no nodes registered, injecting empty ClusterInfo")
+		pc.ClusterInfo = clusterInfo
 		return "", nil
 	}
 
 	// Populate ClusterInfo on the PromptContext — this is read by
 	// IdentitySection and ClusterAwarenessSection.
-	v := version.Get()
-	clusterInfo := &prompt.ClusterInfo{
-		HivemindID: "hivemind-0",
-		Version:    v.GitVersion,
-	}
 	for _, n := range nodes {
 		logger.Info("[golem-cluster] Render: node %s has %d capabilities, %d InstalledSkills",
 			n.Spec.NodeName, len(n.Spec.Capabilities), len(n.Spec.InstalledSkills))

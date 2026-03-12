@@ -21,6 +21,7 @@ import (
 
 	einomodel "github.com/cloudwego/eino/components/model"
 	einoschema "github.com/cloudwego/eino/schema"
+	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask/runner"
@@ -214,8 +215,17 @@ func (c *modelManagerCaller) Call(ctx context.Context, opts runner.CallOptions) 
 	var err error
 
 	if opts.Provider != "" && opts.Model != "" {
+		// Explicit provider/model override from the tool parameters.
 		chatModel, err = c.mm.GetChatModel(ctx, opts.Provider, opts.Model)
+	} else if ref, ok := llmEntity.ActiveModelRefFromContext(ctx); ok && ref.ProviderID != "" && ref.ModelID != "" {
+		// No explicit override — inherit the model the parent agent is currently
+		// using (injected by RunWithFallback). This ensures llm_task uses the same
+		// model that already succeeded for the parent agent, instead of the system
+		// default which may be misconfigured or unavailable.
+		logger.Info("[LLMTask] using active agent model from context: %s/%s", ref.ProviderID, ref.ModelID)
+		chatModel, err = c.mm.GetChatModel(ctx, ref.ProviderID, ref.ModelID)
 	} else {
+		// Final fallback: system default model.
 		chatModel, err = c.mm.GetDefaultChatModel(ctx)
 	}
 	if err != nil {

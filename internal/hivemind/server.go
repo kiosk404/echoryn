@@ -11,6 +11,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/config"
 	grpchandler "github.com/kiosk404/echoryn/internal/hivemind/handler/grpc"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents"
+	agentService "github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/gateway"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem"
@@ -247,6 +248,11 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 			return nil, fmt.Errorf("failed to initialize plugin framework: %w", err)
 		}
 
+		// Inject SubAgentManager into the subagent plugin
+		// interface probe (same pattern as channelManagerSetter below)
+		// Must happen after Init(tools registered) and before Start (tools callable)
+		server.injectSubAgentManager()
+
 		// Initialize IM channel gateway BEFORE starting plugins.
 		// This ensures ChannelManager is injected into channel plugins before
 		// HookServerStart fires during pluginFramework.Start().
@@ -267,6 +273,9 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		injectSkillsEnricher(pluginFramework, golemModule)
 	} else {
 		logger.Info("[Hivemind] Plugin framework disabled (plugins.enabled=false), skipping plugin loading")
+
+		// Initialize IM channel gateway even without plugins.
+		server.initChannelGateway()
 	}
 
 	return server, nil
@@ -372,6 +381,33 @@ func injectSkillsEnricher(pf *plugin.Framework, gm *golem.Module) {
 		}
 	}
 	logger.Debug("[Hivemind] no SkillsEnricher found among initialized plugins")
+}
+
+// --- SubAgent Manager injection ---
+
+// subAgentManagerSetter is the interface that the subagent plugin implements
+// to receive the SubAgentManager via k8s-style interface probe.
+// Mirrors channelManagerSetter below.
+type subAgentManagerSetter interface {
+	SetManager(mgr agentService.SubAgentManager)
+}
+
+func (s *apiServer) injectSubAgentManager() {
+	if s.pluginFramework == nil || s.agentsModule == nil {
+		return
+	}
+
+	reg := s.pluginFramework.Registry()
+	for _, name := range reg.PluginNames() {
+		p, ok := reg.GetPlugin(name)
+		if !ok {
+			continue
+		}
+		if setter, ok := p.(subAgentManagerSetter); ok {
+			setter.SetManager(s.agentsModule.SubAgentManager)
+			logger.Info("[Hivemind] injected SubAgentManager into plugin %q", name)
+		}
+	}
 }
 
 // --- IM Channel Gateway ---

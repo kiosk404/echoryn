@@ -17,7 +17,8 @@ var (
 
 	// SubAgent errors.
 	ErrSubAgentNotFound    = errors.New("sub-agent record not found")
-	ErrMaxDepthExceeded    = errors.New("sub-agents cannot spawn further sub-agents (max depth = 1)")
+	ErrMaxDepthExceeded    = errors.New("maximum sub-agent spawn depth exceeded")
 	ErrConcurrencyLimit    = errors.New("max concurrent sub-agents limit reached")
 	ErrSubAgentAlreadyDone = errors.New("sub-agent already in terminal state")
+	ErrParentSessionBuse   = errors.New("parent session is currently running an agent turn")
 )

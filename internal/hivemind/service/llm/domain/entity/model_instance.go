@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"context"
 	"fmt"
 )
 
@@ -120,6 +121,28 @@ type ModelRef struct {
 
 func (r ModelRef) String() string {
 	return fmt.Sprintf("%s/%s", r.ProviderID, r.ModelID)
+}
+
+// --- Active ModelRef context propagation ---
+//
+// During model-fallback execution, the currently-attempted ModelRef is stored
+// in context so that downstream tool handlers (e.g. llm_task) can use the
+// same model the parent agent is running on, instead of falling back to the
+// system default (which may be unavailable or a different provider).
+
+type activeModelRefKey struct{}
+
+// WithActiveModelRef returns a new context carrying the given ModelRef.
+// Called by RunWithFallback before executing the run function for each candidate.
+func WithActiveModelRef(ctx context.Context, ref ModelRef) context.Context {
+	return context.WithValue(ctx, activeModelRefKey{}, ref)
+}
+
+// ActiveModelRefFromContext extracts the active ModelRef from context.
+// Returns the ModelRef and true if present, or a zero ModelRef and false otherwise.
+func ActiveModelRefFromContext(ctx context.Context) (ModelRef, bool) {
+	ref, ok := ctx.Value(activeModelRefKey{}).(ModelRef)
+	return ref, ok
 }
 
 func ModelClassFromString(s string) ModelClass {

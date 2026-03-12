@@ -110,6 +110,17 @@ type SubAgentRecord struct {
 	// Cleanup is the cleanup strategy ("delete" or "keep").
 	Cleanup string `json:"cleanup,omitempty"`
 
+	// Index is the 0-based spawn order within the parent session.
+	// Assigned at spawn time based on the count of existing children.
+	// Used for fuzzy matching: "subagent-2" -> Index=2
+	// Aligned with OpenClaw's index-based subagent lookup.
+	Index int `json:"index"`
+
+	// SpawnDepth tracks the nesting depth of this sub-agent (1-based).
+	// A depth of 1 means it was spawned directly by a top-level session.
+	// Aligned with OpenClaw's spawnDepth in SubagentRunRecord.
+	SpawnDepth int `json:"spawn_depth,omitempty"`
+
 	// Status is the current lifecycle state.
 	Status SubAgentStatus `json:"status"`
 

@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"fmt"
+	"strconv"
 	"time"
 
 	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
@@ -144,8 +146,38 @@ func (s *Session) RecordMemoryFlush() {
 }
 
 // IsSubAgentSession returns true if this session was spawned by a sub-agent.
-// Sub-agent sessions cannot spawn further sub-agents (max depth = 1).
-// TODO(subagent): Use this check in SubAgentManager.Spawn() to enforce nesting limit.
 func (s *Session) IsSubAgentSession() bool {
 	return s.ParentSessionID != ""
+}
+
+// SpawnDepth returns the current nesting depth of this session.
+// Top-level sessions have depth 0, direct sub-agents have depth 1, etc.
+// Aligned with OpenClaw's getSubagentDepthFromSessionStore.
+func (s *Session) SpawnDepth() int {
+	depth, _ := s.MetadataInt("spawn_depth")
+	return depth
+}
+
+// SetSpawnDepth sets the spawn depth in session metadata.
+func (s *Session) SetSpawnDepth(depth int) {
+	if s.Metadata == nil {
+		s.Metadata = make(map[string]string)
+	}
+	s.Metadata["spawn_depth"] = fmt.Sprintf("%d", depth)
+}
+
+// MetadataInt reads an integer from session metadata.
+func (s *Session) MetadataInt(key string) (int, bool) {
+	if s.Metadata == nil {
+		return 0, false
+	}
+	v, ok := s.Metadata[key]
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }

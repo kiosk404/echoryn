@@ -27,7 +27,8 @@ func ToSchemaMessage(msg *entity.Message) *schema.Message {
 		sm.ToolCalls = make([]schema.ToolCall, 0, len(msg.ToolCalls))
 		for _, tc := range msg.ToolCalls {
 			sm.ToolCalls = append(sm.ToolCalls, schema.ToolCall{
-				ID: tc.ID,
+				ID:   tc.ID,
+				Type: "function",
 				Function: schema.FunctionCall{
 					Name:      tc.Name,
 					Arguments: tc.Arguments,

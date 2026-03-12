@@ -1,10 +1,12 @@
 package helper
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/cloudwego/eino/components/model"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	"github.com/kiosk404/echoryn/internal/pkg/options"
 )
@@ -20,6 +22,14 @@ func (b *BasePlugin) Name() string {
 // DefaultConfig returns the default configuration for the provider.
 func (b *BasePlugin) DefaultConfig() *options.ProviderConfig {
 	return &options.ProviderConfig{}
+}
+
+// BuildChatModel implements spi.ChatModelPlugin for user-configured providers
+// that are not in the in-tree registry. It uses the OpenAI-compatible adapter
+// as the generic fallback, which works for any provider exposing an
+// OpenAI-compatible completions endpoint (the most common case).
+func (b *BasePlugin) BuildChatModel(ctx context.Context, instance *entity.ModelInstance, provider *entity.ModelProvider, params *entity.LLMParams) (model.BaseChatModel, error) {
+	return NewOpenAICompatibleChatModel(ctx, instance, provider, params)
 }
 
 // BuildProvider constructs a ModelProvider from config with sensible defaults.

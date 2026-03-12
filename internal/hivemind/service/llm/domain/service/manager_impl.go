@@ -196,12 +196,14 @@ func (m *modelManagerImpl) getChatPlugin(providerID string) (spi.ChatModelPlugin
 	}
 
 	// Slow path: create from factory and cache.
+	var plugin spi.ProviderPlugin
 	factory, err := m.registry.Get(providerID)
 	if err != nil {
-		return nil, fmt.Errorf("provider plugin %q not found in registry: %w", providerID, err)
+		logger.Info("[LLM] provider %q not in registry, using generic BasePlugin", providerID)
+		plugin = &helper.BasePlugin{PluginName: providerID}
+	} else {
+		plugin = factory()
 	}
-
-	plugin := factory()
 	m.pluginCache.LoadOrStore(providerID, plugin)
 
 	chatPlugin, ok := plugin.(spi.ChatModelPlugin)
@@ -215,7 +217,15 @@ func (m *modelManagerImpl) getChatPlugin(providerID string) (spi.ChatModelPlugin
 func (m *modelManagerImpl) GetDefaultChatModel(ctx context.Context) (einoModel.BaseChatModel, error) {
 	defaultInstance, err := m.modelRepo.FindDefault(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("no default model configured: %w", err)
+		// Defensive fallback: pick the first available model so that
+		// plugins (e.g. llm_task) don't fail with "no default model".
+		allModels, listErr := m.modelRepo.FindAll(ctx)
+		if listErr != nil || len(allModels) == 0 {
+			return nil, fmt.Errorf("no default model configured and no models available: %w", err)
+		}
+		defaultInstance = allModels[0]
+		logger.Warn("[LLM] no default model configured, falling back to first available: %s/%s",
+			defaultInstance.ProviderID, defaultInstance.ModelID)
 	}
 
 	ref := entity.ModelRef{
@@ -385,6 +395,11 @@ func (m *modelManagerImpl) registerFromRegistry(ctx context.Context) error {
 // otherwise falls back to generic construction via helper.BasePlugin.
 func (m *modelManagerImpl) registerProviderFromConfig(ctx context.Context, providerID string, cfg *options.ProviderConfig) error {
 	cfg.APIKey = helper.ResolveEnvValue(cfg.APIKey)
+
+	if cfg.APIKey == "" {
+		logger.Warn("[LLM] skipping user provider %q: API key is empty after env resolution", providerID)
+		return nil
+	}
 
 	// Try to find a matching plugin in the registry for provider-specific behavior.
 	var plugin spi.ProviderPlugin

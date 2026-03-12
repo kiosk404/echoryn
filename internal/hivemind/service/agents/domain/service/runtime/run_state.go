@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
-	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg/errno"
 	"github.com/kiosk404/echoryn/pkg/logger"
@@ -14,15 +13,13 @@ import (
 // State machine: Created -> InProgress -> Completed | Failed | Cancelled
 // This is the Echoryn equivalent
 type RunStateMachine struct {
-	run     *entity.Run
-	runRepo repo.RunRepository
+	run *entity.Run
 }
 
 // NewRunStateMachine creates a new RunStateMachine for the given run.
-func NewRunStateMachine(run *entity.Run, runRepo repo.RunRepository) *RunStateMachine {
+func NewRunStateMachine(run *entity.Run) *RunStateMachine {
 	return &RunStateMachine{
-		run:     run,
-		runRepo: runRepo,
+		run: run,
 	}
 }
 

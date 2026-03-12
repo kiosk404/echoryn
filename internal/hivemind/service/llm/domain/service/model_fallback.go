@@ -90,8 +90,13 @@ func RunWithFallback[T any](
 			continue
 		}
 
+		// Inject the current candidate's ModelRef into context so that
+		// downstream tool handlers (e.g. llm_task) can use the same model
+		// the parent agent is running on, rather than the system default.
+		attemptCtx := entity.WithActiveModelRef(ctx, ref)
+
 		// Execute the operation.
-		value, err := run(ctx, cm)
+		value, err := run(attemptCtx, cm)
 		if err != nil {
 			// Classify the error.
 			fe := entity.NewFailoverErrorFromCause(err, ref.ProviderID, ref.ModelID)
@@ -122,7 +127,12 @@ func RunWithFallback[T any](
 		result.Value = value
 		result.Ref = ref
 		result.OK = true
-		logger.Info("[Fallback] succeeded with %s (attempt %d/%d)", ref, i+1, len(candidates))
+
+		if len(candidates) == 1 {
+			logger.Info("[Model] call succeeded with %s", ref)
+		} else {
+			logger.Info("[Fallback] succeeded with %s (attempt %d/%d)", ref, i+1, len(candidates))
+		}
 		return result
 	}
 

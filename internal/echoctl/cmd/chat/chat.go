@@ -9,6 +9,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/echoctl/cmd/util"
 	"github.com/kiosk404/echoryn/internal/echoctl/utils/templates"
 	"github.com/kiosk404/echoryn/pkg/cli/genericclioptions"
+	chatui "github.com/kiosk404/echoryn/pkg/cli/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -51,8 +52,8 @@ func NewCmdInfo(f util.Factory, ioStreams genericclioptions.IOStreams) *cobra.Co
 		`,
 		Example: initExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			util.CheckErr(o.Run(cmd.Context(), args))
 			util.CheckErr(o.Complete(args))
+			util.CheckErr(o.Run(cmd.Context(), args))
 		},
 		SuggestFor: []string{},
 	}
@@ -76,7 +77,7 @@ func NewChatOptions(f util.Factory, ioStreams genericclioptions.IOStreams) *Chat
 
 func (o *ChatOptions) Complete(args []string) error {
 	if o.Session == "" {
-		o.Session = fmt.Sprintf("echo-%s-%s", o.Model, time.Now().UnixNano())
+		o.Session = fmt.Sprintf("echo-%s-%d", o.Model, time.Now().UnixNano())
 	}
 	// Ensure server address has schema
 	if !strings.HasPrefix(o.ServerAddr, "http://") && !strings.HasPrefix(o.ServerAddr, "https://") {
@@ -89,12 +90,39 @@ func (o *ChatOptions) Run(ctx context.Context, args []string) error {
 	client := NewHivemindClient(o.ServerAddr, o.Session, o.Model, o.factory.HTTPClient())
 
 	if len(args) > 0 {
-		// Single message mode : send and print response
+		// Single message mode : send and print response.
 		message := strings.Join(args, " ")
 		return RunOnce(client, message, func(delta string) {
 			fmt.Fprint(o.Out, delta)
 		})
 	}
 
-	return RunTUI(client)
+	// Interactive TUI mode.
+	adapter := newClientAdapter(client)
+	ui := chatui.New(adapter)
+
+	return ui.Run(ctx)
+}
+
+// newClientAdapter bridges the concrete HivemindClient and the TUI's
+// Client interface, converting between the two ChatMessage types.
+func newClientAdapter(c *HivemindClient) *chatui.ClientAdapter {
+	return &chatui.ClientAdapter{
+		ChatStreamFn: func(
+			ctx context.Context,
+			msgs []chatui.ChatMessage,
+			cb chatui.StreamCallback,
+			toolCb chatui.ToolCallCallback,
+		) (string, error) {
+			// Convert tui.ChatMessage → chat.ChatMessage.
+			apiMsgs := make([]ChatMessage, len(msgs))
+			for i, m := range msgs {
+				apiMsgs[i] = ChatMessage{Role: m.Role, Content: m.Content}
+			}
+			return c.ChatStream(ctx, apiMsgs, StreamCallback(cb), ToolCallCallback(toolCb))
+		},
+		ModelName: c.Model,
+		ServerURL: c.BaseURL,
+		Session:   c.SessionKey,
+	}
 }

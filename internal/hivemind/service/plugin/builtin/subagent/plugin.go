@@ -177,6 +177,9 @@ func (p *subagentPlugin) handleSessionsSpawn(ctx context.Context, params map[str
 		return nil, fmt.Errorf("parent session ID not found in context")
 	}
 
+	logger.Info("[SubAgent] sessions_spawn: parentSessionID=%s, parentRunID=%s, task=%q",
+		parentSessionID, parentRunID, task)
+
 	req := &entity.SubAgentSpawnRequest{
 		ParentSessionID: parentSessionID,
 		ParentRunID:     parentRunID,
@@ -195,19 +198,48 @@ func (p *subagentPlugin) handleSessionsSpawn(ctx context.Context, params map[str
 
 	record, err := p.manager.Spawn(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to spawn sub-agent: %w", err)
+		// Graceful degradation: return a friendly result instead of an error.
+		// This prevents the entire agent turn from failing when the LLM
+		// passes an invalid agent_id or hits concurrency/depth limits.
+		logger.Warn("[SubAgent] sessions_spawn failed: %v", err)
+		return map[string]interface{}{
+			"status":  "failed",
+			"task":    task,
+			"error":   err.Error(),
+			"message": "Failed to spawn sub-agent. If you specified an agent_id, try omitting it to use the default agent.",
+		}, nil
 	}
 
-	return map[string]interface{}{
-		"status":      "accepted",
-		"subagent_id": record.ID,
-		"session_id":  record.SessionID,
-		"task":        record.Task,
-		"message":     fmt.Sprintf("Sub-agent spawned (ID: %s). It will work on the task in the background and report back when done.", record.ID[:8]),
-	}, nil
+	// Return value aligned with OpenClaw's sessions_spawn tool result.
+	// The "note" field is critical: it guides the agent to NOT poll/sleep
+	// and instead wait for the automatic announcement.
+	//
+	// The "index" field enables fuzzy lookup: LLM can reference "subagent-0"
+	// or just "0" to identify this sub-agent later.
+	result := map[string]interface{}{
+		"status":           "accepted",
+		"subagent_id":      record.ID,
+		"child_session_id": record.SessionID,
+		"index":            record.Index,
+		"task":             record.Task,
+		"mode":             "run",
+		"note":             "auto-announces on completion, do not poll/sleep. The response will be sent back as a system message.",
+	}
+	if record.Label != "" {
+		result["label"] = record.Label
+	}
+	return result, nil
 }
 
 // handleSessionsStatus is the tool handler for sessions_status.
+//
+// Supports multi-dimensional lookup (aligned with OpenClaw):
+//   - Numeric index: "0", "1", "2"
+//   - "subagent-N" pattern: "subagent-0", "subagent-2"
+//   - Label prefix: "poem-writer"
+//   - ID prefix: "abc123"
+//   - Exact ID: full UUID
+//   - Empty: list all sub-agents
 func (p *subagentPlugin) handleSessionsStatus(ctx context.Context, params map[string]interface{}) (interface{}, error) {
 	if p.manager == nil {
 		return nil, fmt.Errorf("sub-agent manager not initialized")
@@ -218,20 +250,67 @@ func (p *subagentPlugin) handleSessionsStatus(ctx context.Context, params map[st
 		return nil, fmt.Errorf("parent session ID not found in context")
 	}
 
-	// Single sub-agent query.
-	if subagentID, ok := params["subagent_id"].(string); ok && subagentID != "" {
-		record, err := p.manager.Get(ctx, subagentID)
-		if err != nil {
-			return nil, err
+	// Single sub-agent query via multi-dimensional identifier.
+	identifier := ""
+	if id, ok := params["identifier"].(string); ok && id != "" {
+		identifier = id
+	}
+	// Backward compatibility: also accept "subagent_id" parameter.
+	if identifier == "" {
+		if id, ok := params["subagent_id"].(string); ok && id != "" {
+			identifier = id
 		}
+	}
+
+	logger.Info("[SubAgent] sessions_status: parentSessionID=%s, identifier=%q", parentSessionID, identifier)
+
+	if identifier != "" {
+		record, err := p.manager.FindByIdentifier(ctx, parentSessionID, identifier)
+		if err != nil {
+			logger.Warn("[SubAgent] sessions_status: lookup error for parentSessionID=%s, identifier=%s: %v",
+				parentSessionID, identifier, err)
+			return map[string]interface{}{
+				"status":     "error",
+				"identifier": identifier,
+				"message":    fmt.Sprintf("Failed to look up sub-agent: %v", err),
+			}, nil
+		}
+		if record == nil {
+			// Diagnostic: list all children to help debug why the identifier didn't match.
+			allRecords, listErr := p.manager.ListByParent(ctx, parentSessionID)
+			if listErr != nil {
+				logger.Warn("[SubAgent] sessions_status: not_found diagnostic: ListByParent failed: %v", listErr)
+			} else {
+				logger.Warn("[SubAgent] sessions_status: not_found for identifier=%q, parentSessionID=%s, total children=%d",
+					identifier, parentSessionID, len(allRecords))
+				for i, r := range allRecords {
+					logger.Warn("[SubAgent] sessions_status: child[%d]: id=%s, index=%d, label=%q, status=%s, parentSessionID=%s",
+						i, r.ID, r.Index, r.Label, r.Status, r.ParentSessionID)
+				}
+			}
+			return map[string]interface{}{
+				"status":     "not_found",
+				"identifier": identifier,
+				"message":    "No sub-agent found matching the given identifier. Try listing all sub-agents without specifying an identifier.",
+			}, nil
+		}
+		logger.Info("[SubAgent] sessions_status: found record id=%s, index=%d, label=%q for identifier=%q",
+			record.ID, record.Index, record.Label, identifier)
 		return formatRecord(record), nil
 	}
 
 	// List all sub-agents for this session.
 	records, err := p.manager.ListByParent(ctx, parentSessionID)
 	if err != nil {
-		return nil, err
+		logger.Warn("[SubAgent] sessions_status: failed to list sub-agents for session=%s: %v", parentSessionID, err)
+		return map[string]interface{}{
+			"subagents": []interface{}{},
+			"count":     0,
+			"message":   fmt.Sprintf("Failed to list sub-agents: %v", err),
+		}, nil
 	}
+
+	logger.Info("[SubAgent] sessions_status: listing all for parentSessionID=%s, found %d records", parentSessionID, len(records))
 
 	result := make([]interface{}, 0, len(records))
 	for _, record := range records {

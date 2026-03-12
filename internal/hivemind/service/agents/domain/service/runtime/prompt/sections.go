@@ -88,6 +88,21 @@ func (s *ClusterAwarenessSection) Render(_ context.Context, pc *PromptContext) (
 	var buf strings.Builder
 	buf.WriteString("## Cluster Topology\n\n")
 	buf.WriteString(fmt.Sprintf("Echoryn Hivemind `%s` (version: %s)\n\n", pc.ClusterInfo.HivemindID, pc.ClusterInfo.Version))
+	
+	// When no Golem nodes are connected, render a clear notice so the LLM
+	// knows NOT to call cluster_dispatch_task / cluster_execute_skill.
+	if len(pc.ClusterInfo.Golems) == 0 {
+		buf.WriteString("**⚠ No Golem worker nodes are currently connected to the cluster.**\n\n")
+		buf.WriteString("The following Golem-related tools are registered but **MUST NOT be used** because there are no Golem nodes available to execute tasks:\n")
+		buf.WriteString("- `cluster_dispatch_task` — requires a target Golem node (none available)\n")
+		buf.WriteString("- `cluster_execute_skill` — requires at least one Golem node for scheduling (none available)\n")
+		buf.WriteString("- `cluster_list_nodes` — will return an empty list\n")
+		buf.WriteString("- `cluster_get_node` — will fail (no nodes to query)\n\n")
+		buf.WriteString("**Do NOT attempt to use these tools.** Instead, complete all tasks using your own LLM reasoning capabilities and other available tools (e.g., `llm_task` for delegating work to sub-agents, direct text generation, etc.).\n")
+		buf.WriteString("If a task specifically requires remote execution (shell commands, file operations on remote machines), inform the user that no Golem nodes are connected and the task cannot be completed remotely.")
+		return buf.String(), nil
+	}
+
 	buf.WriteString("Connected Golem nodes:\n")
 
 	for _, g := range pc.ClusterInfo.Golems {

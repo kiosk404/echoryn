@@ -1,4 +1,4 @@
-package runtime
+package subagent
 
 import (
 	"context"
@@ -9,11 +9,7 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
-// DefaultMaxConcurrentSubAgents is the default concurrency limit.
-// Matches OpenClaw's DEFAULT_SUBAGENT_MAX_CONCURRENT.
-const DefaultMaxConcurrentSubAgents = 8
-
-// SubAgentScheduler controls sub-agent execution concurrency.
+// Scheduler controls sub-agent execution concurrency.
 //
 // Modeled after K8S scheduler's parallelism control and OpenClaw's
 // CommandLane + maxConcurrent mechanism.
@@ -22,7 +18,7 @@ const DefaultMaxConcurrentSubAgents = 8
 //   - Weighted semaphore limits concurrent sub-agent goroutines
 //   - WaitGroup tracks all in-flight goroutines for graceful shutdown
 //   - Context cancellation propagates to all running sub-agents
-type SubAgentScheduler struct {
+type Scheduler struct {
 	sem    *semaphore.Weighted
 	wg     sync.WaitGroup
 	ctx    context.Context
@@ -30,13 +26,13 @@ type SubAgentScheduler struct {
 	max    int64
 }
 
-// NewSubAgentScheduler creates a scheduler with the given concurrency limit.
-func NewSubAgentScheduler(maxConcurrent int) *SubAgentScheduler {
+// NewScheduler creates a scheduler with the given concurrency limit.
+func NewScheduler(maxConcurrent int) *Scheduler {
 	if maxConcurrent <= 0 {
-		maxConcurrent = DefaultMaxConcurrentSubAgents
+		maxConcurrent = DefaultMaxConcurrent
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &SubAgentScheduler{
+	return &Scheduler{
 		sem:    semaphore.NewWeighted(int64(maxConcurrent)),
 		ctx:    ctx,
 		cancel: cancel,
@@ -49,7 +45,7 @@ func NewSubAgentScheduler(maxConcurrent int) *SubAgentScheduler {
 // (non-blocking TryAcquire).
 //
 // The fn receives a child context that is cancelled when the scheduler stops.
-func (s *SubAgentScheduler) Submit(fn func(ctx context.Context)) error {
+func (s *Scheduler) Submit(fn func(ctx context.Context)) error {
 	if !s.sem.TryAcquire(1) {
 		return errno.ErrConcurrencyLimit
 	}
@@ -65,9 +61,9 @@ func (s *SubAgentScheduler) Submit(fn func(ctx context.Context)) error {
 }
 
 // Stop cancels all running sub-agents and waits for them to finish.
-func (s *SubAgentScheduler) Stop() {
-	logger.Info("[SubAgentScheduler] stopping, cancelling all running sub-agents")
+func (s *Scheduler) Stop() {
+	logger.Info("[subagent/Scheduler] stopping, cancelling all running sub-agents")
 	s.cancel()
 	s.wg.Wait()
-	logger.Info("[SubAgentScheduler] all sub-agents stopped")
+	logger.Info("[subagent/Scheduler] all sub-agents stopped")
 }

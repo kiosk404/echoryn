@@ -14,6 +14,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/agentflow"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/subagent"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/toolloop"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg/errno"
@@ -34,6 +35,15 @@ type RunRequest struct {
 
 	// Input is the user message text.
 	Input string
+
+	// IsTrigger indicates this run was triggered internally (e.g., by a sub-agent
+	// announcement via direct delivery). When true, the Input is NOT saved as a
+	// user message in session history, preventing conversation pollution.
+	//
+	// BUG FIX: Previous implementation always saved the triggerMessage as a user
+	// message via session.AppendMessage(entity.NewUserMessage(userInput)), which
+	// polluted the conversation with artificial "[subagent-announce-trigger]" messages.
+	IsTrigger bool
 }
 
 // AgentRunner is the top-level orchestrator for agent execution.
@@ -68,11 +78,29 @@ type AgentRunner struct {
 	loopDetectCfg   toolloop.Config
 	runTimeout      time.Duration
 
+	// subAgentMgr provides access to the Announcer for
+	// Active Run tracking (MarkRunActive/Idle) and pending queue draining.
+	// Set via SetSubAgentManager after construction (circular dependency break).
+	subAgentMgr subagent.Manager
+
 	// activeRuns tracks in-flight abort controllers by run ID.
 	// This enables external callers to cancel a running execution via Abort().
 	// Pattern borrowed from subAgentManagerImpl.abortFuncs.
 	mu         sync.Mutex
 	activeRuns map[string]*AbortController
+
+	// sessionRunLock provides per-session mutual exclusion for Run execution.
+	//
+	// This ensures that concurrent runs on the same session (e.g., a triggerAgentTurn
+	// run + a user-initiated run) are serialized. The second run waits until the
+	// first completes (including session.Update()), then loads the up-to-date session.
+	//
+	// v2 note: Even with the SessionController's single-writer pattern eliminating
+	// the dual-lock problem, sessionRunLock is still needed to prevent two runs
+	// from independently loading the same session and both trying to append messages.
+	// BoltDB returns deep copies, so without serialization the later Update()
+	// would overwrite the earlier one's changes.
+	sessionRunLock *sessionRunMutex
 }
 
 // AgentRunnerConfig holds configuration for the AgentRunner.
@@ -82,11 +110,8 @@ type AgentRunnerConfig struct {
 	MaxHistoryTurns     int
 	CompactionThreshold float64
 	KeepRecentTurns     int
+	LoopDetection       toolloop.Config
 	// WorkspaceDir is the resolved workspace directory (e.g. ~/.echoryn/workspace).
-	// Convention prompt files (SOUL.md, IDENTITY.md, AGENTS.md, prompts/*.md)
-	// are read directly from this directory.
-	LoopDetection toolloop.Config
-	// WorkspaceDir is the resolved workspace directory (e.g. ~/.echoryn/workspace)
 	// Convention prompt files (SOUL.md, IDENTITY.md, AGENTS.md, prompts/*.md)
 	// are read directly from this directory.
 	WorkspaceDir string
@@ -165,12 +190,115 @@ func NewAgentRunner(
 		compactor:       compactor,
 		loopDetectCfg:   loopCfg,
 		runTimeout:      cfg.RunTimeout,
+		activeRuns:      make(map[string]*AbortController),
+		sessionRunLock:  newSessionRunMutex(),
 	}
+}
+
+// SetSubAgentManager sets the SubAgentManager reference.
+// This breaks the circular dependency between AgentRunner ↔ SubAgentManager:
+// the runner is created first, then the SubAgentManager is created with the runner,
+// and finally the manager is set back on the runner.
+//
+// K8S analogy: post-start injection, similar to how controllers are wired after
+// the informer factory is created.
+//
+// After setting the manager, this method:
+//  1. Wires the AgentExecutor on the SessionController, enabling trigger functionality
+//  2. Starts the SessionController's trigger worker goroutine
+//
+// Panics if mgr is nil or if mgr.Controller() returns nil, since a partially
+// initialised SubAgentManager would cause nil-pointer panics deep in executeRun.
+// Fail-fast at wiring time makes the root cause obvious.
+func (r *AgentRunner) SetSubAgentManager(mgr subagent.Manager) {
+	if mgr == nil {
+		panic("AgentRunner.SetSubAgentManager: mgr must not be nil")
+	}
+	if mgr.Controller() == nil {
+		panic("AgentRunner.SetSubAgentManager: mgr.Controller() must not be nil")
+	}
+	r.subAgentMgr = mgr
+
+	// Wire the AgentExecutor adapter: bridges the new subagent.AgentExecutor
+	// interface to the AgentRunner's Run/RunSubAgent methods.
+	mgr.SetExecutor(&agentExecutorAdapter{runner: r})
+
+	// Start the trigger worker — processes the K8s-style workqueue that
+	// dedup-triggers new agent turns when sub-agents complete and the
+	// parent is idle.
+	mgr.Controller().StartTriggerWorker(context.Background())
+}
+
+// triggerAgentTurn is called by the Announcer when a sub-agent completes
+// and the parent session is idle. It runs a new agent turn on the parent session
+// so the parent agent can process the sub-agent's result and respond to the user.
+//
+// Aligned with OpenClaw's callGateway({ method: "agent" }) in subagent-announce.ts.
+//
+// The triggerMessage is used as the user input for the new turn. Since the actual
+// sub-agent result is already written to the session as a system message (by
+// deliverDirect), the triggerMessage is a minimal marker.
+//
+// BUG FIX: IsTrigger=true ensures the trigger message is NOT saved as a user
+// message in session history. Previous implementation saved it, polluting the
+// conversation with artificial "[subagent-announce-trigger]" messages.
+//
+// Stream output is consumed and discarded (fire-and-forget) because there's no
+// active SSE connection to route the output to. The agent's response is persisted
+// to session history via the normal executeRun path and will be visible when the
+// user polls or sends the next message.
+func (r *AgentRunner) triggerAgentTurn(ctx context.Context, parentSessionID, triggerMessage string) {
+	// Resolve the parent session to get the agent ID.
+	session, err := r.sessionRepo.Get(ctx, parentSessionID)
+	if err != nil {
+		logger.Warn("[AgentRunner] triggerAgentTurn: failed to get session %s: %v", parentSessionID, err)
+		return
+	}
+
+	logger.Info("[AgentRunner] triggerAgentTurn: starting new turn for session %s (agent=%s)",
+		parentSessionID, session.AgentID)
+
+	// Fire a new Run on the parent session.
+	// IsTrigger=true prevents the triggerMessage from being saved as a user message.
+	sr, err := r.Run(ctx, &RunRequest{
+		AgentID:   session.AgentID,
+		SessionID: parentSessionID,
+		Input:     triggerMessage,
+		IsTrigger: true,
+	})
+	if err != nil {
+		logger.Warn("[AgentRunner] triggerAgentTurn: failed to run on session %s: %v", parentSessionID, err)
+		return
+	}
+
+	// Consume the stream (fire-and-forget).
+	// The run's output is persisted to session history by executeRun.
+	go func() {
+		for {
+			_, recvErr := sr.Recv()
+			if recvErr != nil {
+				break
+			}
+		}
+		logger.Info("[AgentRunner] triggerAgentTurn: completed for session %s", parentSessionID)
+	}()
 }
 
 // Run executes an agent interaction and returns a streaming event reader.
 //
 // Callers consume events via sr.Recv() until io.EOF.
+//
+// Session serialization: Acquires a per-session lock before resolving the session.
+// This ensures that concurrent runs on the same session (e.g., triggerAgentTurn
+// + user message arriving simultaneously) are serialized. Without this, both
+// runs would get independent BoltDB deep-copies of the session, modify them
+// independently, and the later session.Update() would overwrite the earlier one,
+// causing lost messages and broken conversation context.
+//
+// v2: The sessionRunLock is still needed for session serialization, but the
+// dual-lock problem (sessionRunLock vs SessionWriteLock) is eliminated. The
+// SessionController no longer writes to the session directly — all session
+// writes go through the runner's single-writer path.
 func (r *AgentRunner) Run(ctx context.Context, req *RunRequest) (*schema.StreamReader[*entity.AgentEvent], error) {
 	// 1. Resolve agent.
 	agent, err := r.agentRepo.Get(ctx, req.AgentID)
@@ -178,13 +306,26 @@ func (r *AgentRunner) Run(ctx context.Context, req *RunRequest) (*schema.StreamR
 		return nil, fmt.Errorf("agent %q: %w", req.AgentID, err)
 	}
 
-	// 2. Load or create session.
+	// 2. Acquire per-session lock to serialize concurrent runs on the same session.
+	//    This prevents the lost-update problem where two runs independently modify
+	//    their own deep-copies of the session and overwrite each other's changes.
+	//    The lock is released in the async goroutine's defer after executeRun completes.
+	sessionID := req.SessionID
+	if sessionID == "" {
+		// New session — no contention possible, skip locking.
+		sessionID = uuid.New().String()
+		req.SessionID = sessionID
+	}
+	sessionRelease := r.sessionRunLock.Acquire(sessionID)
+
+	// 3. Load or create session (under lock, so we always get the latest state).
 	session, err := r.resolveSession(ctx, agent, req.SessionID)
 	if err != nil {
+		sessionRelease()
 		return nil, fmt.Errorf("session resolution failed: %w", err)
 	}
 
-	// 3. Create run record.
+	// 4. Create run record.
 	run := &entity.Run{
 		ID:        uuid.New().String(),
 		SessionID: session.ID,
@@ -194,34 +335,49 @@ func (r *AgentRunner) Run(ctx context.Context, req *RunRequest) (*schema.StreamR
 		CreatedAt: time.Now(),
 	}
 	if err := r.runRepo.Create(ctx, run); err != nil {
+		sessionRelease()
 		return nil, fmt.Errorf("failed to create run: %w", err)
 	}
 
-	// 4. Create state machine.
-	stateMachine := NewRunStateMachine(run, r.runRepo)
+	// 5. Create state machine.
+	stateMachine := NewRunStateMachine(run)
 	if err := stateMachine.TransitionToInProgress(); err != nil {
+		sessionRelease()
 		return nil, err
 	}
 
-	// 5. Create abort controller.
+	// 6. Create abort controller.
 	abort := NewAbortController(ctx, run.ID, r.runTimeout)
 
-	// 6. Create streaming event pipe (airi-go schema.Pipe pattern).
-	sr, sw := schema.Pipe[*entity.AgentEvent](20)
+	// 7. Create streaming event pipe (airi-go schema.Pipe pattern).
+	// BUG FIX: Increased buffer from 20 to 200 to prevent potential deadlock
+	// between the callback goroutine and the consumer. With buffer=20, a fast
+	// producer (ReAct agent with multiple tool calls) could fill the buffer
+	// while the consumer is blocked, causing both sides to deadlock.
+	sr, sw := schema.Pipe[*entity.AgentEvent](200)
 
-	// 7. Launch async execution.
+	// 8. Register run in activeRuns map for external abort support.
+	r.registerRun(run.ID, abort)
+
+	// 9. Launch async execution.
 	safego.Go(abort.Context(), func() {
 		defer abort.CleanUp()
 		defer sw.Close()
+		defer r.unregisterRun(run.ID)
+		// Release the per-session lock after executeRun completes.
+		// This ensures the next Run on this session sees the fully-updated session
+		// (with all messages persisted by this run, including pending announcements).
+		defer sessionRelease()
 
-		r.executeRun(abort.Context(), agent, session, run, stateMachine, sw, abort, req.Input)
+		// Emit initial run status event inside the goroutine to guarantee
+		// ordering: this event is always the first one consumers see.
+		sw.Send(&entity.AgentEvent{
+			Type:      entity.EventRunStatus,
+			RunStatus: entity.RunStatusInProgress,
+		}, nil)
+
+		r.executeRun(abort.Context(), agent, session, run, stateMachine, sw, abort, req.Input, req.IsTrigger)
 	})
-
-	// 8. Emit initial run status event.
-	sw.Send(&entity.AgentEvent{
-		Type:      entity.EventRunStatus,
-		RunStatus: entity.RunStatusInProgress,
-	}, nil)
 
 	return sr, nil
 }
@@ -236,7 +392,50 @@ func (r *AgentRunner) executeRun(
 	sw *schema.StreamWriter[*entity.AgentEvent],
 	abort *AbortController,
 	userInput string,
+	isTrigger bool,
 ) {
+	// Propagate session/run IDs into context so that downstream plugin tool
+	// handlers (e.g. subagent's sessions_spawn) can retrieve the parent
+	// session/run via ParentSessionIDFromContext / ParentRunIDFromContext.
+	ctx = WithParentContext(ctx, session.ID, run.ID)
+
+	// Mark this session as having an active run and get the steer channel.
+	// This enables the SessionController to use the correct delivery path
+	// (steer/pending) for sub-agent announcements that arrive during this run.
+	// The steer channel is passed to TurnExecutor → AgentFlowBuilder → SteerAwareChatModel
+	// which drains it before each LLM call for real-time sub-agent result injection.
+	//
+	// v2 architecture: MarkRunIdle returns pending announcements instead of writing
+	// to the session. The runner appends them to its own session object before
+	// session.Update(), ensuring single-writer semantics and eliminating the
+	// dual-lock (sessionRunLock vs SessionWriteLock) lost-update problem.
+	var steerCh <-chan string
+	if r.subAgentMgr != nil {
+		sc := r.subAgentMgr.Controller().MarkRunActive(session.ID)
+		if sc != nil {
+			steerCh = sc.Ch
+		}
+		defer func() {
+			// v2: MarkRunIdle returns pending announcements WITHOUT writing to session.
+			// We've already appended them to session and called session.Update() in the
+			// persistence section below (before this defer fires — Go defers are LIFO
+			// but this inner defer was registered first, so it fires LAST among the
+			// executeRun-internal defers). However, new announcements may have arrived
+			// between our persistence and this MarkRunIdle call. Those will be picked
+			// up by the trigger worker (they go into the pending queue and the worker
+			// calls TriggerParentTurn which starts a new run).
+			pending := r.subAgentMgr.Controller().MarkRunIdle(session.ID)
+			if len(pending) > 0 {
+				// These arrived after we already persisted. Enqueue a trigger so
+				// the next run will pick them up.
+				logger.Info("[AgentRunner] %d late pending announcements for session %s, re-enqueuing trigger",
+					len(pending), session.ID)
+				// Put them back into the controller's pending queue.
+				r.subAgentMgr.Controller().ReEnqueuePending(session.ID, pending)
+			}
+		}()
+	}
+
 	// Fire before_agent_start hook (memory injection, etc.).
 	injectedMessages := r.fireBeforeAgentStart(ctx, agent, session)
 
@@ -261,6 +460,13 @@ func (r *AgentRunner) executeRun(
 			tools = append(tools, mcpToolsList...)
 			logger.DebugX(pkg.ModuleName, "[AgentRunner] merged %d plugin tools + %d MCP tools", len(pluginTools), len(mcpToolsList))
 		}
+	}
+
+	// Filter denied tools for sub-agent runs (security policy enforcement).
+	// Sub-agents must not access orchestration tools (sessions_spawn, etc.)
+	// to prevent recursive spawning and privilege escalation.
+	if isSubAgentRun(ctx) {
+		tools = subagent.FilterDeniedTools(tools)
 	}
 
 	// Build PromptContext with tool summaries for the PromptPipeline.
@@ -289,6 +495,7 @@ func (r *AgentRunner) executeRun(
 		Session:      session,
 		WindowInfo:   windowInfo,
 		Compactor:    r.compactor,
+		SteerCh:      steerCh,
 	}, abort)
 
 	if err != nil {
@@ -315,11 +522,59 @@ func (r *AgentRunner) executeRun(
 	stateMachine.TransitionToCompleted(finalContent, result.Usage)
 	run.ModelRef = result.ModelRef.String()
 
-	// Persist: update session history.
-	session.AppendMessage(entity.NewUserMessage(userInput))
+	// Persist: update session history with full conversation context.
+	//
+	// The session must contain the COMPLETE conversation for this turn:
+	//   1. User input message (SKIPPED when IsTrigger=true to prevent pollution)
+	//   2. Intermediate messages (assistant tool_calls + tool results from ReAct loop)
+	//   3. Steer messages (sub-agent results injected via Steer delivery path)
+	//   4. Pending announcements (sub-agent results that arrived while run was active)
+	//   5. Final assistant text response
+	//
+	// v2 CRITICAL: Step 4 is the key architectural change. Previously, pending
+	// announcements were written to the session by the Announcer's deliverDirect()
+	// using a separate lock (SessionWriteLock), causing lost updates when the runner
+	// also writes using sessionRunLock. Now, the runner is the SOLE writer:
+	// pending announcements are consumed from the SessionController and appended
+	// to the runner's own session object, then persisted in a single Update() call.
+	//
+	// BUG FIX: When IsTrigger=true (e.g., sub-agent announce triggered this run),
+	// the userInput is a system trigger like "[subagent-announce-trigger]" and must
+	// NOT be saved as a user message. Previous implementation always saved it,
+	// causing artificial messages to appear in conversation history.
+	if !isTrigger {
+		session.AppendMessage(entity.NewUserMessage(userInput))
+	}
+	if len(result.IntermediateMessages) > 0 {
+		session.AppendMessages(FromSchemaMessages(result.IntermediateMessages))
+		logger.InfoX(pkg.ModuleName, "[AgentRunner] persisted %d intermediate messages (tool_calls + tool_results) to session %s",
+			len(result.IntermediateMessages), session.ID)
+	}
+	if len(result.SteerMessages) > 0 {
+		session.AppendMessages(FromSchemaMessages(result.SteerMessages))
+		logger.InfoX(pkg.ModuleName, "[AgentRunner] persisted %d steer messages (sub-agent results) to session %s",
+			len(result.SteerMessages), session.ID)
+	}
+
+	// v2: Consume pending announcements from SessionController and append to session.
+	// This is the SINGLE-WRITER pattern: the runner reads pending from the controller
+	// (which only stores them in memory) and writes them to the session object that
+	// the runner exclusively owns. No other goroutine writes to this session object.
+	if r.subAgentMgr != nil {
+		pending := r.subAgentMgr.Controller().TakePending(session.ID)
+		if len(pending) > 0 {
+			pendingMsgs := subagent.FormatAnnouncementsAsMessages(pending)
+			session.AppendMessages(pendingMsgs)
+			logger.InfoX(pkg.ModuleName, "[AgentRunner] consumed %d pending announcements for session %s",
+				len(pending), session.ID)
+		}
+	}
+
 	session.AppendMessage(entity.NewAssistantMessage(finalContent))
 	session.AddUsage(result.Usage)
-	_ = r.sessionRepo.Update(ctx, session)
+	if err := r.sessionRepo.Update(ctx, session); err != nil {
+		logger.Warn("[AgentRunner] failed to persist session %s: %v", session.ID, err)
+	}
 
 	// Persist: update run.
 	_ = r.runRepo.Update(ctx, run)
@@ -497,7 +752,7 @@ func (r *AgentRunner) Abort(ctx context.Context, runID string) error {
 	}
 
 	if run.Status == entity.RunStatusInProgress {
-		sm := NewRunStateMachine(run, r.runRepo)
+		sm := NewRunStateMachine(run)
 		sm.TransitionToCancelled()
 		if updateErr := r.runRepo.Update(ctx, run); updateErr != nil {
 			logger.Warn("[AgentRunner] Abort: failed to persist cancelled state for run %s: %v", runID, updateErr)
@@ -516,43 +771,15 @@ func (r *AgentRunner) buildPromptContext(
 	session *entity.Session,
 	tools []tool.BaseTool,
 ) *prompt.PromptContext {
-	pc := &prompt.PromptContext{
-		Mode: prompt.PromptMode(agent.EffectivePromptMode()),
-		Now:  time.Now(),
-	}
+	// Build base PromptContext from agent/session using the shared helper.
+	pc := BuildPromptContextFromAgent(agent, session)
 
-	// Map Agent → AgentPromptInfo.
+	// Set ModelName from agent's ModelRef.
 	if agent != nil {
-		info := &prompt.AgentPromptInfo{
-			ID:           agent.ID,
-			Name:         agent.Name,
-			SystemPrompt: agent.SystemPrompt,
-		}
-		if agent.Persona != nil {
-			info.Persona = &prompt.AgentPersonaInfo{
-				PromptMode:   agent.Persona.PromptMode,
-				WorkspaceDir: agent.Persona.WorkspaceDir,
-			}
-			if agent.Persona.Identity != nil {
-				info.Persona.Identity = &prompt.AgentIdentityInfo{
-					Name:     agent.Persona.Identity.Name,
-					Emoji:    agent.Persona.Identity.Emoji,
-					Creature: agent.Persona.Identity.Creature,
-					Vibe:     agent.Persona.Identity.Vibe,
-					Theme:    agent.Persona.Identity.Theme,
-				}
-			}
-		}
-		pc.Agent = info
 		pc.ModelName = agent.ModelRef.String()
 	}
 
-	// Session.
-	if session != nil {
-		pc.SessionID = session.ID
-	}
-
-	// Build tool summaries from Eino tools for the ToolingSection.
+	// Enrich with tool summaries from Eino tools for the ToolingSection.
 	for _, t := range tools {
 		info, err := t.Info(context.Background())
 		if err != nil || info == nil {
@@ -618,4 +845,31 @@ func ParentSessionIDFromContext(ctx context.Context) string {
 func ParentRunIDFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(ctxKeyParentRunID).(string)
 	return v
+}
+
+// agentExecutorAdapter adapts AgentRunner to the subagent.AgentExecutor interface.
+//
+// This bridge enables the subagent package to call back into the AgentRunner
+// without importing it (which would create a circular dependency). The adapter
+// translates between the subagent package's ExecuteRequest and the runtime
+// package's RunRequest/methods.
+type agentExecutorAdapter struct {
+	runner *AgentRunner
+}
+
+var _ subagent.AgentExecutor = (*agentExecutorAdapter)(nil)
+
+// RunSubAgent starts a sub-agent run via the AgentRunner.
+func (a *agentExecutorAdapter) RunSubAgent(ctx context.Context, req *subagent.ExecuteRequest) (*schema.StreamReader[*entity.AgentEvent], error) {
+	return a.runner.RunSubAgent(ctx, &RunRequest{
+		AgentID:   req.AgentID,
+		SessionID: req.SessionID,
+		Input:     req.Input,
+	})
+}
+
+// TriggerParentTurn triggers a new agent turn on the parent session.
+// Uses the AgentRunner's triggerAgentTurn which has IsTrigger semantics.
+func (a *agentExecutorAdapter) TriggerParentTurn(ctx context.Context, parentSessionID, triggerMessage string) {
+	a.runner.triggerAgentTurn(ctx, parentSessionID, triggerMessage)
 }

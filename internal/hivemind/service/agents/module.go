@@ -8,6 +8,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/subagent"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/toolloop"
 	boltdbStore "github.com/kiosk404/echoryn/internal/hivemind/service/agents/store/boltdb"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/store/inmemory"
@@ -141,7 +142,7 @@ type Dependencies struct {
 type Module struct {
 	Service         service.AgentService
 	Runner          *runtime.AgentRunner
-	SubAgentManager service.SubAgentManager
+	SubAgentManager subagent.Manager
 	boltDB          *boltdbStore.DB // nil when using inmemory store
 }
 
@@ -173,7 +174,7 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 		agentStore    repo.AgentRepository
 		sessionStore  repo.SessionRepository
 		runStore      repo.RunRepository
-		subAgentStore runtime.SubAgentRegistry
+		subAgentStore subagent.Registry
 		boltDB        *boltdbStore.DB
 	)
 
@@ -218,8 +219,13 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 
 	// Application service layer.
 	svc := service.NewAgentService(agentStore, sessionStore, runStore, runner)
-	// SubAgent manager (Controller pattern)
-	subAgentMgr := runtime.NewSubAgentManager(subAgentStore, agentStore, sessionStore, runner, runtime.DefaultSubAgentManagerConfig())
+	// SubAgent manager (Controller pattern) — now using the independent subagent package.
+	subAgentMgr := subagent.NewManager(subAgentStore, agentStore, sessionStore, subagent.DefaultConfig())
+
+	// Break the circular dependency: Runner needs SubAgentManager for
+	// Active Run tracking (MarkRunActive/Idle) and announce queue draining.
+	// K8S analogy: post-start injection after all controllers are created.
+	runner.SetSubAgentManager(subAgentMgr)
 
 	logger.Info("[Agents] Agents module initialized (store=%s, timeout=%s, retries=%d, history_limit=%d, compaction_threshold=%.1f, workspace=%s)",
 		c.StoreType, c.RunTimeout, c.MaxRetries, c.MaxHistoryTurns, c.CompactionThreshold, workspaceDir)

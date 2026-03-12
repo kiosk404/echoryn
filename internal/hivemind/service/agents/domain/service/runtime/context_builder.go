@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/cloudwego/eino/schema"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
@@ -135,10 +136,10 @@ func (cb *ContextBuilder) Build(
 			estimatedTokens = cb.estimator.EstimateMessages(messages)
 		}
 		pruneResult = PruneResult{
-			Messages:         messages,
-			EstimatedTokens:  estimatedTokens,
-			SoftTrimmed:      0,
-			HardCleared:      0,
+			Messages:        messages,
+			EstimatedTokens: estimatedTokens,
+			SoftTrimmed:     0,
+			HardCleared:     0,
 		}
 		logger.Warn("[ContextBuilder] pruner is nil, skipping context pruning")
 	}
@@ -235,10 +236,15 @@ func (cb *ContextBuilder) resolveSystemPrompt(
 	return assembled
 }
 
-// buildPromptContext converts entity.Agent + entity.Session into a prompt.PromptContext.
+// BuildPromptContextFromAgent converts entity.Agent + entity.Session into a prompt.PromptContext.
+// This is the single source of truth for Agent->PromptContext mapping, used by both
+// ContextBuilder (for system prompt assembly) and AgentRunner (for tool-enriched prompt).
+//
 // This bridges the entity layer and the prompt layer without import cycles.
-func (cb *ContextBuilder) buildPromptContext(agent *entity.Agent, session *entity.Session) *prompt.PromptContext {
-	pc := &prompt.PromptContext{}
+func BuildPromptContextFromAgent(agent *entity.Agent, session *entity.Session) *prompt.PromptContext {
+	pc := &prompt.PromptContext{
+		Now: time.Now(),
+	}
 
 	// Map Agent → AgentPromptInfo.
 	if agent != nil {
@@ -275,4 +281,10 @@ func (cb *ContextBuilder) buildPromptContext(agent *entity.Agent, session *entit
 	}
 
 	return pc
+}
+
+// buildPromptContext is the ContextBuilder's internal version that delegates
+// to the shared BuildPromptContextFromAgent Helper.
+func (cb *ContextBuilder) buildPromptContext(agent *entity.Agent, session *entity.Session) *prompt.PromptContext {
+	return BuildPromptContextFromAgent(agent, session)
 }

@@ -29,7 +29,8 @@ type AbortController struct {
 // If the timeout is greater than 0, the context will be canceled after the timeout.
 // Otherwise, the context will be canceled when Abort() is called.
 func NewAbortController(parent context.Context, runID string, timeout time.Duration) *AbortController {
-	ctx, cancel := context.WithCancel(parent)
+	var ctx context.Context
+	var cancel context.CancelFunc
 
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(parent, timeout)

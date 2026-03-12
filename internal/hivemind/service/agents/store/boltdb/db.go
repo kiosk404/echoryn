@@ -31,7 +31,7 @@ func Open(path string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 	err = db.Update(func(tx *bolt.Tx) error {
-		for _, b := range [][]byte{bucketAgentStore, bucketSessionStore, bucketRunStore} {
+		for _, b := range [][]byte{bucketAgentStore, bucketSessionStore, bucketRunStore, bucketSubAgents} {
 			if _, err := tx.CreateBucketIfNotExists(b); err != nil {
 				return fmt.Errorf("failed to create bucket %q: %w", b, err)
 			}

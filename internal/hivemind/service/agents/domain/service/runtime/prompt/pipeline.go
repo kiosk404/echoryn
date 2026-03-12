@@ -135,7 +135,7 @@ func (p *Pipeline) Assemble(ctx context.Context, pc *PromptContext) (string, err
 			continue
 		}
 		if text == "" {
-			logger.Info("[PromptPipeline] section rendered (%d chars)", section.Name(), len(text))
+			logger.Info("[PromptPipeline] section %q rendered empty, skipping", section.Name())
 			continue
 		}
 

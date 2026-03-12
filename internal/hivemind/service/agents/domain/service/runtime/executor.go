@@ -122,6 +122,15 @@ type TurnRequest struct {
 	// Compactor performs compaction when context overflow is detected.
 	// May be nil if compaction is not configured.
 	Compactor *Compactor
+
+	// SteerCh is the steer channel for injecting sub-agent announcements
+	// into the running ReAct loop. When non-nil, the ChatModel is wrapped
+	// with SteerAwareChatModel which drains this channel before echo LLM call.
+	//
+	// Aligned with OpenClaw's steer delivery path (queueEmbeddedPiMessage).
+	// Set by executeRun from the AnnounceController's steer channel.
+	// Nil for runs without sub-agent support (no-op passthrough)
+	SteerCh <-chan string
 }
 
 // TurnResult is the output of a successful turn execution.
@@ -130,6 +139,18 @@ type TurnResult struct {
 	ModelRef     llmEntity.ModelRef
 	Usage        *entity.TokenUsage
 	Compacted    bool
+
+	// IntermediateMessages contains all tool_call and tool_result messages
+	// generated during the ReAct agent's execution loop. These must be
+	// persisted to session history so the agent retains full context of
+	// what tools it called and their results across turns.
+	IntermediateMessages []*schema.Message
+
+	// SteerMessages contains all sub-agent result messages that were injected
+	// via the Steer delivery path during this turn. These are system messages
+	// containing TaskCompletionEvent content that the LLM consumed in real-time
+	// but which are NOT captured by the MessageCollector.
+	SteerMessages []*schema.Message
 }
 
 // Execute runs a single agent turn with fallback and retry logic.
@@ -175,7 +196,7 @@ func (te *TurnExecutor) Execute(
 		}
 
 		result := llmService.RunWithFallback(
-			abort.Context(),
+			ctx,
 			te.fallbackExec,
 			req.Agent.Fallback,
 			params,
@@ -316,6 +337,10 @@ func (te *TurnExecutor) tryCompaction(
 // (request-side: dropThinkingBlocks, sanitizeToolCallIds, trimToolCallNames).
 // During streaming, chunks are processed by the StreamMiddlewareChain
 // (response-side: trimToolCallNames, chunkLogger).
+//
+// A MessageCollector is created to capture all intermediate tool_call and
+// tool_result messages generated during the ReAct loop. These are returned
+// in TurnResult.IntermediateMessages for session persistence.
 func (te *TurnExecutor) executeSingleAttempt(
 	ctx context.Context,
 	req *TurnRequest,
@@ -325,16 +350,21 @@ func (te *TurnExecutor) executeSingleAttempt(
 	// Aligned with OpenClaw's dropThinkingBlocks + sanitizeToolCallIds + trimNames.
 	messages := te.sanitizers.Apply(req.Messages)
 
-	runnable, err := te.flowBuilder.Build(ctx, req.Agent, cm, req.Tools, req.LoopDetector)
+	flowResult, err := te.flowBuilder.Build(ctx, req.Agent, cm, req.Tools, req.LoopDetector, req.SteerCh)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build agent flow: %w", err)
 	}
 
+	// Create a MessageCollector to capture intermediate tool_call/tool_result
+	// messages from the ReAct loop. These are NOT in the final stream output
+	// but are critical for session history.
+	collector := agentflow.NewMessageCollector()
+
 	// Response-side: attach stream middleware chain to the callback.
-	clb := agentflow.NewReplayChunkCallback(req.EventWriter).
+	clb := agentflow.NewReplayChunkCallback(req.EventWriter, collector).
 		WithMiddleware(te.streamMiddleware)
 
-	sr, err := runnable.Stream(ctx, messages,
+	sr, err := flowResult.Runnable.Stream(ctx, messages,
 		compose.WithCallbacks(clb.Build()),
 	)
 	if err != nil {
@@ -346,8 +376,32 @@ func (te *TurnExecutor) executeSingleAttempt(
 		return nil, err
 	}
 
+	// CRITICAL: Wait for all callback goroutines to finish writing to the
+	// MessageCollector BEFORE reading collector.Messages().
+	//
+	// The callback goroutines (consumeChatModelStream, consumeToolsNodeStream)
+	// run asynchronously and may still be appending messages when the graph-level
+	// stream finishes. Without this Wait(), collector.Messages() may return an
+	// incomplete snapshot — e.g., missing tool_result messages — causing the
+	// session history to contain [assistant(tool_calls), assistant(tool_calls)]
+	// without corresponding tool messages. On the next triggerAgentTurn, this
+	// malformed history triggers DeepSeek HTTP 400:
+	//   "An assistant message with 'tool_calls' must be followed by tool messages"
+	clb.Wait()
+
+	// Collect steer messages that were injected during this turn.
+	// These sub-agent results were consumed by the LLM but NOT captured
+	// by the MessageCollector — they must be returned separately for
+	// session persistence.
+	var steerMessages []*schema.Message
+	if flowResult.SteerModel != nil {
+		steerMessages = flowResult.SteerModel.ConsumedMessages()
+	}
+
 	return &TurnResult{
-		FinalMessage: finalMsg,
+		FinalMessage:         finalMsg,
+		IntermediateMessages: collector.Messages(),
+		SteerMessages:        steerMessages,
 	}, nil
 }
 
