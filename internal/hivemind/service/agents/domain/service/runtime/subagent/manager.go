@@ -10,6 +10,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/pkg/errno"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/subagent/observer"
 	"github.com/kiosk404/echoryn/pkg/logger"
 )
 
@@ -34,6 +35,7 @@ type managerImpl struct {
 	controller  *SessionController
 	exec        *subAgentExecutor
 	cfg         Config
+	emitter     *observer.Emitter
 
 	// abortFuncs tracks cancel functions for running sub-agents.
 	// Key: record ID, Value: cancel function.
@@ -54,6 +56,8 @@ var _ Manager = (*managerImpl)(nil)
 // After construction, call SetExecutor to wire the AgentExecutor
 // (required before any Spawn calls can execute).
 //
+// The obs parameter is optional: pass nil for a no-op observer.
+//
 // v2: Uses SessionController instead of Announcer. The SessionController
 // ensures single-writer semantics on sessions — pending announcements
 // are stored in memory and consumed by the runner within its own session
@@ -63,9 +67,11 @@ func NewManager(
 	agentRepo repo.AgentRepository,
 	sessionRepo repo.SessionRepository,
 	cfg Config,
+	obs observer.Observer,
 ) *managerImpl {
 	scheduler := NewScheduler(cfg.MaxConcurrent)
 	controller := NewSessionController(registry, sessionRepo)
+	emitter := observer.NewEmitter(obs)
 
 	mgr := &managerImpl{
 		registry:    registry,
@@ -74,6 +80,7 @@ func NewManager(
 		scheduler:   scheduler,
 		controller:  controller,
 		cfg:         cfg,
+		emitter:     emitter,
 		abortFuncs:  make(map[string]context.CancelFunc),
 	}
 
@@ -83,6 +90,7 @@ func NewManager(
 		sessionRepo: sessionRepo,
 		controller:  controller,
 		cfg:         cfg,
+		emitter:     emitter,
 	}
 
 	return mgr
@@ -100,6 +108,13 @@ func (m *managerImpl) SetExecutor(executor AgentExecutor) {
 	}
 	m.exec.executor = executor
 	m.controller.SetExecutor(executor)
+}
+
+// SetLifecycleHook registers a hook that is called when any SubAgent reaches
+// a terminal state. This is the bridge between SubAgent lifecycle and the
+// Team module's EventBridge.
+func (m *managerImpl) SetLifecycleHook(hook LifecycleHook) {
+	m.exec.lifecycleHook = hook
 }
 
 // Controller returns the SessionController.
@@ -130,12 +145,21 @@ func (m *managerImpl) Spawn(ctx context.Context, req *entity.SubAgentSpawnReques
 	defer pmu.Unlock()
 
 	// 1. Depth check.
+	// If parent session doesn't exist (e.g. external CLI client with auto-generated session ID),
+	// treat it as a root-level call with depth 0.
 	parentSession, err := m.sessionRepo.Get(ctx, req.ParentSessionID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get parent session: %w", err)
+		logger.Debug("[subagent] parent session %q not found, treating as root-level (depth 0)", req.ParentSessionID)
+		parentSession = nil
 	}
 
-	currentDepth := parentSession.SpawnDepth()
+	currentDepth := 0
+	var parentAgentID string
+	if parentSession != nil {
+		currentDepth = parentSession.SpawnDepth()
+		parentAgentID = parentSession.AgentID
+	}
+
 	if currentDepth >= m.cfg.MaxSpawnDepth {
 		return nil, fmt.Errorf("%w (current depth: %d, max: %d)",
 			errno.ErrMaxDepthExceeded, currentDepth, m.cfg.MaxSpawnDepth)
@@ -151,19 +175,20 @@ func (m *managerImpl) Spawn(ctx context.Context, req *entity.SubAgentSpawnReques
 			errno.ErrConcurrencyLimit, activeCount, m.cfg.MaxChildrenPerAgent)
 	}
 
-	// 3. Resolve agent ID (default to parent's agent).
+	// 3. Resolve agent ID (default to parent's agent if available).
 	agentID := req.AgentID
 	if agentID == "" {
-		agentID = parentSession.AgentID
+		agentID = parentAgentID
 	}
 
 	// Validate agent exists. If the requested agent_id is not found,
 	// fall back to the parent's agent rather than failing entirely.
 	if _, err := m.agentRepo.Get(ctx, agentID); err != nil {
-		if agentID != parentSession.AgentID {
+		// Try fallback to parent's parent's agent if available and different.
+		if parentAgentID != "" && agentID != parentAgentID {
 			logger.Warn("[subagent] requested agent %q not found, falling back to parent agent %q: %v",
-				agentID, parentSession.AgentID, err)
-			agentID = parentSession.AgentID
+				agentID, parentAgentID, err)
+			agentID = parentAgentID
 			if _, err := m.agentRepo.Get(ctx, agentID); err != nil {
 				return nil, fmt.Errorf("fallback to parent agent %q also failed: %w", agentID, err)
 			}
@@ -196,7 +221,7 @@ func (m *managerImpl) Spawn(ctx context.Context, req *entity.SubAgentSpawnReques
 	subSession := &entity.Session{
 		ID:              fmt.Sprintf("agent:%s:subagent:%s", agentID, uuid.New().String()),
 		AgentID:         agentID,
-		ParentSessionID: parentSession.ID,
+		ParentSessionID: req.ParentSessionID,
 		Messages:        make([]*entity.Message, 0),
 		Metadata: map[string]string{
 			"subagent_id":   record.ID,
@@ -240,6 +265,10 @@ func (m *managerImpl) Spawn(ctx context.Context, req *entity.SubAgentSpawnReques
 		return nil, errno.ErrConcurrencyLimit
 	}
 
+	// Emit observer events.
+	m.emitter.Spawned(record.ID, record.SessionID, record.ParentSessionID, record.AgentID, "", record.SpawnDepth)
+	m.emitter.Scheduled(record.ID, record.SessionID, record.AgentID)
+
 	logger.Info("[subagent] spawned sub-agent %s (task=%q, agent=%s, session=%s, depth=%d, index=%d, parentSessionID=%s, label=%q)",
 		record.ID, record.Task, record.AgentID, record.SessionID, record.SpawnDepth, record.Index, record.ParentSessionID, record.Label)
 
@@ -270,6 +299,7 @@ func (m *managerImpl) Cancel(ctx context.Context, recordID string) error {
 	}
 
 	record.MarkCancelled()
+	m.emitter.Cancelled(record.ID, record.AgentID, "")
 	return m.registry.Save(ctx, record)
 }
 

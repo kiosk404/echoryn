@@ -38,6 +38,40 @@ func NewRotateHook(filename string) *RotateHook {
 	}
 }
 
+// RotateConfig holds configuration for log rotation.
+type RotateConfig struct {
+	MaxSize    int64 // Max size in bytes before rotation.
+	MaxBackups int   // Max number of old log files to keep
+	MaxAge     int   // Max days to keep old log files
+}
+
+// NewRotateHookWithConfig creates a RotateHook with custom configuration.
+// maxSize is in MB, will be converted to bytes internally.
+func NewRotateHookWithConfig(filename string, cfg RotateConfig) *RotateHook {
+	maxSize := cfg.MaxSize
+	if maxSize > 0 {
+		maxSize = maxSize * 1024 * 1024
+	} else {
+		maxSize = 10 * 1024 * 1024
+	}
+	maxBackups := cfg.MaxBackups
+	if maxBackups <= 0 {
+		maxBackups = 3
+	}
+	maxAge := cfg.MaxAge
+	if maxAge <= 0 {
+		maxAge = 7
+	}
+
+	return &RotateHook{
+		Filename:   filename,
+		MaxSize:    maxSize,
+		MaxBackups: maxBackups,
+		MaxAge:     maxAge,
+		LocalTime:  true,
+	}
+}
+
 func (hook *RotateHook) rotate() error {
 	if hook.fileInfo != nil && hook.fileInfo.Size() < hook.MaxSize {
 		return nil
@@ -166,6 +200,11 @@ type Logger struct {
 }
 
 func NewLogger(filename string) (*Logger, error) {
+	return NewLoggerWithConfig(filename, RotateConfig{})
+}
+
+// NewLoggerWithConfig creates a logger with custom rotation config.
+func NewLoggerWithConfig(filename string, rotateCfg RotateConfig) (*Logger, error) {
 	logger := logrus.New()
 
 	file, err := createFile(filename)
@@ -231,7 +270,7 @@ func NewLogger(filename string) (*Logger, error) {
 	// 添加字段来包含代码行号
 	logger.SetReportCaller(true)
 
-	rotateHook := NewRotateHook(filename)
+	rotateHook := NewRotateHookWithConfig(filename, rotateCfg)
 	logger.AddHook(rotateHook)
 
 	return &Logger{logger}, nil

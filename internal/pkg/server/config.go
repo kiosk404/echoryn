@@ -103,7 +103,6 @@ func LoadConfig(cfg string, defaultName string, optional bool) {
 	} else {
 		viper.AddConfigPath(".")
 		viper.AddConfigPath(filepath.Join(homedir.HomeDir(), RecommendedHomeDir))
-		viper.AddConfigPath("/etc/echoryn")
 		viper.SetConfigName(defaultName + ".json")
 	}
 

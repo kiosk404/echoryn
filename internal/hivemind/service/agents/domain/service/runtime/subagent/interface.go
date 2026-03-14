@@ -76,6 +76,11 @@ type Manager interface {
 	// Must be called before any Spawn calls.
 	SetExecutor(executor AgentExecutor)
 
+	// SetLifecycleHook registers an optional hook that is called when any
+	// SubAgent reaches a terminal state. Used by the Team module's EventBridge
+	// to receive lifecycle notifications without creating a direct dependency.
+	SetLifecycleHook(hook LifecycleHook)
+
 	// Recover restores in-flight sub-agent records after process restart.
 	Recover(ctx context.Context) error
 
@@ -144,4 +149,20 @@ type ExecuteRequest struct {
 	AgentID   string
 	SessionID string
 	Input     string
+}
+
+// LifecycleHook is an optional callback that is invoked when a SubAgent
+// reaches a terminal state (completed, failed, cancelled).
+//
+// This enables external system (e.g. Team EventBridge) to observe
+// SubAgent lifecycle event without creating a direct dependency
+// from the subagent package to the team package.
+//
+// Design: observer pattern - hook is injected via Manager.SetLifecycleHook()
+// and called synchronously in the executor's announceResult() path.
+type LifecycleHook interface {
+	// OnSubAgentTerminal is called when a SubAgent reaches a terminal state.
+	// The hook should be fast and non-blocking; long operations should be
+	// dispatched asynchronously.
+	OnSubAgentTerminal(ctx context.Context, record *entity.SubAgentRecord)
 }

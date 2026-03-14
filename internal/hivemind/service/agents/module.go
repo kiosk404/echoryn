@@ -15,6 +15,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/mcp"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/subagent/observer"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	"github.com/kiosk404/echoryn/pkg/paths"
 )
@@ -139,17 +140,24 @@ type Dependencies struct {
 // It exposes:
 //   - Service: Agent CRUD + session management + run execution
 //   - Runner: direct access to the AgentRunner for advanced usage
+//   - Observer: SubAgent execution observability (metrics, reports, health)
+//   - SessionRepo: direct access to session storage for team orchestration
 type Module struct {
 	Service         service.AgentService
 	Runner          *runtime.AgentRunner
 	SubAgentManager subagent.Manager
-	boltDB          *boltdbStore.DB // nil when using inmemory store
+	Observer        observer.Observer
+	SessionRepo     repo.SessionRepository // exposed for team orchestration
+	boltDB          *boltdbStore.DB        // nil when using inmemory store
 }
 
-// Close releases resources held by the module (e.g., BoltDB handle).
+// Close releases resources held by the module (e.g., BoltDB handle, observer).
 func (m *Module) Close() error {
 	if m.boltDB != nil {
 		return m.boltDB.Close()
+	}
+	if m.Observer != nil {
+		_ = m.Observer.Stop()
 	}
 	return nil
 }
@@ -220,7 +228,13 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 	// Application service layer.
 	svc := service.NewAgentService(agentStore, sessionStore, runStore, runner)
 	// SubAgent manager (Controller pattern) — now using the independent subagent package.
-	subAgentMgr := subagent.NewManager(subAgentStore, agentStore, sessionStore, subagent.DefaultConfig())
+	obs := observer.New(observer.DefaultConfig())
+	if err := obs.Start(); err != nil {
+		logger.Warn("[Agents] failed to start SubAgent observer: %v", err)
+	}
+
+	// SubAgent manager (Controller pattern) - now using the independent subagent package.
+	subAgentMgr := subagent.NewManager(subAgentStore, agentStore, sessionStore, subagent.DefaultConfig(), obs)
 
 	// Break the circular dependency: Runner needs SubAgentManager for
 	// Active Run tracking (MarkRunActive/Idle) and announce queue draining.
@@ -234,6 +248,8 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 		Service:         svc,
 		Runner:          runner,
 		SubAgentManager: subAgentMgr,
+		Observer:        obs,
+		SessionRepo:     sessionStore,
 		boltDB:          boltDB,
 	}, nil
 }

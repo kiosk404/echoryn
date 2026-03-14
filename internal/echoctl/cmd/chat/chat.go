@@ -99,7 +99,8 @@ func (o *ChatOptions) Run(ctx context.Context, args []string) error {
 
 	// Interactive TUI mode.
 	adapter := newClientAdapter(client)
-	ui := chatui.New(adapter)
+	teamAPI := NewTeamHTTPClient(o.ServerAddr, o.Session, client.HTTPClient)
+	ui := chatui.New(adapter, chatui.WithTeamAPI(teamAPI))
 
 	return ui.Run(ctx)
 }

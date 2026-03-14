@@ -6,6 +6,8 @@ import (
 	v1 "github.com/kiosk404/echoryn/internal/hivemind/handler/v1"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service"
 	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/messagebus"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/team"
 )
 
 // routerDeps holds the dependencies needed for route registration.
@@ -14,6 +16,11 @@ type routerDeps struct {
 	llmManager    llmService.ModelManager
 	authConfig    *middleware.AuthConfig
 	gatewayConfig *GatewayConfig
+
+	// Team dependencies (optional - nil when team subsystem is not initialized).
+	teamOrchestrator    team.TeamOrchestrator
+	teamTemplateService team.TeamTemplateService
+	teamMessageBus      messagebus.MessageBus
 }
 
 func initRouter(g *gin.Engine, deps *routerDeps) {
@@ -65,5 +72,15 @@ func installController(g *gin.Engine, deps *routerDeps) {
 		apiV1.GET("/agents/:id/sessions", sessionHandler.ListByAgent)
 		apiV1.GET("/sessions/:id", sessionHandler.Get)
 		apiV1.DELETE("/sessions/:id", sessionHandler.Delete)
+
+		// Team management (only registered when team subsystem is available).
+		if deps.teamOrchestrator != nil && deps.teamTemplateService != nil {
+			teamHandler := v1.NewTeamHandler(deps.teamOrchestrator, deps.teamTemplateService, deps.teamMessageBus)
+			apiV1.GET("/teams/templates", teamHandler.ListTemplates)
+			apiV1.POST("/teams", teamHandler.CreateTeam)
+			apiV1.GET("/teams/:id", teamHandler.DissolveTeam)
+			apiV1.DELETE("/teams/:id", teamHandler.DissolveTeam)
+			apiV1.POST("/teams/:id/messages", teamHandler.SendMessage)
+		}
 	}
 }

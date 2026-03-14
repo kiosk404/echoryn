@@ -7,6 +7,7 @@ import (
 
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/subagent/observer"
 	"github.com/kiosk404/echoryn/pkg/logger"
 )
 
@@ -17,11 +18,13 @@ import (
 // v2: Uses SessionController instead of Announcer. The controller's
 // EnqueueAnnouncement replaces the old Announce() method.
 type subAgentExecutor struct {
-	executor    AgentExecutor
-	registry    Registry
-	sessionRepo repo.SessionRepository
-	controller  *SessionController
-	cfg         Config
+	executor      AgentExecutor
+	registry      Registry
+	sessionRepo   repo.SessionRepository
+	controller    *SessionController
+	cfg           Config
+	lifecycleHook LifecycleHook // optional hook for Team integration.
+	emitter       *observer.Emitter
 }
 
 // execute is the async execution body for a sub-agent.
@@ -42,6 +45,7 @@ func (e *subAgentExecutor) execute(parentCtx context.Context, record *entity.Sub
 	if err := e.registry.Save(ctx, record); err != nil {
 		logger.Warn("[subagent] failed to save running state for %s: %v", record.ID, err)
 	}
+	e.emitter.Running(record.ID, record.SessionID, record.AgentID, "")
 
 	// Build the sub-agent system prompt (minimal mode).
 	subAgentPrompt := buildSystemPrompt(record.Task)
@@ -56,6 +60,7 @@ func (e *subAgentExecutor) execute(parentCtx context.Context, record *entity.Sub
 		record.MarkFailed(fmt.Sprintf("failed to start sub-agent run: %v", err))
 		_ = e.registry.Save(context.Background(), record)
 		logger.Warn("[subagent] sub-agent %s failed to start: %v", record.ID, err)
+		e.emitter.Failed(record.ID, record.AgentID, "", 0, err.Error())
 		e.announceResult(record)
 		return
 	}
@@ -82,6 +87,8 @@ func (e *subAgentExecutor) execute(parentCtx context.Context, record *entity.Sub
 			record.MarkFailed(fmt.Sprintf("stream error: %v", recvErr))
 			_ = e.registry.Save(context.Background(), record)
 			logger.Warn("[subagent] sub-agent %s stream error: %v", record.ID, recvErr)
+			e.emitter.StreamError(record.ID, record.AgentID, recvErr.Error())
+			e.emitter.Failed(record.ID, record.AgentID, "", record.Duration(), recvErr.Error())
 			e.announceResult(record)
 			return
 		}
@@ -114,6 +121,7 @@ func (e *subAgentExecutor) execute(parentCtx context.Context, record *entity.Sub
 		record.MarkFailed(errMsg)
 		_ = e.registry.Save(context.Background(), record)
 		logger.Warn("[subagent] sub-agent %s failed: %s", record.ID, errMsg)
+		e.emitter.Failed(record.ID, record.AgentID, "", record.Duration(), errMsg)
 		e.announceResult(record)
 		return
 	}
@@ -132,6 +140,7 @@ func (e *subAgentExecutor) execute(parentCtx context.Context, record *entity.Sub
 
 	logger.Info("[subagent] sub-agent %s completed (duration=%s, result_len=%d)",
 		record.ID, record.Duration(), len(assistantContent))
+	e.emitter.Completed(record.ID, record.AgentID, "", record.Duration())
 
 	// Announce result to parent session.
 	e.announceResult(record)
@@ -185,6 +194,13 @@ func (e *subAgentExecutor) readSubAgentOutput(sessionID string) string {
 func (e *subAgentExecutor) announceResult(record *entity.SubAgentRecord) {
 	ctx := context.Background()
 
+	// Notify lifecycle hook (if registered) - enables Team EventBridge integration.
+	// Called before announcement so that the Team system can update member status
+	// before the parent session processes the result.
+	if e.lifecycleHook != nil {
+		e.lifecycleHook.OnSubAgentTerminal(ctx, record)
+	}
+
 	// Count remaining active runs for the same parent.
 	remainingActive := countActiveFromRegistry(ctx, e.registry, record.ParentSessionID)
 	// Subtract 1 because the current record might still be counted.
@@ -193,6 +209,7 @@ func (e *subAgentExecutor) announceResult(record *entity.SubAgentRecord) {
 	}
 
 	e.controller.EnqueueAnnouncement(ctx, record, remainingActive)
+	e.emitter.Announced(record.ID, record.ParentSessionID)
 
 	// Bubble-up: grandparent propagation.
 	e.bubbleUpIfNeeded(ctx, record)

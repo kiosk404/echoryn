@@ -73,7 +73,7 @@ const (
 //
 // When a project root is set (via SetDataDir), ResolveStateDir returns
 // <dataDir>/.echoryn instead of ~/.echoryn. This allows per-project
-// isolation of all Echoryn state (sessions, memory, config, etc.).
+// isolation of all Echoryn state (sessions, memory, config).
 
 var (
 	dataDirMu sync.RWMutex
@@ -224,6 +224,26 @@ func ResolveGolemSkillsDir() string {
 // Layout: <stateDir>/credentials
 func ResolveCredentialsDir() string {
 	return filepath.Join(ResolveStateDir(), "credentials")
+}
+
+// ResolveGolemLogsDir returns the golem skills directory.
+// Layout: <stateDir>/golem/data/logs
+func ResolveGolemLogsDir() string {
+	return filepath.Join(ResolveGolemDataDir(), "data", "logs")
+}
+
+// ResolveTemplatesDirs returns the list of directories to search for team template.
+// Priority follows the same pattern as config loading:
+// 1. ./conf/templates (project-specific templates, checked into source control)
+// 2. <stateDir>/templates (~/.echoryn/templates by default, user-level)
+//
+// The TemplateLoader will scan all directories in order, loading templates
+// from each. Later directories can override templates from earlier ones.
+func ResolveTemplatesDirs() []string {
+	return []string{
+		filepath.Join(".", "conf", "templates"),
+		filepath.Join(ResolveStateDir(), "templates"),
+	}
 }
 
 // ResolveAdminTokenPath returns the admin token file path.

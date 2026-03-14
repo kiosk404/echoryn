@@ -154,3 +154,16 @@ func InitLog(output string) (err error) {
 	})
 	return
 }
+
+// InitLogWithConfig initializes the logger with custom rotation config.
+func InitLogWithConfig(output string, cfg RotateConfig) (err error) {
+	once.Do(func() {
+		logrus.SetFormatter(&logrus.TextFormatter{})
+		logrus.SetLevel(logrus.DebugLevel)
+		if output == "" {
+			output = "output/log/common.log"
+		}
+		instance, err = NewLoggerWithConfig(output, cfg)
+	})
+	return
+}

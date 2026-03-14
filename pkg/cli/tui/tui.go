@@ -61,6 +61,10 @@ type TUI struct {
 	commands *command.Registry
 	cfg      Config
 	messages []ChatMessage
+
+	// Team collaboration state.
+	teamState *command.TeamState
+	teamAPI   command.TeamAPI
 }
 
 // New creates a TUI instance. Call [TUI.Run] to start the interactive loop.
@@ -71,8 +75,9 @@ func New(client Client, opts ...Option) *TUI {
 	}
 
 	return &TUI{
-		client: client,
-		cfg:    cfg,
+		client:  client,
+		cfg:     cfg,
+		teamAPI: cfg.TeamAPI,
 	}
 }
 
@@ -102,6 +107,7 @@ func (t *TUI) Run(ctx context.Context) error {
 	// --- Command registry ---
 	t.commands = command.NewRegistry()
 	command.RegisterBuiltins(t.commands)
+	command.RegisterTeamCommands(t.commands)
 
 	// --- Input reader ---
 	inputCfg := input.Config{
@@ -124,6 +130,10 @@ func (t *TUI) Run(ctx context.Context) error {
 		ServerAddr: t.client.BaseURL(),
 		SessionKey: t.client.SessionKey(),
 	}, width)
+
+	// Flush stdout after banner so the terminal emulator finishes rendering
+	// the large ASCII art before readline sends its cursor-position query.
+	os.Stdout.Sync()
 
 	// --- Main REPL loop ---
 	for {
@@ -173,6 +183,8 @@ func (t *TUI) handleCommand(ctx context.Context, rawInput string) error {
 		ClearHistory: func() { t.messages = nil },
 		Model:        t.client.Model,
 		SessionKey:   t.client.SessionKey,
+		SetTeamState: func(state *command.TeamState) { t.teamState = state },
+		TeamAPI:      t.teamAPI,
 	}
 
 	return cmd.Execute(ctx, env, args)
@@ -181,10 +193,6 @@ func (t *TUI) handleCommand(ctx context.Context, rawInput string) error {
 // handleChat sends a user message to the server and streams the response.
 func (t *TUI) handleChat(ctx context.Context, message string) error {
 	width := t.term.Width()
-
-	// Display user message.
-	render.PrintUserMessage(message, width)
-
 	// Add to conversation history.
 	t.messages = append(t.messages, ChatMessage{Role: "user", Content: message})
 
@@ -217,8 +225,14 @@ func (t *TUI) handleChat(ctx context.Context, message string) error {
 
 	// Finish: re-render as markdown.
 	content := renderer.Finish()
+
+	// Print "Awaiting" message after response.
+	render.PrintAwaitingMessage()
 	fmt.Println() // blank line after response
-	t.messages = append(t.messages, ChatMessage{Role: "assistant", Content: content})
+
+	// Flush stdout so the terminal emulator finishes rendering all of the
+	// above output before readline sends its DSR cursor-position query.
+	os.Stdout.Sync()
 
 	// Use the server's full content if our local buffer missed something.
 	if fullContent != "" && content == "" {

@@ -19,6 +19,17 @@ type Env struct {
 
 	// SessionKey returns the current session identifier.
 	SessionKey func() string
+
+	// --- Team collaboration ---
+
+	// TeamState holds the current active team state (nil if no team).
+	TeamState *TeamState
+
+	// SetTeamState updates the TUI's team state (called by team commands).
+	SetTeamState func(state *TeamState)
+
+	// TeamAPI provides the backend API for team operations.
+	TeamAPI TeamAPI
 }
 
 // Command is the interface that all slash commands must implement.

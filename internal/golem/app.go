@@ -2,6 +2,7 @@ package golem
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/kiosk404/echoryn/internal/golem/config"
 	"github.com/kiosk404/echoryn/internal/golem/options"
@@ -36,16 +37,22 @@ func run(opts *options.Options) app.RunFunc {
 				paths.ResolveStateDir())
 		}
 
-		// If a custom data directory is specified, configure paths package
-		// so that all state goes under <data-dir>/.echoryn instead of ~/.echoryn
-		if opts.DataDir != "" {
-			paths.SetDataDir(opts.DataDir)
+		// Ensure state directory structure (creates logs dir among others).
+		stateDir, err := paths.EnsureStateDirForRole(paths.RoleGolem)
+		if err != nil {
+			return fmt.Errorf("failed to ensure golem state directory: %w", err)
 		}
+		logger.Info("[Golem] state directory: %s", stateDir)
 
-		logBaseName := basename
-		logPath := fmt.Sprintf("%s/%s.log", logBaseName, logBaseName)
+		logPath := filepath.Join(paths.ResolveGolemLogsDir(), "golem.log")
 
-		if err := logger.InitLog(logPath); err != nil {
+		// Initialize logger with custom rotation config.
+		rotateCfg := logger.RotateConfig{
+			MaxSize:    opts.LogMaxSize,
+			MaxBackups: opts.LogMaxBackups,
+			MaxAge:     opts.LogMaxAge,
+		}
+		if err := logger.InitLogWithConfig(logPath, rotateCfg); err != nil {
 			return err
 		}
 		defer logger.FlushLog()

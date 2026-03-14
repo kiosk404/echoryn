@@ -1,0 +1,257 @@
+syntax = "proto3";
+
+package team;
+
+option go_package = "github.com/kiosk404/echoryn/pkg/proto/team";
+
+import "base/base.proto";
+import "google/protobuf/timestamp.proto";
+
+// ==========================================================================
+// TeamService — Team collaboration API for managing agent teams
+// ==========================================================================
+service TeamService {
+  // CreateTeam creates a new team from template or ad-hoc configuration.
+  rpc CreateTeam(CreateTeamRequest) returns (CreateTeamResponse);
+
+  // GetTeam retrieves team details by ID.
+  rpc GetTeam(GetTeamRequest) returns (GetTeamResponse);
+
+  // ListTeams lists teams, optionally filtered by parent session.
+  rpc ListTeams(ListTeamsRequest) returns (ListTeamsResponse);
+
+  // DissolveTeam dissolves a team, cancelling active members.
+  rpc DissolveTeam(DissolveTeamRequest) returns (DissolveTeamResponse);
+
+  // AddMember adds a new member to an existing team.
+  rpc AddMember(AddMemberRequest) returns (AddMemberResponse);
+
+  // RemoveMember removes a member from a team.
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse);
+
+  // SendTeamMessage sends a message within a team (point-to-point or broadcast).
+  rpc SendTeamMessage(SendTeamMessageRequest) returns (SendTeamMessageResponse);
+
+  // ListTemplates lists available team templates.
+  rpc ListTemplates(ListTemplatesRequest) returns (ListTemplatesResponse);
+}
+
+// ==========================================================================
+// Team Entity Messages
+// ==========================================================================
+
+// TeamStatus represents the lifecycle state of a team.
+enum TeamStatus {
+  TEAM_STATUS_UNSPECIFIED = 0;
+  TEAM_STATUS_CREATING    = 1;
+  TEAM_STATUS_ACTIVE      = 2;
+  TEAM_STATUS_WORKING     = 3;
+  TEAM_STATUS_COMPLETING  = 4;
+  TEAM_STATUS_DISSOLVED   = 5;
+}
+
+// TeamMemberStatus represents the state of a team member.
+enum TeamMemberStatus {
+  TEAM_MEMBER_STATUS_UNSPECIFIED = 0;
+  TEAM_MEMBER_STATUS_IDLE        = 1;
+  TEAM_MEMBER_STATUS_RUNNING     = 2;
+  TEAM_MEMBER_STATUS_COMPLETED   = 3;
+  TEAM_MEMBER_STATUS_FAILED      = 4;
+}
+
+// Team represents an instantiated team with members.
+message Team {
+  string                    id                    = 1;
+  string                    name                  = 2;
+  string                    template_id           = 3;   // Source template ID (empty for ad-hoc)
+  string                    template_version      = 4;
+  string                    parent_session_id     = 5;
+  string                    parent_run_id         = 6;
+  string                    task_description      = 7;
+  string                    coordination_strategy = 8;   // parallel, pipeline, debate, leader_directed
+  TeamStatus                status                = 9;
+  repeated TeamMember       members               = 10;
+  string                    leader_id             = 11;
+  google.protobuf.Timestamp created_at            = 12;
+  google.protobuf.Timestamp updated_at            = 13;
+  google.protobuf.Timestamp completed_at          = 14;
+  TeamResult                result                = 15;
+  map<string, string>       metadata              = 16;
+}
+
+// TeamMember represents a team member bound to a SubAgent session.
+message TeamMember {
+  string                    id                 = 1;
+  string                    spec_id            = 2;   // MemberSpec ID from template
+  string                    subagent_record_id = 3;
+  string                    session_id         = 4;
+  string                    agent_id           = 5;
+  string                    role               = 6;
+  string                    label              = 7;
+  string                    task               = 8;
+  TeamMemberStatus          status             = 9;
+  google.protobuf.Timestamp joined_at          = 10;
+  google.protobuf.Timestamp completed_at       = 11;
+  string                    node_id            = 12;  // Golem node ID (if remote)
+  string                    progress           = 13;
+}
+
+// TeamResult is the aggregated result from a team.
+message TeamResult {
+  string          summary        = 1;
+  bool            success        = 2;
+  repeated string member_outputs = 3;
+}
+
+// TeamTemplate defines a reusable team structure.
+message TeamTemplate {
+  string                    id               = 1;
+  string                    name             = 2;
+  string                    version          = 3;
+  string                    description      = 4;
+  repeated MemberSpec       member_specs     = 5;
+  string                    default_strategy = 6;
+  int32                     leader_spec_index = 7;
+  string                    system_prompt    = 8;
+  repeated string           tags             = 9;
+  google.protobuf.Timestamp created_at       = 10;
+  google.protobuf.Timestamp updated_at       = 11;
+}
+
+// MemberSpec defines a role within a team template.
+message MemberSpec {
+  string          id                = 1;
+  string          role              = 2;
+  string          display_name      = 3;
+  string          description       = 4;
+  string          recommended_model = 5;
+  bool            is_leader         = 6;
+  bool            can_communicate   = 7;
+  string          system_prompt     = 8;
+  string          default_task      = 9;
+  repeated string skills            = 10;
+  int32           min_count         = 11;
+  int32           max_count         = 12;
+}
+
+// ==========================================================================
+// Request / Response Messages
+// ==========================================================================
+
+// CreateTeamRequest supports two modes:
+//   1. Template-based: provide template_id
+//   2. Ad-hoc: provide name + strategy directly
+message CreateTeamRequest {
+  // Template-based creation fields.
+  string              template_id       = 1;   // Template ID for template-based creation
+  string              task_description  = 2;   // Task description for the team
+  string              strategy_override = 3;   // Override template's default strategy
+
+  // Member overrides (keyed by MemberSpec ID).
+  map<string, MemberOverride> member_overrides = 4;
+
+  // Ad-hoc creation fields (used when template_id is empty).
+  string              name              = 5;   // Team name
+  string              strategy          = 6;   // Coordination strategy
+
+  // Context fields (populated by the server).
+  string              parent_session_id = 7;
+  string              parent_run_id     = 8;
+}
+
+// MemberOverride allows customizing a template member spec during instantiation.
+message MemberOverride {
+  string agent_id = 1;
+  string model    = 2;
+  string task     = 3;
+  bool   disabled = 4;  // Skip this member spec
+}
+
+message CreateTeamResponse {
+  Team          team      = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message GetTeamRequest {
+  string team_id = 1;
+}
+
+message GetTeamResponse {
+  Team          team      = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message ListTeamsRequest {
+  string parent_session_id = 1;   // Optional: filter by parent session
+  int32  page_size         = 2;
+  string page_token        = 3;
+}
+
+message ListTeamsResponse {
+  repeated Team teams           = 1;
+  string        next_page_token = 2;
+  int32         total_count     = 3;
+  base.BaseResp base_resp       = 255;
+}
+
+message DissolveTeamRequest {
+  string team_id = 1;
+}
+
+message DissolveTeamResponse {
+  bool          success   = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message AddMemberRequest {
+  string team_id   = 1;
+  string role       = 2;
+  string label      = 3;
+  string task       = 4;
+  string model      = 5;   // Optional model override
+  string agent_id   = 6;   // Optional agent ID
+  bool   is_leader  = 7;
+}
+
+message AddMemberResponse {
+  TeamMember    member    = 1;
+  base.BaseResp base_resp = 255;
+}
+
+message RemoveMemberRequest {
+  string team_id   = 1;
+  string member_id = 2;
+}
+
+message RemoveMemberResponse {
+  bool          success   = 1;
+  base.BaseResp base_resp = 255;
+}
+
+// SendTeamMessageRequest supports both point-to-point and broadcast messages.
+message SendTeamMessageRequest {
+  string team_id         = 1;
+  string from_session_id = 2;
+  string to_session_id   = 3;   // Empty for broadcast
+  bool   is_broadcast    = 4;   // v1.4: explicit broadcast flag
+  string message_type    = 5;   // chat, task, result, steer, status, shutdown
+  string content         = 6;
+  int32  priority        = 7;
+}
+
+message SendTeamMessageResponse {
+  bool          success    = 1;
+  string        message_id = 2;
+  base.BaseResp base_resp  = 255;
+}
+
+message ListTemplatesRequest {
+  // Optional filters.
+  repeated string tags = 1;
+}
+
+message ListTemplatesResponse {
+  repeated TeamTemplate templates = 1;
+  base.BaseResp         base_resp = 255;
+}
+

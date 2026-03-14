@@ -7,6 +7,7 @@ package builtin
 
 import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/llm/provider/helper"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	feishuchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/feishu"
 	telegramchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/telegram"
@@ -328,12 +329,12 @@ func resolveFeishuConfig(opts *genericoptions.PluginsOptions) *feishuchannel.Fei
 	}
 	if v, ok := entry.Config["app_id"]; ok {
 		if b, ok := v.(string); ok {
-			cfg.AppID = b
+			cfg.AppID = helper.ResolveEnvValue(b)
 		}
 	}
 	if v, ok := entry.Config["app_secret"]; ok {
 		if s, ok := v.(string); ok {
-			cfg.AppSecret = s
+			cfg.AppSecret = helper.ResolveEnvValue(s)
 		}
 	}
 	if v, ok := entry.Config["verification_token"]; ok {
@@ -492,7 +493,7 @@ func resolveWebSearchConfig(opts *genericoptions.PluginsOptions) *websearch.Conf
 		if geminiMap, ok := geminiRaw.(map[string]interface{}); ok {
 			if v, ok := geminiMap["api_key"]; ok {
 				if s, ok := v.(string); ok {
-					cfg.Gemini.APIKey = s
+					cfg.Gemini.APIKey = helper.ResolveEnvValue(s)
 				}
 			}
 			if v, ok := geminiMap["model"]; ok {

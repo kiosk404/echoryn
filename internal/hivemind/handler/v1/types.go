@@ -160,6 +160,74 @@ type SessionResponse struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
+// --- Team API ---
+
+// CreateTeamRequest is the request body for POST /v1/teams.
+type CreateTeamRequest struct {
+	// TemplateID creates a team from a template (mutually exclusive with Name).
+	TemplateID string `json:"template_id,omitempty"`
+
+	// Name is used for ad-hoc team creation (when TemplateID is empty).
+	Name string `json:"name,omitempty"`
+
+	// TaskDescription describes the task for the team.
+	TaskDescription string `json:"task_description" binding:"required"`
+
+	// Strategy is the coordination strategy (parallel, pipeline, debate, leader_directed).
+	Strategy string `json:"strategy,omitempty"`
+}
+
+// SendTeamMessageRequest is the request body for POST /v1/teams/:id/messages.
+type SendTeamMessageRequest struct {
+	// Recipient is the member label or ID (for point-to-point messages).
+	Recipient string `json:"recipient,omitempty"`
+
+	// Content is the message text.
+	Content string `json:"content" binding:"required"`
+
+	// Broadcast sends the message to all team members.
+	Broadcast bool `json:"broadcast,omitempty"`
+}
+
+// TeamTemplateResponse is the response for team template endpoints.
+type TeamTemplateResponse struct {
+	ID              string                       `json:"id"`
+	Name            string                       `json:"name"`
+	Description     string                       `json:"description,omitempty"`
+	DefaultStrategy string                       `json:"default_strategy"`
+	Members         []TeamTemplateMemberResponse `json:"members"`
+}
+
+// TeamTemplateMemberResponse is a member spec in a template response.
+type TeamTemplateMemberResponse struct {
+	ID       string `json:"id"`
+	Role     string `json:"role"`
+	Label    string `json:"label"`
+	IsLeader bool   `json:"is_leader,omitempty"`
+}
+
+// TeamResponse is the response for team endpoints.
+type TeamResponse struct {
+	ID       string               `json:"id"`
+	Name     string               `json:"name"`
+	Strategy string               `json:"strategy"`
+	Status   string               `json:"status"`
+	Members  []TeamMemberResponse `json:"members"`
+}
+
+// TeamMemberResponse is a team member in the response.
+type TeamMemberResponse struct {
+	ID        string `json:"id"`
+	SessionID string `json:"session_id"`
+	AgentID   string `json:"agent_id,omitempty"`
+	Label     string `json:"label"`
+	Role      string `json:"role"`
+	Status    string `json:"status"`
+	IsLeader  bool   `json:"is_leader,omitempty"`
+	NodeID    string `json:"node_id,omitempty"`
+	Progress  string `json:"progress,omitempty"`
+}
+
 // --- Common ---
 
 const timeFormat = time.RFC3339

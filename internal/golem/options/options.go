@@ -44,6 +44,11 @@ type Options struct {
 
 	// DataDir specifies a custom data directory for all Echoryn state.
 	DataDir string `json:"data-dir" mapstructure:"data-dir"`
+
+	// Log rotation settings.
+	LogMaxSize    int64 `json:"log-max-size" mapstructure:"log-max-size"`
+	LogMaxBackups int   `json:"log-max-backups" mapstructure:"log-max-backups"`
+	LogMaxAge     int   `json:"log-max-age" mapsturcture:"json:"log-max-age"`
 }
 
 // NewOptions creates default Options for a Golem worker.
@@ -60,6 +65,9 @@ func NewOptions() *Options {
 		ConnectTimeout:     "10s",
 		ReconnectInterval:  "5s",
 		DataDir:            "",
+		LogMaxSize:         10,
+		LogMaxBackups:      3,
+		LogMaxAge:          7,
 	}
 }
 
@@ -95,6 +103,14 @@ func (o *Options) Flags() (fss cliflag.NamedFlagSets) {
 	gs.StringVar(&o.DataDir, "data-dir", o.DataDir,
 		"Custom data directory for Echoryn state. "+
 			"When set, the state directory becomes <data-dir>/.echoryn instead of ~/.echoryn.")
+
+	ls := fss.FlagSet("log")
+	ls.Int64Var(&o.LogMaxSize, "log-max-size", o.LogMaxSize,
+		"Max size in MB before log rotation (default: 10)")
+	ls.IntVar(&o.LogMaxBackups, "log-max-backups", o.LogMaxBackups,
+		"Max number of old log files to keep (default: 3)")
+	ls.IntVar(&o.LogMaxAge, "log-max-age", o.LogMaxAge,
+		"Max days to keep old log files (default: 7)")
 	return fss
 }
 

@@ -70,6 +70,26 @@
         "config": {
           "enabled": true
         }
+      },
+      "channel-feishu": {
+        "config": {
+          "enabled": true,
+          "app_id": "${FEISHU_APP_ID}",
+          "app_secret": "${FEISHU_APP_SECRET}",
+          "connection_mode": "websocket",
+          "domain": "feishu"
+        }
+      },
+      "web-search": {
+        "config": {
+          "enabled": true,
+          "provider": "gemini",
+          "timeout_seconds": 30,
+          "gemini": {
+            "api_key": "${GEMINI_API_KEY}",
+            "model": "gemini-2.5-flash"
+          }
+        }
       }
     }
   }

@@ -39,6 +39,14 @@ const (
 
 	// Model errors (1004xx).
 	ErrModelList = 100401
+
+	// Team errors (1005xx).
+	ErrTeamNotFound       = 100501
+	ErrTeamCreate         = 100502
+	ErrTeamDissolve       = 100503
+	ErrTeamMessage        = 100504
+	ErrTeamTemplateList   = 100505
+	ErrTeamMemberNotFound = 100506
 )
 
 func init() {
@@ -67,6 +75,14 @@ func init() {
 
 	// Model.
 	errorx.MustRegister(newCoder(ErrModelList, http.StatusInternalServerError, "Failed to list models"))
+
+	// Team.
+	errorx.MustRegister(newCoder(ErrTeamNotFound, http.StatusNotFound, "Team not found"))
+	errorx.MustRegister(newCoder(ErrTeamCreate, http.StatusInternalServerError, "Failed to create team"))
+	errorx.MustRegister(newCoder(ErrTeamDissolve, http.StatusInternalServerError, "Failed to dissolve team"))
+	errorx.MustRegister(newCoder(ErrTeamMessage, http.StatusInternalServerError, "Failed to send team message"))
+	errorx.MustRegister(newCoder(ErrTeamTemplateList, http.StatusInternalServerError, "Failed to list team templates"))
+	errorx.MustRegister(newCoder(ErrTeamMemberNotFound, http.StatusNotFound, "Team member not found"))
 }
 
 type coder struct {

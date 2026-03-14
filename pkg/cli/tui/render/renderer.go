@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"github.com/muesli/termenv"
 )
@@ -25,16 +26,12 @@ const (
 // response. It coordinates the spinner, raw text streaming, tool-call
 // panel, and final markdown re-render.
 //
-// Usage:
+// The output flow mirrors Gemini CLI.
 //
-//	r := render.NewStreamRenderer(width)
-//	r.StartThinking()
-//	// ... on each SSE delta:
-//	r.OnDelta("Hello")
-//	// ... on tool call:
-//	r.OnToolCall("web_search")
-//	// ... when stream ends:
-//	rendered := r.Finish()
+// 1. Show "Thinking..." spinner.
+// 2. On first delta: stop spinner
+// 3. On tool call: render compact tool indicator
+// 4. On finish: overwrite raw text with glamour-rendered markdown.
 type StreamRenderer struct {
 	md      *MarkdownRenderer
 	spinner *Spinner
@@ -77,6 +74,12 @@ func (r *StreamRenderer) OnDelta(delta string) {
 	if r.state == stateThinking {
 		r.spinner.Stop()
 		r.state = stateStreaming
+		// Print the assistant marker on the first delta.
+		marker := lipgloss.NewStyle().
+			Bold(true).
+			Foreground(assistantColor).
+			Render("✦ ")
+		fmt.Fprint(os.Stdout, marker)
 	}
 
 	r.content.WriteString(delta)
@@ -123,25 +126,18 @@ func (r *StreamRenderer) Finish() string {
 		return content
 	}
 
-	// Ensure the raw streaming output ends with a newline so the
-	// cursor is on a fresh line before we start overwriting.
+	// Ensure the raw streaming output ends with a newline
 	needsNewline := !strings.HasSuffix(content, "\n")
 	if needsNewline {
 		fmt.Fprintln(os.Stdout)
 	}
 
 	// --- Overwrite raw output with rendered markdown ---
-	//
-	// 1. Calculate how many visual lines the raw text occupied on screen.
-	//    If we added a newline above, the text effectively has an extra
-	//    blank line — account for it.
-	// 2. Move cursor up that many lines.
-	// 3. Erase from cursor to end-of-screen.
-	// 4. Print the markdown-rendered version.
 	textForCounting := content
 	if needsNewline {
 		textForCounting += "\n"
 	}
+	// Add 1 for the "✦ " marker line prefix
 	lines := countVisualLines(textForCounting, r.width)
 	if lines > 0 {
 		// CUU – Cursor Up by `lines` rows.
@@ -150,18 +146,32 @@ func (r *StreamRenderer) Finish() string {
 	// Move to column 0, then erase from cursor to end of display.
 	fmt.Fprint(os.Stdout, "\r\x1b[J")
 
+	// Render with assistant marker.
+	marker := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(assistantColor).
+		Render("✦ ")
 	rendered := r.md.Render(content)
-	fmt.Fprintln(os.Stdout, rendered)
+	fmt.Fprintln(os.Stdout, marker+rendered)
 
 	r.state = stateDone
 	return content
 }
 
+// FinishWithToolResult ends the stream and also renders ta tool result box.
+func (r *StreamRenderer) FinishWithToolResult(toolName, desc, code string, success bool) string {
+	content := r.Finish()
+
+	// Render the tool result in a bordered box.
+	box := RenderToolResult(toolName, desc, code, r.width, success)
+	fmt.Fprintln(os.Stdout)
+	fmt.Fprintln(os.Stdout, box)
+
+	return content
+}
+
 // countVisualLines calculates the number of screen lines that text would
-// occupy in a terminal of the given width, accounting for word-wrap and
-// wide (CJK) characters.
-// Each logical line (delimited by \n) may span multiple screen rows if it
-// is wider than the terminal.
+// occupy in a terminal of the given width
 func countVisualLines(text string, termWidth int) int {
 	if termWidth <= 0 {
 		termWidth = 80
@@ -171,16 +181,12 @@ func countVisualLines(text string, termWidth int) int {
 	for _, line := range lines {
 		w := runewidth.StringWidth(line)
 		if w == 0 {
-			total++ // empty line still occupies one screen row
+			total++
 			continue
 		}
-		// Number of screen rows = ceil(w / termWidth).
 		rows := (w + termWidth - 1) / termWidth
 		total += rows
 	}
-	// Subtract 1 because the cursor sits at the end of the last printed
-	// character, which is already on the last line — we don't need to
-	// move up past it.
 	if total > 0 {
 		total--
 	}
@@ -188,7 +194,6 @@ func countVisualLines(text string, termWidth int) int {
 }
 
 // Abort stops the renderer without re-rendering markdown.
-// Returns whatever content has been accumulated so far.
 func (r *StreamRenderer) Abort() string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -226,4 +231,25 @@ func (r *StreamRenderer) Reset() {
 	r.rawLines = 0
 	r.content.Reset()
 	r.tools.Reset()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Post-stream message rendering
+// ─────────────────────────────────────────────────────────────────────────────
+
+// PrintAwaitingMessage prints the "Awaiting your next command or request." line.
+func PrintAwaitingMessage() {
+	marker := lipgloss.NewStyle().Bold(true).Foreground(assistantColor).Render("✦ ")
+	msg := lipgloss.NewStyle().Foreground(lipgloss.Color("252")).Render("Awaiting your next command or request.")
+	fmt.Println()
+	fmt.Println(marker + msg)
+}
+
+// PrintContextInfo prints a context info line
+func PrintContextInfo(info string) {
+	if info == "" {
+		return
+	}
+	fmt.Println()
+	fmt.Println(subtleStyle.Render("  " + info))
 }

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package api;
 
-option go_package = "github.com/kiosk404/echoryn/api/model/api";
+option go_package = "github.com/kiosk404/echoryn/pkg/proto/api";
 
 import "base/base.proto";
 import "golem/golem.proto";

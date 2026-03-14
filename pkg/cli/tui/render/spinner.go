@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 )
 
@@ -22,9 +23,6 @@ var defaultFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "�
 //
 //	⠹ Thinking...          (first 2 seconds)
 //	⠼ Thinking... (3.2s)   (after 2 seconds, shows elapsed time)
-//
-// The Spinner is goroutine-safe; [Start] and [Stop] may be called from
-// different goroutines.
 type Spinner struct {
 	frames   []string
 	interval time.Duration
@@ -129,15 +127,24 @@ func (s *Spinner) renderFrame(idx int) {
 	frame := s.frames[idx]
 	elapsed := time.Since(s.start)
 
-	style := s.output.String(frame + " " + s.label)
-	style = style.Foreground(s.output.Color("241")) // gray
+	colorIdx := idx % len(gradientColors)
+	styledFram := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(gradientColors[colorIdx]).
+		Render(frame)
+
+	styledLabel := lipgloss.NewStyle().
+		Foreground(subtleColor).
+		Render(" " + s.label)
 
 	var line string
 	if elapsed > 2*time.Second {
-		// Show elapsed time after 2 seconds.
-		line = fmt.Sprintf("\r%s (%0.1fs)", style, elapsed.Seconds())
+		elapsedText := lipgloss.NewStyle().
+			Foreground(dimColor).
+			Render(fmt.Sprintf(" (%0.1fs)", elapsed.Seconds()))
+		line = fmt.Sprintf("\r %s%s%s", styledFram, styledLabel, elapsedText)
 	} else {
-		line = fmt.Sprintf("\r%s", style)
+		line = fmt.Sprintf("\r%s%s", styledFram, styledLabel)
 	}
 
 	// Overwrite current line.

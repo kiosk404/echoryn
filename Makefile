@@ -13,7 +13,7 @@ VERSION_PACKAGE=github.com/kiosk404/echoryn/pkg/version
 # Protobuf IDL options
 PROTO_IDL_DIR := ./idl
 PROTO_OUT_GO := ./pkg/proto
-PROTO_MODULES := golem
+PROTO_MODULES := golem base team api
 
 # ==============================================================================
 # Includes
