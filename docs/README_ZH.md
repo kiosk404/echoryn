@@ -6,6 +6,8 @@
   <strong>🚧 开发进行中 (WIP) – 项目尚未完成。</strong>
 </p>
 
+![echoryn](./assets/github-header-banner.png)
+
 <div align="center">
 
 [![Go 版本](https://img.shields.io/badge/Go-1.25.0-blue)](https://golang.org/)
@@ -130,6 +132,8 @@ make all
 4. 构建所有二进制文件
 
 ### 运行 Echoryn
+
+![echoryn](./assets/echo-cli-cn.png)
 
 #### 1. 启动 Hivemind 服务器
 

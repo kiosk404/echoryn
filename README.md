@@ -6,6 +6,8 @@
   <strong>🚧 Work in progress (WIP) – this project is not finished yet.</strong>
 </p>
 
+![Header](./docs/assets/github-header-banner.png)
+
 <div align="center">
 
 [![Go Version](https://img.shields.io/badge/Go-1.25.0-blue)](https://golang.org/)
@@ -135,6 +137,8 @@ This will:
 
 ### Running Echoryn
 
+![echoryn](docs/assets/echo-cli-en.png)
+
 #### 1. Start Hivemind Server
 
 ```bash
@@ -176,29 +180,17 @@ Echoryn uses a comprehensive Makefile for build automation:
 # Build all binaries
 make build
 
+# Run Hivemind
+make run
+
 # Build specific binaries
 make build BINS="hivemind echoctl"
-
-# Run tests
-make test
-
-# Run tests with coverage
-make cover
-
-# Format code
-make format
-
-# Run linter
-make lint
 
 # Generate Protobuf code
 make proto
 
 # Clean build output
 make clean
-
-# Show help
-make help
 ```
 
 ## ⚙️ Configuration
