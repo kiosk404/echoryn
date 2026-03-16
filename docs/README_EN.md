@@ -26,8 +26,8 @@ Like Ultron can switch between different mechanical bodies to execute tasks, Ech
 The platform provides a complete infrastructure for AI agents, including LLM integration, plugin systems, memory management, and distributed task execution.
 
 ## Language Versions
-- [English Version](../README.md) - English documentation (main)
-- [中文版本](docs/README_ZH.md) - Chinese documentation
+- [English Version](docs/README_EN.md) - English documentation (main)
+- [中文版本](./README.md) - Chinese documentation
 
 ## 🚀 Features
 

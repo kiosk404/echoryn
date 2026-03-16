@@ -25,6 +25,10 @@
 
 该平台为 AI 智能体提供了完整的基础设施，包括 LLM 集成、插件系统、内存管理和分布式任务执行。
 
+## 语言版本
+- [English Version](docs/README_EN.md) - English documentation (main)
+- [中文版本](./README.md) - Chinese documentation
+
 ## 🚀 功能特性
 
 ### 核心架构
