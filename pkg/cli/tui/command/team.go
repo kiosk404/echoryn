@@ -118,8 +118,9 @@ func RegisterTeamCommands(r *Registry) {
 
 type teamCmd struct{}
 
-func (c *teamCmd) Name() string      { return "team" }
-func (c *teamCmd) Aliases() []string { return nil }
+func (c *teamCmd) Name() string        { return "team" }
+func (c *teamCmd) Aliases() []string   { return nil }
+func (c *teamCmd) Group() CommandGroup { return GroupTeam }
 func (c *teamCmd) Description() string {
 	return "Team management: /team [create|status|dissolve|templates]"
 }
@@ -279,6 +280,7 @@ type agentsCmd struct{}
 
 func (c *agentsCmd) Name() string        { return "agents" }
 func (c *agentsCmd) Aliases() []string   { return nil }
+func (c *agentsCmd) Group() CommandGroup { return GroupTeam }
 func (c *agentsCmd) Description() string { return "List team members and their status" }
 
 func (c *agentsCmd) Execute(_ context.Context, env *Env, _ string) error {
@@ -289,8 +291,9 @@ func (c *agentsCmd) Execute(_ context.Context, env *Env, _ string) error {
 
 type msgCmd struct{}
 
-func (c *msgCmd) Name() string      { return "msg" }
-func (c *msgCmd) Aliases() []string { return []string{"message"} }
+func (c *msgCmd) Name() string        { return "msg" }
+func (c *msgCmd) Aliases() []string   { return []string{"message"} }
+func (c *msgCmd) Group() CommandGroup { return GroupTeam }
 func (c *msgCmd) Description() string {
 	return "Send message to team member: /msg <member_label> <message>"
 }
@@ -341,8 +344,9 @@ func (c *msgCmd) Execute(ctx context.Context, env *Env, args string) error {
 
 type broadcastCmd struct{}
 
-func (c *broadcastCmd) Name() string      { return "broadcast" }
-func (c *broadcastCmd) Aliases() []string { return []string{"bc"} }
+func (c *broadcastCmd) Name() string        { return "broadcast" }
+func (c *broadcastCmd) Aliases() []string   { return []string{"bc"} }
+func (c *broadcastCmd) Group() CommandGroup { return GroupTeam }
 func (c *broadcastCmd) Description() string {
 	return "Broadcast message to all team members: /broadcast <message>"
 }
@@ -375,8 +379,9 @@ func (c *broadcastCmd) Execute(ctx context.Context, env *Env, args string) error
 
 type focusCmd struct{}
 
-func (c *focusCmd) Name() string      { return "focus" }
-func (c *focusCmd) Aliases() []string { return nil }
+func (c *focusCmd) Name() string        { return "focus" }
+func (c *focusCmd) Aliases() []string   { return nil }
+func (c *focusCmd) Group() CommandGroup { return GroupTeam }
 func (c *focusCmd) Description() string {
 	return "Focus on a team member: /focus <member_label|next|prev>"
 }

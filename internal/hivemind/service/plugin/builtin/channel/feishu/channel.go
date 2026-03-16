@@ -26,11 +26,17 @@ const (
 	// feishuTenantTokenURL is the Feishu API endpoint for obtaining tenant access tokens.
 	feishuTenantTokenURL = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
 
+	// feishuReactionURL is the Feishu API endpoint for message reactions.
+	feishuReactionURL = "https://open.feishu.cn/open-apis/im/v1/messages"
+
 	// larkSendMessageURL is the Lark (international) Bot API endpoint for sending messages.
 	larkSendMessageURL = "https://open.larksuite.com/open-apis/im/v1/messages"
 
 	// larkTenantTokenURL is the Lark (international) API endpoint for obtaining tenant access tokens.
 	larkTenantTokenURL = "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal"
+
+	// larkReactionURL is the Lark (international) API endpoint for message reactions.
+	larkReactionURL = "https://open.larksuite.com/open-apis/im/v1/messages"
 )
 
 // feishuChannel implements gateway.Channel for the Feishu (Lark) platform.
@@ -342,23 +348,41 @@ func (o *feishuOutbound) SendText(ctx context.Context, chatID string, text strin
 	content := map[string]string{"text": text}
 	contentJSON, _ := json.Marshal(content)
 
-	return o.sendMessage(ctx, chatID, "text", string(contentJSON), opts)
+	_, err := o.sendMessage(ctx, chatID, "text", string(contentJSON), opts)
+	return err
 }
 
 func (o *feishuOutbound) SendMarkdown(ctx context.Context, chatID string, markdown string, opts *gateway.SendOptions) error {
-	// Feishu doesn't natively support Markdown in text messages.
-	// Use interactive card for rich formatting.
-	card := buildMarkdownCard(markdown)
-	cardJSON, _ := json.Marshal(card)
+	// Convert Markdown to Feishu post format for better rendering.
+	post := MarkdownToPost(markdown)
+	content := map[string]interface{}{"post": post}
+	contentJSON, _ := json.Marshal(content)
 
-	return o.sendMessage(ctx, chatID, "interactive", string(cardJSON), opts)
+	msgID, err := o.sendMessage(ctx, chatID, "post", string(contentJSON), opts)
+	if err != nil {
+		return err
+	}
+
+	// Add "working" emoji reaction if message was sent successfully
+	if msgID != "" && opts != nil && opts.AddWorkingIndicator {
+		go func() {
+			// Add slight delay to ensure message is visible
+			time.Sleep(500 * time.Millisecond)
+			if err := o.addReaction(context.Background(), msgID, "working"); err != nil {
+				logger.Debug("[Feishu] failed to add working reaction: %v", err)
+			}
+		}()
+	}
+
+	return nil
 }
 
 // sendMessage sends a message via the Feishu/Lark IM API.
-func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, content string, opts *gateway.SendOptions) error {
+// Returns the message ID if successful.
+func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, content string, opts *gateway.SendOptions) (string, error) {
 	token, err := o.channel.getTenantToken(ctx)
 	if err != nil {
-		return fmt.Errorf("get tenant token: %w", err)
+		return "", fmt.Errorf("get tenant token: %w", err)
 	}
 
 	payload := map[string]string{
@@ -383,6 +407,60 @@ func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, conte
 	url := sendURL + "?receive_id_type=chat_id"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payloadJSON))
 	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("send message: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("feishu API error: status=%d, body=%s", resp.StatusCode, string(respBody))
+	}
+
+	// Parse response to get message ID
+	var result struct {
+		Code int `json:"code"`
+		Data struct {
+			MessageID string `json:"message_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		// Return empty ID if parsing fails, but don't fail the send
+		return "", nil
+	}
+
+	return result.Data.MessageID, nil
+}
+
+// addReaction adds an emoji reaction to a message.
+// The emojiType should be a valid Feishu emoji type like "working", "OK", "thumbsUp", etc.
+func (o *feishuOutbound) addReaction(ctx context.Context, messageID, emojiType string) error {
+	token, err := o.channel.getTenantToken(ctx)
+	if err != nil {
+		return fmt.Errorf("get tenant token: %w", err)
+	}
+
+	payload := map[string]string{
+		"reaction_type": emojiType,
+	}
+	payloadJSON, _ := json.Marshal(payload)
+
+	// Select URL based on domain
+	reactionURL := feishuReactionURL
+	if o.channel.cfg.Domain == DomainLark {
+		reactionURL = larkReactionURL
+	}
+
+	url := reactionURL + "/" + messageID + "/reactions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payloadJSON))
+	if err != nil {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
@@ -390,13 +468,47 @@ func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, conte
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("send message: %w", err)
+		return fmt.Errorf("add reaction: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("feishu API error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("feishu reaction API error: status=%d, body=%s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
+}
+
+// RemoveReaction removes an emoji reaction from a message.
+func (o *feishuOutbound) RemoveReaction(ctx context.Context, messageID, emojiType string) error {
+	token, err := o.channel.getTenantToken(ctx)
+	if err != nil {
+		return fmt.Errorf("get tenant token: %w", err)
+	}
+
+	// Select URL based on domain
+	reactionURL := feishuReactionURL
+	if o.channel.cfg.Domain == DomainLark {
+		reactionURL = larkReactionURL
+	}
+
+	url := reactionURL + "/" + messageID + "/reactions?reaction_type=" + emojiType
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("remove reaction: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("feishu reaction API error: status=%d, body=%s", resp.StatusCode, string(respBody))
 	}
 
 	return nil

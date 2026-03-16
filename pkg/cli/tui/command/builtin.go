@@ -26,6 +26,7 @@ type clearCmd struct{}
 
 func (c *clearCmd) Name() string        { return "clear" }
 func (c *clearCmd) Aliases() []string   { return nil }
+func (c *clearCmd) Group() CommandGroup { return GroupSession }
 func (c *clearCmd) Description() string { return "Reset conversation history" }
 
 func (c *clearCmd) Execute(_ context.Context, env *Env, _ string) error {
@@ -42,6 +43,7 @@ type quitCmd struct{}
 
 func (c *quitCmd) Name() string        { return "quit" }
 func (c *quitCmd) Aliases() []string   { return []string{"exit"} }
+func (c *quitCmd) Group() CommandGroup { return GroupSession }
 func (c *quitCmd) Description() string { return "Exit the chat" }
 
 func (c *quitCmd) Execute(_ context.Context, _ *Env, _ string) error {
@@ -56,6 +58,7 @@ type helpCmd struct {
 
 func (c *helpCmd) Name() string        { return "help" }
 func (c *helpCmd) Aliases() []string   { return []string{"?"} }
+func (c *helpCmd) Group() CommandGroup { return GroupSession }
 func (c *helpCmd) Description() string { return "Show available commands" }
 
 func (c *helpCmd) Execute(_ context.Context, env *Env, _ string) error {
@@ -69,6 +72,7 @@ type modelCmd struct{}
 
 func (c *modelCmd) Name() string        { return "model" }
 func (c *modelCmd) Aliases() []string   { return nil }
+func (c *modelCmd) Group() CommandGroup { return GroupSession }
 func (c *modelCmd) Description() string { return "Show current model" }
 
 func (c *modelCmd) Execute(_ context.Context, env *Env, _ string) error {
@@ -86,6 +90,7 @@ type sessionCmd struct{}
 
 func (c *sessionCmd) Name() string        { return "session" }
 func (c *sessionCmd) Aliases() []string   { return nil }
+func (c *sessionCmd) Group() CommandGroup { return GroupSession }
 func (c *sessionCmd) Description() string { return "Show current session info" }
 
 func (c *sessionCmd) Execute(_ context.Context, env *Env, _ string) error {

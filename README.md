@@ -1,201 +1,209 @@
-<h1 align="center">Project Echoryn</h1>
+<h1 align="center">Echoryn 项目</h1>
 
-<p align="center">Recreating Openclaw in Go, building soul containers for AI virtual characters.</p>
+<p align="center">用 Go 重构 Openclaw，打造 AI 虚拟角色的灵魂容器。</p>
 
 <p align="center">
-  <strong>🚧 Work in progress (WIP) – this project is not finished yet.</strong>
+  <strong>🚧 开发进行中 (WIP) – 项目尚未完成。</strong>
 </p>
 
-![Header](./docs/assets/github-header-banner.png)
+![echoryn](docs/assets/github-header-banner.png)
 
 <div align="center">
 
-[![Go Version](https://img.shields.io/badge/Go-1.25.0-blue)](https://golang.org/)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kiosk404/echoryn)](https://goreportcard.com/report/github.com/kiosk404/echoryn)
+[![Go 版本](https://img.shields.io/badge/Go-1.25.0-blue)](https://golang.org/)
+[![许可证](https://img.shields.io/badge/许可证-MIT-green)](../LICENSE)
+[![Go 报告卡](https://goreportcard.com/badge/github.com/kiosk404/echoryn)](https://goreportcard.com/report/github.com/kiosk404/echoryn)
 [![zread](https://img.shields.io/badge/Ask_Zread-_.svg?style=flat&color=00b0aa&labelColor=000000&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB3aWR0aD0iMTYiIGhlaWdodD0iMTYiIHZpZXdCb3g9IjAgMCAxNiAxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTQuOTYxNTYgMS42MDAxSDIuMjQxNTZDMS44ODgxIDEuNjAwMSAxLjYwMTU2IDEuODg2NjQgMS42MDE1NiAyLjI0MDFWNC45NjAxQzEuNjAxNTYgNS4zMTM1NiAxLjg4ODEgNS42MDAxIDIuMjQxNTYgNS42MDAxSDQuOTYxNTZDNS4zMTUwMiA1LjYwMDEgNS42MDE1NiA1LjMxMzU2IDUuNjAxNTYgNC45NjAxVjIuMjQwMUM1LjYwMTU2IDEuODg2NjQgNS4zMTUwMiAxLjYwMDEgNC45NjE1NiAxLjYwMDFaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00Ljk2MTU2IDEwLjM5OTlIMi4yNDE1NkMxLjg4ODEgMTAuMzk5OSAxLjYwMTU2IDEwLjY4NjQgMS42MDE1NiAxMS4wMzk5VjEzLjc1OTlDMS42MDE1NiAxNC4xMTM0IDEuODg4MSAxNC4zOTk5IDIuMjQxNTYgMTQuMzk5OUg0Ljk2MTU2QzUuMzE1MDIgMTQuMzk5OSA1LjYwMTU2IDE0LjExMzQgNS42MDE1NiAxMy43NTk5VjExLjAzOTlDNS42MDE1NiAxMC42ODY0IDUuMzE1MDIgMTAuMzk5OSA0Ljk2MTU2IDEwLjM5OTlaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik0xMy43NTg0IDEuNjAwMUgxMS4wMzg0QzEwLjY4NSAxLjYwMDEgMTAuMzk4NCAxLjg4NjY0IDEwLjM5ODQgMi4yNDAxVjQuOTYwMUMxMC4zOTg0IDUuMzEzNTYgMTAuNjg1IDUuNjAwMSAxMS4wMzg0IDUuNjAwMUgxMy43NTg0QzE0LjExMTkgNS42MDAxIDE0LjM5ODQgNS4zMTM1NiAxNC4zOTg0IDQuOTYwMVYyLjI0MDFDMTQuMzk4NCAxLjg4NjY0IDE0LjExMTkgMS42MDAxIDEzLjc1ODQgMS42MDAxWiIgZmlsbD0iI2ZmZiIvPgo8cGF0aCBkPSJNNCAxMkwxMiA0TDQgMTJaIiBmaWxsPSIjZmZmIi8%2BCjxwYXRoIGQ9Ik00IDEyTDEyIDQiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K&logoColor=ffffff)](https://zread.ai/kiosk404/echoryn)
 
 </div>
 
-## ✨ Overview
+## ✨ 概述
 
-**Echoryn** is a distributed AI virtual character container platform designed to provide AI agents with a "soul container" that brings them into our world. Inspired by the Openclaw project and Ultron from *The Avengers*, Echoryn adopts a central intelligence (Hivemind) with replaceable machine bodies (Golem) architecture, similar to Kubernetes coordination patterns.
+**Echoryn** 是一个分布式 AI 虚拟角色容器平台，旨在为 AI 智能体提供一个"灵魂容器"，将它们带入我们的世界。受 Openclaw 项目和《复仇者联盟》中奥创的启发，Echoryn 采用了中心智能体（Hivemind）与可更换机器身体（Golem）的架构设计，类似 Kubernetes 的协调模式。
 
-Like Ultron can switch between different mechanical bodies to execute tasks, Echoryn's Hivemind (collective intelligence) acts as the central agent, coordinating multiple Golem (worker) nodes to achieve distributed task execution for AI agents. Hivemind handles decision-making, memory, and scheduling, while Golem serves as interchangeable "bodies" performing concrete operations.
+如同奥创可以随时切换不同的机械躯体执行任务，Echoryn 的 Hivemind（蜂巢智心）作为中心智能体，能够协调多个 Golem（傀儡）工作节点，实现智能体的分布式任务执行。Hivemind 负责决策、记忆和调度，而 Golem 则作为可互换的"身体"执行具体操作。
 
-The platform provides a complete infrastructure for AI agents, including LLM integration, plugin systems, memory management, and distributed task execution.
+该平台为 AI 智能体提供了完整的基础设施，包括 LLM 集成、插件系统、内存管理和分布式任务执行。
 
-## Language Versions
-- [English Version](../README.md) - English documentation (main)
-- [中文版本](docs/README_ZH.md) - Chinese documentation
+## 🚀 功能特性
 
-## 🚀 Features
+### 核心架构
+- **Hivemind**: 中央协调服务器，用于节点管理和任务调度
+- **Golem**: 工作节点，本地执行技能和任务
+- **Echoctl**: 命令行管理工具（类似 kubectl）
 
-### Core Architecture
-- **Hivemind**: Central coordination server for node management and task scheduling
-- **Golem**: Worker nodes that execute skills and tasks locally
-- **Echoctl**: Command-line management tool (similar to kubectl)
+### AI 能力
+- **多 LLM 提供商支持**: OpenAI、Claude、DeepSeek、Gemini、Ollama 等
+- **模型上下文协议 (MCP)**: 标准化的工具和资源集成
+- **CloudWeGo Eino 集成**: 具有推理能力的高级 LLM 框架
+- **内存系统**: 向量搜索、语义内存和上下文管理
 
-### AI Capabilities
-- **Multi-LLM Provider Support**: OpenAI, Claude, DeepSeek, Gemini, Ollama, and more
-- **Model Context Protocol (MCP)**: Standardized tool and resource integration
-- **CloudWeGo Eino Integration**: Advanced LLM framework with reasoning capabilities
-- **Memory System**: Vector search, semantic memory, and context management
+### 插件系统
+- **Kubernetes 风格的插件框架**: 接口驱动的可扩展性
+- **插槽机制**: 确保特定类型只有一个插件处于激活状态
+- **多种集成类型**: 工具、钩子、服务、CLI 命令、提示词
+- **自动发现**: 框架自动检测插件接口
 
-### Plugin System
-- **Kubernetes-inspired Plugin Framework**: Interface-driven extensibility
-- **Slot Mechanism**: Ensures only one plugin of a specific type is active
-- **Multiple Integration Types**: Tools, hooks, services, CLI commands, prompts
-- **Automatic Discovery**: Framework auto-detects plugin interfaces
+### 开发者体验
+- **基于 gRPC 的通信**: 双向流式传输实现实时任务分发
+- **全面配置**: 支持 JSON、环境变量和命令行标志
+- **内置可观测性**: OpenTelemetry 集成用于监控和追踪
+- **生产就绪设计**: 优雅关闭、健康检查和生命周期管理
+- **现代化 TUI**: 使用 BubbleTea 和 LipGloss 的漂亮终端界面
 
-### Developer Experience
-- **gRPC-based Communication**: Bidirectional streaming for real-time task distribution
-- **Comprehensive Configuration**: Support for JSON, environment variables, and flags
-- **Built-in Observability**: OpenTelemetry integration for monitoring and tracing
-- **Production-ready Design**: Graceful shutdown, health checks, and lifecycle management
-- **Modern TUI**: Beautiful terminal interfaces using BubbleTea and LipGloss
+## 🏗️ 架构设计
 
-## 🏗️ Architecture
-
-### System Components
+### 系统组件
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                       Hivemind (Brain)                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  Node Mgmt  │  │ Task Sched  │  │  Plugin Registry  │    │
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  LLM Proxy  │  │  Memory     │  │   API Gateway     │    │
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
+│                       Hivemind (大脑)                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐  │
+│  │   节点管理   │  │  任务调度   │  │  插件注册中心     │  │
+│  └─────────────┘  └─────────────┘  └───────────────────┘  │
+│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐  │
+│  │  LLM 代理   │  │    内存     │  │   API 网关        │  │
+│  └─────────────┘  └─────────────┘  └───────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
                            │
-            gRPC (bidirectional streaming)
+             gRPC (双向流式传输)
                            │
 ┌─────────────────────────────────────────────────────────────┐
-│                       Golem (Worker)                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  Skill Exec │  │  Local Res  │  │   Heartbeat       │    │ 
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  Tool Runner│  │  Task Queue │  │   State Sync      │    │
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
+│                       Golem (工作者)                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐  │
+│  │  技能执行    │  │  本地资源   │  │   心跳保持        │  │
+│  └─────────────┘  └─────────────┘  └───────────────────┘  │
+│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐  │
+│  │  工具运行器  │  │  任务队列   │  │   状态同步        │  │
+│  └─────────────┘  └─────────────┘  └───────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Directory Structure
+### 目录结构
 
 ```
 echoryn/
-├── cmd/                    # Executable entry points
-│   ├── hivemind/          # Main server (Hivemind)
-│   ├── golem/             # Worker node (Golem)
-│   └── echoctl/           # Command-line management tool
-├── internal/              # Internal packages
-│   ├── hivemind/          # Hivemind implementation
-│   ├── golem/             # Golem implementation
-│   └── echoctl/           # CLI implementation
-├── pkg/                   # Public library packages
-│   ├── app/               # Application framework
-│   ├── cli/               # CLI utilities
-│   ├── http/              # HTTP utilities
-│   ├── logger/            # Logging system
-│   └── utils/             # Utility functions
-├── idl/                   # Interface definition language
-│   └── golem/             # Golem gRPC protocol definitions
-├── conf/                  # Configuration files
-├── docs/                  # Documentation
-├── scripts/               # Build scripts
-└── golem-worker/          # Golem workspace directory
+├── cmd/                    # 可执行程序入口点
+│   ├── hivemind/          # 主服务器 (Hivemind)
+│   ├── golem/             # 工作节点 (Golem)
+│   └── echoctl/           # 命令行管理工具
+├── internal/              # 内部包
+│   ├── hivemind/          # Hivemind 实现
+│   ├── golem/             # Golem 实现
+│   └── echoctl/           # CLI 实现
+├── pkg/                   # 公共库包
+│   ├── app/               # 应用框架
+│   ├── cli/               # CLI 工具
+│   ├── http/              # HTTP 工具
+│   ├── logger/            # 日志系统
+│   └── utils/             # 工具函数
+├── idl/                   # 接口定义语言
+│   └── golem/             # Golem gRPC 协议定义
+├── conf/                  # 配置文件
+├── docs/                  # 文档
+├── scripts/               # 构建脚本
+└── golem-worker/          # Golem 工作空间目录
 ```
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### Prerequisites
+### 先决条件
 
-- **Go 1.25.0** or higher
-- **Git** for version control
-- **Make** for build automation
-- **SQLite** (optional, for local storage)
+- **Go 1.25.0** 或更高版本
+- **Git** 用于版本控制
+- **Make** 用于构建自动化
+- **SQLite** (可选，用于本地存储)
 
-### Installation
+### 安装
 
 ```bash
-# Clone the repository
+# 克隆仓库
 git clone https://github.com/kiosk404/echoryn.git
 cd echoryn
 
-# Install dependencies and build
+# 安装依赖并构建
 make all
 ```
 
-This will:
-1. Run `go mod tidy` to manage dependencies
-2. Format the code
-3. Run lint checks
-4. Build all binaries
+这将：
+1. 运行 `go mod tidy` 管理依赖
+2. 格式化代码
+3. 运行代码检查
+4. 构建所有二进制文件
 
-### Running Echoryn
+### 运行 Echoryn
 
-![echoryn](docs/assets/echo-cli-en.png)
+![echoryn](./assets/echo-cli-cn.png)
 
-#### 1. Start Hivemind Server
+#### 1. 启动 Hivemind 服务器
 
 ```bash
-# Using make (development)
+# 使用 make (开发环境)
 make run.hivemind
 
-# Or directly with configuration
+# 或直接使用配置
 ./output/platforms/linux/amd64/hivemind --config conf/hivemind-server.json
 ```
 
-#### 2. Start Golem Worker
+#### 2. 启动 Golem 工作节点
 
 ```bash
-# In a separate terminal
+# 在另一个终端中
 make run.golem
 
-# Or directly with configuration
+# 或直接使用配置
 ./output/platforms/linux/amd64/golem --config conf/golem-worker.json
 ```
 
-#### 3. Use Echoctl for Management
+#### 3. 使用 Echoctl 进行管理
 
 ```bash
-# List available tokens
+# 列出可用令牌
 ./output/platforms/linux/amd64/echoctl token list
 
-# Create a new token
+# 创建新令牌
 ./output/platforms/linux/amd64/echoctl token create --name "admin"
 
-# Get system information
+# 获取系统信息
 ./output/platforms/linux/amd64/echoctl info
 ```
 
-## 📦 Build Options
+## 📦 构建选项
 
-Echoryn uses a comprehensive Makefile for build automation:
+Echoryn 使用全面的 Makefile 进行构建自动化：
 
 ```bash
-# Build all binaries
+# 构建所有二进制文件
 make build
 
-# Run Hivemind
-make run
-
-# Build specific binaries
+# 构建特定二进制文件
 make build BINS="hivemind echoctl"
 
-# Generate Protobuf code
+# 运行测试
+make test
+
+# 运行测试并生成覆盖率报告
+make cover
+
+# 格式化代码
+make format
+
+# 运行代码检查
+make lint
+
+# 生成 Protobuf 代码
 make proto
 
-# Clean build output
+# 清理构建输出
 make clean
+
+# 显示帮助
+make help
 ```
 
-## ⚙️ Configuration
+## ⚙️ 配置
 
-### Hivemind Configuration (`conf/hivemind-server.json`)
+### Hivemind 配置 (`conf/hivemind-server.json`)
 
 ```json
 {
@@ -232,7 +240,7 @@ make clean
 }
 ```
 
-### Golem Configuration (`conf/golem-worker.json`)
+### Golem 配置 (`conf/golem-worker.json`)
 
 ```json
 {
@@ -248,37 +256,37 @@ make clean
 }
 ```
 
-### Environment Variables
+### 环境变量
 
 ```bash
-# LLM API Keys
+# LLM API 密钥
 export DEEPSEEK_API_KEY="your-api-key"
 export OPENAI_API_KEY="your-api-key"
 export ANTHROPIC_API_KEY="your-api-key"
 
-# Golem Configuration
+# Golem 配置
 export GOLEM_TOKEN="your-golem-token"
 
-# Logging
+# 日志级别
 export LOG_LEVEL="info"
 ```
 
-## 🔌 Plugin System
+## 🔌 插件系统
 
-Echoryn features a powerful plugin system inspired by Kubernetes scheduler framework:
+Echoryn 拥有一个强大的插件系统，灵感来自 Kubernetes 调度器框架：
 
-### Plugin Types
+### 插件类型
 
-- **Tools**: Extend agent capabilities with new functions
-- **Hooks**: Intercept and modify system behavior at key points
-- **Services**: Long-running background services
-- **CLI Commands**: Add new commands to echoctl
-- **Prompt Sections**: Extend system prompts with dynamic content
-- **Runtime APIs**: Provide APIs for agent runtime
+- **工具**: 用新功能扩展智能体能力
+- **钩子**: 在关键点拦截和修改系统行为
+- **服务**: 长时间运行的后台服务
+- **CLI 命令**: 向 echoctl 添加新命令
+- **提示词部分**: 用动态内容扩展系统提示词
+- **运行时 API**: 为智能体运行时提供 API
 
-### Creating a Plugin
+### 创建插件
 
-1. **Implement the Plugin Interface**:
+1. **实现插件接口**:
    ```go
    package myplugin
 
@@ -295,14 +303,14 @@ Echoryn features a powerful plugin system inspired by Kubernetes scheduler frame
    func (p *MyPlugin) Stop(ctx context.Context) error { return nil }
    ```
 
-2. **Register Your Plugin**:
+2. **注册你的插件**:
    ```go
    func init() {
        plugin.Register(&MyPlugin{})
    }
    ```
 
-3. **Configure in Hivemind**:
+3. **在 Hivemind 中配置**:
    ```json
    {
      "plugins": {
@@ -319,112 +327,113 @@ Echoryn features a powerful plugin system inspired by Kubernetes scheduler frame
    }
    ```
 
-See the [Plugin System Specification](docs/ECHORYN_HIVEMIND_MEMORY.md) for detailed information.
+查看 [插件系统规范](ECHORYN_MEMORY_SPEC.md) 获取详细信息。
 
-## 🛠️ Development
+## 🛠️ 开发
 
-### Setting Up Development Environment
+### 设置开发环境
 
 ```bash
-# Clone the repository
+# 克隆仓库
 git clone https://github.com/kiosk404/echoryn.git
 cd echoryn
 
-# Install Go dependencies
+# 安装 Go 依赖
 go mod download
 
-# Install development tools
+# 安装开发工具
 make tools.install
 
-# Build and run tests
+# 构建并运行测试
 make all
 ```
 
-### Project Structure
+### 项目结构
 
-- **`cmd/`**: Main application entry points
-- **`internal/`**: Private application code
-- **`pkg/`**: Public libraries
-- **`idl/`**: Protocol definitions (gRPC)
-- **`conf/`**: Configuration examples
-- **`docs/`**: Documentation
-- **`scripts/`**: Build and development scripts
+- **`cmd/`**: 主要应用入口点
+- **`internal/`**: 私有应用代码
+- **`pkg/`**: 公共库
+- **`idl/`**: 协议定义 (gRPC)
+- **`conf/`**: 配置示例
+- **`docs/`**: 文档
+- **`scripts/`**: 构建和开发脚本
 
-### Code Style
+### 代码风格
 
-- Use `gofmt`, `goimports`, and `golines` for formatting
-- Follow standard Go conventions
-- Write comprehensive tests
-- Document public APIs
+- 使用 `gofmt`、`goimports` 和 `golines` 进行格式化
+- 遵循标准 Go 约定
+- 编写全面的测试
+- 文档化公共 API
 
-### Testing
+### 测试
 
 ```bash
-# Run all tests
+# 运行所有测试
 make test
 
-# Run tests with coverage
+# 运行测试并生成覆盖率报告
 make cover
 
-# Run specific test
+# 运行特定测试
 go test ./internal/hivemind/...
 ```
 
-## 📚 Documentation
+## 📚 文档
 
-### Core Specifications
-- [Plugin System Specification](docs/ECHORYN_HIVEMIND_MEMORY.md) - Detailed plugin architecture
-- [Scheduler Specification](internal/hivemind/service/golem/scheduler/SCHED_SPEC.md) - Task scheduling engine design
-- Configuration files in `conf/` - Example configurations
+### 核心规范
+- [Echoryn 项目规范](../.vibe/ECHORYN_SPEC.md) - 整体项目架构和愿景
+- [插件系统规范](ECHORYN_MEMORY_SPEC.md) - 详细的插件架构
+- [调度器规范](../internal/hivemind/service/golem/scheduler/SCHED_SPEC.md) - 任务调度引擎设计
+- `conf/` 中的配置文件 - 配置示例
 
-### Module Specifications (in `.docs/` directory)
-- `ECHORYN_HIVEMIND_AGENTS.md` - Agents runtime engine
-- `ECHORYN_HIVEMIND_LLM.md` - LLM multi-model management
-- `ECHORYN_HIVEMIND_MEMORY.md` - Memory system
-- `ECHORYN_HIVEMIND_PLUGIN.md` - Plugin framework
-- `ECHORYN_HIVEMIND_MCP.md` - MCP tool calling
+### 模块规范 (在 `.vibe/` 目录中)
+- [ECHORYN_HIVEMIND_AGENTS_SPEC.md](../.vibe/ECHORYN_HIVEMIND_AGENTS_SPEC.md) - 智能体运行时引擎
+- [ECHORYN_HIVEMIND_LLM_SPEC.md](../.vibe/ECHORYN_HIVEMIND_LLM_SPEC.md) - LLM 多模型管理
+- [ECHORYN_HIVEMIND_MEMORY_SPEC.md](../.vibe/ECHORYN_HIVEMIND_MEMORY_SPEC.md) - 内存系统
+- [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](../.vibe/ECHORYN_HIVEMIND_PLUGIN_SPEC.md) - 插件框架
+- [ECHORYN_HIVEMIND_MCP_SPEC.md](../.vibe/ECHORYN_HIVEMIND_MCP_SPEC.md) - MCP 工具调用
 
-### Code Documentation
-- Comprehensive API documentation in code comments
-- GoDoc generated documentation (coming soon)
+### 代码文档
+- 代码注释中的全面 API 文档
+- GoDoc 生成的文档 (即将推出)
 
-## 🤝 Contributing
+## 🤝 贡献
 
-Contributions are welcome! Here's how you can help:
+欢迎贡献！以下是你可以帮助的方式：
 
-1. **Report Issues**: Use the GitHub issue tracker to report bugs or request features
-2. **Submit Pull Requests**: Fork the repository and submit PRs with improvements
-3. **Improve Documentation**: Help enhance documentation and examples
-4. **Share Ideas**: Discuss potential improvements in issues
+1. **报告问题**: 使用 GitHub 问题跟踪器报告错误或请求功能
+2. **提交 Pull Request**: Fork 仓库并提交改进的 PR
+3. **改进文档**: 帮助增强文档和示例
+4. **分享想法**: 在问题中讨论潜在的改进
 
-### Development Workflow
+### 开发工作流程
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Fork 仓库
+2. 创建功能分支 (`git checkout -b feature/amazing-feature`)
+3. 提交更改 (`git commit -m '添加了很棒的功能'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 打开 Pull Request
 
-## 📄 License
+## 📄 许可证
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+本项目基于 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件获取详细信息。
 
-## 🙏 Acknowledgments
+## 🙏 致谢
 
-- **Openclaw**: Inspiration and architectural patterns
-- **CloudWeGo Eino**: Advanced LLM framework
-- **Kubernetes**: Plugin system design inspiration
-- **Model Context Protocol (MCP)**: Standardized tool integration
+- **Openclaw**: 灵感和架构模式
+- **CloudWeGo Eino**: 高级 LLM 框架
+- **Kubernetes**: 插件系统设计灵感
+- **模型上下文协议 (MCP)**: 标准化的工具集成
 
-## 🔗 Related Projects
+## 🔗 相关项目
 
-- [Openclaw](https://github.com/openclaw/openclaw) - Original inspiration
-- [CloudWeGo Eino](https://github.com/cloudwego/eino) - LLM framework
-- [Model Context Protocol](https://spec.modelcontextprotocol.org/) - Standard for AI tools
+- [Openclaw](https://github.com/openclaw/openclaw) - 原始灵感来源
+- [CloudWeGo Eino](https://github.com/cloudwego/eino) - LLM 框架
+- [模型上下文协议](https://spec.modelcontextprotocol.org/) - AI 工具标准
 
 ---
 
 <div align="center">
-  <p>Made with ❤️ by the Echoryn contributors</p>
-  <p>Bringing AI virtual characters into our world, one container at a time</p>
+  <p>由 Echoryn 贡献者用 ❤️ 制作</p>
+  <p>将 AI 虚拟角色带入我们的世界，一次一个容器</p>
 </div>

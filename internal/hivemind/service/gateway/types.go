@@ -120,6 +120,10 @@ type SendOptions struct {
 
 	// Silent suppresses notification on the recipient's device.
 	Silent bool
+
+	// AddWorkingIndicator adds "working" indicator (e.g. emoji reaction)
+	// to the sent message to show the bot is processing.
+	AddWorkingIndicator bool
 }
 
 // ChannelConfig is the configuration for a single channel instance.

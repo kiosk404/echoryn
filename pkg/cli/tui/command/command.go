@@ -32,6 +32,16 @@ type Env struct {
 	TeamAPI TeamAPI
 }
 
+// CommandGroup Command is the interface that all slash commands must implement.
+// CommandGroup defines the category a command belongs to.
+type CommandGroup string
+
+const (
+	GroupTeam    CommandGroup = "Team"
+	GroupSession CommandGroup = "Session"
+	GroupSystem  CommandGroup = "System"
+)
+
 // Command is the interface that all slash commands must implement.
 type Command interface {
 	// Name returns the command name without the leading '/'
@@ -42,6 +52,9 @@ type Command interface {
 
 	// Description returns a short help string shown in /help and completion.
 	Description() string
+
+	// Group returns the command's category for help organization.
+	Group() CommandGroup
 
 	// Execute runs the command. The args string contains everything
 	// after the command name (trimmed).

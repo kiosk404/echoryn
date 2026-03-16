@@ -4,9 +4,16 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/kiosk404/echoryn/pkg/cli/tui/input"
 )
+
+// CommandInfo describes a slash command for completion purposes.
+// It was originally in the input package but moved here to break
+// the dependency on reeflective/readline.
+type CommandInfo struct {
+	Name        string
+	Aliases     []string
+	Description string
+}
 
 // Registry manages all registered slash commands.
 //
@@ -84,13 +91,13 @@ func (r *Registry) Lookup(rawInput string) (Command, string, bool) {
 	return nil, "", false
 }
 
-// CommandInfos returns metadata for all commands, suitable for the
-// input completer.
-func (r *Registry) CommandInfos() []input.CommandInfo {
-	infos := make([]input.CommandInfo, 0, len(r.order))
+// CommandInfos returns metadata for all commands, suitable for
+// completion providers.
+func (r *Registry) CommandInfos() []CommandInfo {
+	infos := make([]CommandInfo, 0, len(r.order))
 	for _, name := range r.order {
 		cmd := r.commands[name]
-		infos = append(infos, input.CommandInfo{
+		infos = append(infos, CommandInfo{
 			Name:        cmd.Name(),
 			Aliases:     cmd.Aliases(),
 			Description: cmd.Description(),
@@ -99,40 +106,61 @@ func (r *Registry) CommandInfos() []input.CommandInfo {
 	return infos
 }
 
-// Help returns a formatted help string listing all commands.
+// Help returns a formatted help string listing all commands grouped by category.
 func (r *Registry) Help() string {
 	if len(r.order) == 0 {
 		return "No commands available."
 	}
 
-	var sb strings.Builder
-	sb.WriteString("Available commands:\n\n")
-
-	// Find the longest name for alignment.
-	maxLen := 0
+	// Group commands by their category.
+	groups := map[CommandGroup][]Command{}
 	for _, name := range r.order {
 		cmd := r.commands[name]
-		label := "/" + cmd.Name()
-		if aliases := cmd.Aliases(); len(aliases) > 0 {
-			label += " (/" + strings.Join(aliases, ", /") + ")"
-		}
-		if len(label) > maxLen {
-			maxLen = len(label)
-		}
+		groups[cmd.Group()] = append(groups[cmd.Group()], cmd)
 	}
 
-	// Sorted output.
-	sorted := make([]string, len(r.order))
-	copy(sorted, r.order)
-	sort.Strings(sorted)
+	// Define the order of groups for display.
+	groupOrder := []CommandGroup{GroupTeam, GroupSession, GroupSystem}
 
-	for _, name := range sorted {
-		cmd := r.commands[name]
-		label := "/" + cmd.Name()
-		if aliases := cmd.Aliases(); len(aliases) > 0 {
-			label += " (/" + strings.Join(aliases, ", /") + ")"
+	var sb strings.Builder
+	sb.WriteString("Available commands:\n")
+
+	for _, group := range groupOrder {
+		cmds, ok := groups[group]
+		if !ok || len(cmds) == 0 {
+			continue
 		}
-		fmt.Fprintf(&sb, "  %-*s  %s\n", maxLen, label, cmd.Description())
+
+		// Group header.
+		fmt.Fprintf(&sb, "\n  %s:\n", group)
+
+		// Find the longest name for alignment within this group.
+		maxLen := 0
+		for _, cmd := range cmds {
+			label := "/" + cmd.Name()
+			if aliases := cmd.Aliases(); len(aliases) > 0 {
+				label += " (/" + strings.Join(aliases, ", /") + ")"
+			}
+			if len(label) > maxLen {
+				maxLen = len(label)
+			}
+		}
+
+		// Sort commands within group alphabetically.
+		sorted := make([]Command, len(cmds))
+		copy(sorted, cmds)
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].Name() < sorted[j].Name()
+		})
+
+		// Output each command.
+		for _, cmd := range sorted {
+			label := "/" + cmd.Name()
+			if aliases := cmd.Aliases(); len(aliases) > 0 {
+				label += " (/" + strings.Join(aliases, ", /") + ")"
+			}
+			fmt.Fprintf(&sb, "    %-*s  %s\n", maxLen, label, cmd.Description())
+		}
 	}
 
 	return sb.String()

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/kiosk404/echoryn/pkg/cli/tui/command"
-	"github.com/kiosk404/echoryn/pkg/cli/tui/input"
 )
 
 // Config holds all configurable options for the TUI.
@@ -21,9 +20,6 @@ type Config struct {
 
 	// MultilinePrompt is shown on continuation lines (default: "· ").
 	MultilinePrompt string
-
-	// History configures persistent command history.
-	History input.HistoryConfig
 
 	// RequestTimeout is the maximum duration for a single chat request.
 	RequestTimeout time.Duration
@@ -35,8 +31,8 @@ type Config struct {
 // DefaultConfig returns a Config with production-ready defaults.
 func DefaultConfig() Config {
 	return Config{
-		Prompt:          "\033[1m\033[38;5;39m> \033[0m", // bold blue "> "
-		MultilinePrompt: "\033[38;5;241m· \033[0m",       // gray "· "
+		Prompt:          "> ", // bold blue "> "
+		MultilinePrompt: ". ", // gray "· "
 		RequestTimeout:  120 * time.Second,
 	}
 }
@@ -52,11 +48,6 @@ func WithPrompt(prompt string) Option {
 // WithRequestTimeout sets the per-request timeout.
 func WithRequestTimeout(d time.Duration) Option {
 	return func(c *Config) { c.RequestTimeout = d }
-}
-
-// WithHistoryFile sets the path for persistent history.
-func WithHistoryFile(path string) Option {
-	return func(c *Config) { c.History.FilePath = path }
 }
 
 // WithTeamAPI sets the team API for the TUI, enabling team commands.

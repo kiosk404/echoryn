@@ -102,11 +102,11 @@ func (m *Manager) completeSlashCommand(prefix string) []Completion {
 
 		// Find matching command
 		for _, cmd := range m.commands {
-			if cmd.Name == cmdName {
+			if cmd.Name == cmdName || cmd.Name == "/"+cmdName {
 				return m.completeCommandArgs(cmd, args, prefix)
 			}
 			for _, alias := range cmd.Aliases {
-				if alias == cmdName {
+				if alias == cmdName || alias == "/"+cmdName {
 					return m.completeCommandArgs(cmd, args, prefix)
 				}
 			}
@@ -116,10 +116,11 @@ func (m *Manager) completeSlashCommand(prefix string) []Completion {
 
 	// Complete command names
 	for _, cmd := range m.commands {
-		if strings.HasPrefix(cmd.Name, cmdPart) {
+		cmdName := strings.TrimPrefix(cmd.Name, "/")
+		if strings.HasPrefix(cmdName, cmdPart) {
 			results = append(results, Completion{
-				Value:       "/" + cmd.Name + " ",
-				Display:     "/" + cmd.Name,
+				Value:       "/" + cmdName + " ",
+				Display:     "/" + cmdName,
 				Description: cmd.Description,
 				MatchIndex:  len(cmdPart),
 			})
@@ -127,11 +128,12 @@ func (m *Manager) completeSlashCommand(prefix string) []Completion {
 
 		// Also match aliases
 		for _, alias := range cmd.Aliases {
-			if strings.HasPrefix(alias, cmdPart) {
+			aliasName := strings.TrimPrefix(alias, "/")
+			if strings.HasPrefix(aliasName, cmdPart) {
 				results = append(results, Completion{
-					Value:       "/" + alias + " ",
-					Display:     "/" + alias,
-					Description: cmd.Description + " (alias for /" + cmd.Name + ")",
+					Value:       "/" + aliasName + " ",
+					Display:     "/" + aliasName,
+					Description: cmd.Description + " (alias for /" + cmdName + ")",
 					MatchIndex:  len(cmdPart),
 				})
 			}
@@ -148,6 +150,11 @@ func (m *Manager) completeSlashCommand(prefix string) []Completion {
 
 // completeCommandArgs returns completions for command arguments.
 func (m *Manager) completeCommandArgs(cmd Command, args string, prefix string) []Completion {
+	// If command has no argument specs, nothing to complete
+	if len(cmd.Arguments) == 0 {
+		return nil
+	}
+
 	// Parse current argument position
 	parts := strings.Fields(args)
 	argIdx := len(parts)
@@ -155,17 +162,29 @@ func (m *Manager) completeCommandArgs(cmd Command, args string, prefix string) [
 		argIdx++
 	}
 
-	if argIdx > len(cmd.Arguments) {
+	// Check bounds before accessing cmd.Arguments.
+	if argIdx <= 0 || argIdx > len(cmd.Arguments) {
 		return nil
 	}
 
 	arg := cmd.Arguments[argIdx-1]
+	if len(arg.Options) == 0 {
+		return nil
+	}
 	var results []Completion
 
 	for _, opt := range arg.Options {
 		// Match against current partial
-		partial := parts[len(parts)-1]
-		if strings.HasPrefix(opt, partial) || partial == "" {
+		if len(parts) > 0 {
+			partial := parts[len(parts)-1]
+			if strings.HasPrefix(opt, partial) || partial == "" {
+				results = append(results, Completion{
+					Value:       opt,
+					Display:     opt,
+					Description: arg.Description,
+				})
+			}
+		} else {
 			results = append(results, Completion{
 				Value:       opt,
 				Display:     opt,

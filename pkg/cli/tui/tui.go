@@ -4,18 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	tea "github.com/charmbracelet/bubbletea"
+	btea "github.com/kiosk404/echoryn/pkg/cli/tui/bubbletea"
 	"github.com/kiosk404/echoryn/pkg/cli/tui/command"
-	"github.com/kiosk404/echoryn/pkg/cli/tui/input"
 	"github.com/kiosk404/echoryn/pkg/cli/tui/render"
 	"github.com/kiosk404/echoryn/pkg/cli/tui/terminal"
 	"github.com/kiosk404/echoryn/pkg/version"
-	"github.com/reeflective/readline"
 )
 
 // ChatMessage is the message format exchanged with the Hivemind server.
@@ -51,13 +50,12 @@ type Client interface {
 
 // TUI is the top-level interactive chat controller.
 //
-// It owns the terminal, input reader, renderer, command registry, and
-// the conversation message history. The [Run] method starts the main
-// REPL loop and blocks until the user exits.
+// It uses bubbletea in inline mode (no alt-screen) for input capture
+// with completion and multiline editing, while streaming AI responses
+// directly to stdout for scroll-back friendly output.
 type TUI struct {
 	client   Client
 	term     *terminal.Terminal
-	reader   *input.Reader
 	commands *command.Registry
 	cfg      Config
 	messages []ChatMessage
@@ -83,8 +81,16 @@ func New(client Client, opts ...Option) *TUI {
 
 // Run starts the interactive TUI main loop.
 //
-// It initialises all subsystems (terminal, input, commands, rendering),
-// displays the welcome banner, and enters the read-eval-print loop.
+// It initialises all subsystems (terminal, commands, rendering),
+// displays the welcome banner, and enters the read-eval-print loop
+// powered by bubbletea inline mode.
+//
+// Each iteration:
+//  1. Start a bubbletea Program in inline mode to get user input
+//  2. Process the input (slash command or chat message)
+//  3. For chat messages: stream the AI response to stdout
+//  4. Repeat
+//
 // Run blocks until the user exits (via /quit, Ctrl-C, or Ctrl-D).
 func (t *TUI) Run(ctx context.Context) error {
 	// --- Terminal setup ---
@@ -109,19 +115,6 @@ func (t *TUI) Run(ctx context.Context) error {
 	command.RegisterBuiltins(t.commands)
 	command.RegisterTeamCommands(t.commands)
 
-	// --- Input reader ---
-	inputCfg := input.Config{
-		Prompt:          t.cfg.Prompt,
-		MultilinePrompt: t.cfg.MultilinePrompt,
-		History:         t.cfg.History,
-	}
-	reader, err := input.NewReader(inputCfg, t.commands.CommandInfos())
-	if err != nil {
-		return fmt.Errorf("tui: init input reader: %w", err)
-	}
-	t.reader = reader
-	defer t.reader.Close()
-
 	// --- Welcome banner ---
 	width := t.term.Width()
 	render.PrintWelcomeBanner(render.BannerInfo{
@@ -131,26 +124,28 @@ func (t *TUI) Run(ctx context.Context) error {
 		SessionKey: t.client.SessionKey(),
 	}, width)
 
-	// Flush stdout after banner so the terminal emulator finishes rendering
-	// the large ASCII art before readline sends its cursor-position query.
+	// Flush stdout after banner
 	os.Stdout.Sync()
 
-	// --- Main REPL loop ---
+	// --- Main REPL loop (bubbletea inline mode) ---
 	for {
-		line, err := t.reader.ReadLine()
+		result, err := t.readInput()
 		if err != nil {
-			if errors.Is(err, readline.ErrInterrupt) || errors.Is(err, io.EOF) {
-				t.term.Restore()
-				render.PrintGoodbye()
-				return nil
-			}
-			return fmt.Errorf("tui: readline: %w", err)
+			return fmt.Errorf("tui: input: %w", err)
 		}
 
-		line = strings.TrimSpace(line)
+		if result.Quit {
+			render.PrintGoodbye()
+			return nil
+		}
+
+		line := strings.TrimSpace(result.Content)
 		if line == "" {
 			continue
 		}
+
+		// Print input border (after input box)
+		t.printInputEcho(line)
 
 		// --- Slash command handling ---
 		if strings.HasPrefix(line, "/") {
@@ -169,6 +164,45 @@ func (t *TUI) Run(ctx context.Context) error {
 			render.PrintError(err.Error())
 		}
 	}
+}
+
+// readInput runs a single bubbletea inline Program to capture user input.
+func (t *TUI) readInput() (*btea.InputResult, error) {
+	model := btea.NewInputModel(
+		t.commands,
+		t.cfg.Prompt,
+		t.cfg.MultilinePrompt,
+	)
+
+	p := tea.NewProgram(
+		model,
+		// Inline mode: do NOT use tea.WithAltScreen() so output
+		// stays in the terminal's scroll-back buffer.
+	)
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return nil, err
+	}
+
+	m, ok := finalModel.(btea.InputModel)
+	if !ok {
+		return &btea.InputResult{Quit: true}, nil
+	}
+
+	if m.Result != nil {
+		return m.Result, nil
+	}
+
+	// No result means the program quit without explicit result
+	return &btea.InputResult{Quit: true}, nil
+}
+
+// printInputEcho prints the user's input in a styled format after
+// the bubbletea input box has been cleared.
+func (t *TUI) printInputEcho(line string) {
+	render.PrintUserMessage(line, t.term.Width())
+	fmt.Println()
 }
 
 // handleCommand dispatches a slash command.
@@ -230,8 +264,7 @@ func (t *TUI) handleChat(ctx context.Context, message string) error {
 	render.PrintAwaitingMessage()
 	fmt.Println() // blank line after response
 
-	// Flush stdout so the terminal emulator finishes rendering all of the
-	// above output before readline sends its DSR cursor-position query.
+	// Flush stdout so the terminal finishes rendering before next input.
 	os.Stdout.Sync()
 
 	// Use the server's full content if our local buffer missed something.

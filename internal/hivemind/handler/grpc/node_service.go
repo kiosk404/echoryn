@@ -12,7 +12,6 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/tokenmanager"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
-	"github.com/kiosk404/echoryn/pkg/utils/iputil"
 	"google.golang.org/grpc/peer"
 )
 
@@ -75,10 +74,10 @@ func (h *NodeServiceHandler) Register(ctx context.Context, req *pb.RegisterReque
 		// Determine whether this request can skip token validation (dev-mode + loopback)
 		skipTokenAuth := false
 		if h.devMode && req.JoinToken == "" {
-			if iputil.IsLoopBackIP(getGrpcClientIP(ctx)) {
-				skipTokenAuth = true
-				logger.Info("[GolemNodeService] dev-mode: allowing token-less registration for loopback node %s", req.NodeInfo.Id)
-			}
+			//if iputil.IsLoopBackIP(getGrpcClientIP(ctx)) {
+			skipTokenAuth = true
+			logger.Info("[GolemNodeService] dev-mode: allowing token-less registration for loopback node %s", req.NodeInfo.Id)
+			//}
 		}
 
 		if !skipTokenAuth {

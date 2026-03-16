@@ -4,18 +4,17 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-var _ tea.Model = (*AppModel)(nil)
+var _ tea.Model = (*InputModel)(nil)
 
-func (m AppModel) Init() tea.Cmd {
+func (m InputModel) Init() tea.Cmd {
 	return tea.Batch(
-		tea.EnterAltScreen,
 		tea.SetWindowTitle("Echoryn"))
 }
 
-func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m InputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return handleUpdate(m, msg)
 }
 
-func (m AppModel) View() string {
-	return View(m)
+func (m InputModel) View() string {
+	return renderInputView(m)
 }
