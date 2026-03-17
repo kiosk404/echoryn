@@ -38,7 +38,9 @@ const (
 	ErrSessionDelete   = 100303
 
 	// Model errors (1004xx).
-	ErrModelList = 100401
+	ErrModelList         = 100401
+	ErrModelConfigMissing = 100402
+	ErrModelManagerNotInit = 100403
 
 	// Team errors (1005xx).
 	ErrTeamNotFound       = 100501
@@ -75,6 +77,8 @@ func init() {
 
 	// Model.
 	errorx.MustRegister(newCoder(ErrModelList, http.StatusInternalServerError, "Failed to list models"))
+	errorx.MustRegister(newCoder(ErrModelConfigMissing, http.StatusBadRequest, "Model configuration missing or API key not set"))
+	errorx.MustRegister(newCoder(ErrModelManagerNotInit, http.StatusInternalServerError, "LLM manager not initialized"))
 
 	// Team.
 	errorx.MustRegister(newCoder(ErrTeamNotFound, http.StatusNotFound, "Team not found"))

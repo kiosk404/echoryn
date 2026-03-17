@@ -111,6 +111,15 @@ type OutboundAdapter interface {
 	// SendMarkdown sends a Markdown-formatted message to the specified chat.
 	// For platforms that don't support Markdown, it falls back to plain text.
 	SendMarkdown(ctx context.Context, chatID string, markdown string, opts *SendOptions) error
+
+	// AddReaction adds an emoji reaction to a message.
+	// Returns the reaction_id (platform-specific) that can be used to remove it later.
+	AddReaction(ctx context.Context, messageID string, emojiType string) (reactionID string, err error)
+
+	// RemoveReaction removes a previously added emoji reaction from a message.
+	// reactionID is the value returned by AddReaction.
+	// Platforms that don't support reactions should return nil.
+	RemoveReaction(ctx context.Context, messageID string, reactionID string) error
 }
 
 // SendOptions holds optional parameters for outbound message delivery.
@@ -120,10 +129,6 @@ type SendOptions struct {
 
 	// Silent suppresses notification on the recipient's device.
 	Silent bool
-
-	// AddWorkingIndicator adds "working" indicator (e.g. emoji reaction)
-	// to the sent message to show the bot is processing.
-	AddWorkingIndicator bool
 }
 
 // ChannelConfig is the configuration for a single channel instance.

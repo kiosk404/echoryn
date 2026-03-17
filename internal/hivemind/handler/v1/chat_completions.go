@@ -78,7 +78,13 @@ func (h *ChatCompletionsHandler) Handle(c *gin.Context) {
 
 	// Ensure agent exists; auto-create a default one if it doesn't.
 	if err := h.ensureAgent(c, agentID, extraSystem); err != nil {
-		core.WriteResponse(c, errorx.WrapC(err, ErrEnsureAgent, "ensure agent %q", agentID), nil)
+		// If the error already has a specific error code (e.g., model config missing),
+		// pass it directly without wrapping with ErrEnsureAgent.
+		if errorx.IsCode(err, ErrModelManagerNotInit) || errorx.IsCode(err, ErrModelConfigMissing) {
+			core.WriteResponse(c, err, nil)
+		} else {
+			core.WriteResponse(c, errorx.WrapC(err, ErrEnsureAgent, "ensure agent %q", agentID), nil)
+		}
 		return
 	}
 
@@ -411,12 +417,12 @@ func (h *ChatCompletionsHandler) ensureAgent(c *gin.Context, agentID, extraSyste
 	// If no default model is available (e.g., no API key configured), refuse to create
 	// the agent — an agent without a valid model ref will always fail at chat time.
 	if h.llmManager == nil {
-		return fmt.Errorf("LLM manager not initialized, cannot auto-create agent %q", agentID)
+		return errorx.WithCode(ErrModelManagerNotInit, "LLM manager not initialized, cannot auto-create agent %q", agentID)
 	}
 
 	defaultModel, err := h.llmManager.GetDefaultModel(c.Request.Context())
 	if err != nil {
-		return fmt.Errorf("cannot auto-create agent %q: no default model available (check your models config and API keys): %w", agentID, err)
+		return errorx.WrapC(err, ErrModelConfigMissing, "cannot auto-create agent %q: no default model available (check your models config and API keys)", agentID)
 	}
 
 	ref := llmEntity.ModelRef{

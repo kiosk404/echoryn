@@ -60,6 +60,20 @@ func (d *Dispatcher) HandleMessage(ctx context.Context, msg *InboundMessage) err
 	logger.Info("[Gateway] dispatching message: channel=%s, chat=%s, sender=%s, agent=%s, session=%s",
 		msg.ChannelID, msg.ChatID, msg.SenderName, agentID, sessionID)
 
+	// 2.5. Add a "working" emoji reaction to the user's message to indicate processing.
+	var reactionID string
+	var reactionMsgID string
+	if outbound, ok := d.channelManager.GetOutbound(msg.ChannelID); ok {
+		if userMsgID := msg.Extra["message_id"]; userMsgID != "" {
+			if rid, err := outbound.AddReaction(ctx, userMsgID, "OnIt"); err != nil {
+				logger.Debug("[Gateway] failed to add working reaction: %v", err)
+			} else {
+				reactionID = rid
+				reactionMsgID = userMsgID
+			}
+		}
+	}
+
 	// 3. Invoke AgentService.Run().
 	streamReader, err := d.agentSvc.Run(ctx, &runtime.RunRequest{
 		AgentID:   agentID,
@@ -69,11 +83,13 @@ func (d *Dispatcher) HandleMessage(ctx context.Context, msg *InboundMessage) err
 	if err != nil {
 		logger.Error("[Gateway] agent run failed: channel=%s, chat=%s, err=%v", msg.ChannelID, msg.ChatID, err)
 		d.sendErrorReply(ctx, msg, err)
+		// Remove working reaction on error
+		d.removeWorkingReaction(ctx, msg.ChannelID, reactionMsgID, reactionID)
 		return fmt.Errorf("agent run failed: %w", err)
 	}
 
 	// 4. Consume the event stream and deliver response.
-	go d.consumeAndDeliver(ctx, msg, streamReader)
+	go d.consumeAndDeliver(ctx, msg, streamReader, reactionMsgID, reactionID)
 
 	return nil
 }
@@ -94,10 +110,27 @@ func (d *Dispatcher) resolveAgentID(channelID string) string {
 }
 
 // consumeAndDeliver reads the AgentEvent stream and sends the accumulated
-// response back to the IM platform.
-func (d *Dispatcher) consumeAndDeliver(ctx context.Context, msg *InboundMessage, sr *schema.StreamReader[*entity.AgentEvent]) {
+// response back to the IM platform. After delivery, removes the working reaction.
+func (d *Dispatcher) consumeAndDeliver(ctx context.Context, msg *InboundMessage, sr *schema.StreamReader[*entity.AgentEvent], reactionMsgID, reactionID string) {
 	deliverer := NewDeliverer(d.channelManager)
 	deliverer.Deliver(ctx, msg, sr)
+
+	// Remove the "working" reaction after delivery is complete.
+	d.removeWorkingReaction(ctx, msg.ChannelID, reactionMsgID, reactionID)
+}
+
+// removeWorkingReaction removes the working indicator reaction from a message.
+func (d *Dispatcher) removeWorkingReaction(ctx context.Context, channelID, messageID, reactionID string) {
+	if reactionID == "" || messageID == "" {
+		return
+	}
+	outbound, ok := d.channelManager.GetOutbound(channelID)
+	if !ok {
+		return
+	}
+	if err := outbound.RemoveReaction(ctx, messageID, reactionID); err != nil {
+		logger.Debug("[Gateway] failed to remove working reaction: %v", err)
+	}
 }
 
 // sendErrorReply sends an error message back to the IM platform.

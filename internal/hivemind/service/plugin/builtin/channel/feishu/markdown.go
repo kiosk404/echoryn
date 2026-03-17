@@ -22,8 +22,6 @@ type PostBlock struct {
 	Text   string `json:"text,omitempty"`
 	Href   string `json:"href,omitempty"`
 	UserID string `json:"user_id,omitempty"`
-	ImgKey string `json:"img_key,omitempty"`
-	Style  string `json:"style,omitempty"`
 }
 
 // MarkdownToPost converts Markdown text to Feishu post format.
@@ -91,9 +89,17 @@ func MarkdownToPost(markdown string) *PostContent {
 				paragraphs = append(paragraphs, currentParagraph)
 				currentParagraph = nil
 			}
-			paragraphs = append(paragraphs, []PostBlock{
-				{Tag: "text", Text: headingText, Style: "bold"},
-			})
+
+			//// Add empty line before heading for spacing
+			if len(paragraphs) > 0 {
+				paragraphs = append(paragraphs, []PostBlock{
+					{Tag: "text", Text: ""},
+				})
+			}
+			// Feishu post doesn't support style, so we add a visual indicator
+			//paragraphs = append(paragraphs, []PostBlock{
+			//	{Tag: "text", Text: " 【" + headingText + "】"},
+			//})
 			continue
 		}
 
@@ -120,8 +126,8 @@ func MarkdownToPost(markdown string) *PostContent {
 
 		// Handle numbered list items
 		if numListMatch := numListRegex.FindStringSubmatch(line); numListMatch != nil {
-			num := numListMatch[1]
-			listText := strings.TrimSpace(numListMatch[2])
+			num := numListMatch[2]
+			listText := strings.TrimSpace(numListMatch[3])
 			blocks := parseInlineMarkdown(num + ". " + listText)
 			if len(currentParagraph) > 0 {
 				paragraphs = append(paragraphs, currentParagraph)
@@ -169,15 +175,43 @@ func MarkdownToPost(markdown string) *PostContent {
 
 	// Ensure at least one paragraph
 	if len(paragraphs) == 0 {
-		paragraphs = [][]PostBlock{{{Tag: "text", Text: ""}}}
+		paragraphs = [][]PostBlock{{{Tag: "text", Text: " "}}}
 	}
+
+	// Sanitize: Feishu API requires text tag's text field to be non-nil/non-empty.
+	// With json:"text,omitempty", an empty string would omit the field entirely,
+	// causing "text field can't be nil" error from Feishu.
+	sanitizedParagraphs := sanitizePostParagraphs(paragraphs)
 
 	return &PostContent{
 		ZhCN: &PostBody{
 			Title:   title,
-			Content: paragraphs,
+			Content: sanitizedParagraphs,
 		},
 	}
+}
+
+// sanitizePostParagraphs ensures all PostBlock text fields are valid for Feishu API.
+// Removes empty blocks and ensures text tag blocks have non-empty text.
+func sanitizePostParagraphs(paragraphs [][]PostBlock) [][]PostBlock {
+	var result [][]PostBlock
+	for _, para := range paragraphs {
+		var sanitized []PostBlock
+		for _, block := range para {
+			if block.Tag == "text" && block.Text == "" {
+				// Replace empty text with space to avoid omitempty dropping the field
+				block.Text = " "
+			}
+			sanitized = append(sanitized, block)
+		}
+		if len(sanitized) > 0 {
+			result = append(result, sanitized)
+		}
+	}
+	if len(result) == 0 {
+		result = [][]PostBlock{{{Tag: "text", Text: " "}}}
+	}
+	return result
 }
 
 // parseInlineMarkdown parses inline Markdown elements (bold, italic, code, links).
@@ -236,7 +270,7 @@ func parseInlineElements(text string) []PostBlock {
 			linkText := text[match[2]:match[3]]
 			linkURL := text[match[4]:match[5]]
 			blocks = append(blocks, PostBlock{
-				Tag:  "a",
+				Tag:  "text",
 				Text: linkText,
 				Href: linkURL,
 			})
@@ -254,17 +288,44 @@ func parseInlineElements(text string) []PostBlock {
 }
 
 // parseTextStyles parses bold and italic in text.
+// Note: Feishu post messages do NOT support style field,
+// so we strip the markers and return plain text.
 func parseTextStyles(text string) []PostBlock {
-	// For simplicity, convert **bold** and *italic* to text
-	// Feishu post doesn't have native bold/italic in text blocks
-	// We'll strip the markers for now
 	result := text
 
-	// Strip bold markers
-	result = boldRegex.ReplaceAllString(result, "$1")
+	// First remove ** (bold) markers
+	// Use a simple state machine to handle **text** correctly
+	for {
+		start := strings.Index(result, "**")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(result[start+2:], "**")
+		if end == -1 {
+			break
+		}
+		// Remove the ** markers
+		result = result[:start] + result[start+2:start+2+end] + result[start+2+end+2:]
+	}
 
-	// Strip italic markers (single *)
-	result = italicRegex.ReplaceAllString(result, "$1")
+	// Then remove * (italic) markers - but only single asterisks not part of **
+	for {
+		start := strings.Index(result, "*")
+		if start == -1 {
+			break
+		}
+		// Check if this is part of ** (shouldn't happen after removing **)
+		if start+1 < len(result) && result[start+1] == '*' {
+			// This shouldn't happen, but handle it
+			break
+		}
+		end := strings.Index(result[start+1:], "*")
+		if end == -1 {
+			break
+		}
+		// Remove the * markers
+		result = result[:start] + result[start+1:start+1+end] + result[start+1+end+1:]
+	}
 
 	return []PostBlock{{Tag: "text", Text: result}}
 }
@@ -292,6 +353,91 @@ var (
 	listRegex    = regexp.MustCompile(`^(\s*)[-*+]\s+(.+)$`)
 	numListRegex = regexp.MustCompile(`^(\s*)(\d+)\.\s+(.+)$`)
 	linkRegex    = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
-	boldRegex    = regexp.MustCompile(`\*\*([^*]+)\*\*`)
-	italicRegex  = regexp.MustCompile(`\*([^*]+)\*`)
 )
+
+// CardContent represents parsed markdown content for Feishu interactive card.
+// Feishu card markdown element supports:
+//   - Bold (**text**), Italic (*text*), Strikethrough (~~text~~)
+//   - Links [text](url)
+//   - Ordered/unordered lists
+//   - Code blocks (```)
+//   - Inline code (`code`)
+//   - Images ![alt](url)
+//   - <at id=xxx></at> mentions
+//
+// Feishu card markdown does NOT support:
+//   - # Heading syntax (must use card header or bold text)
+//   - > Blockquote syntax (must be converted)
+//   - Tables
+type CardContent struct {
+	Title    string // Extracted from first heading
+	Markdown string // Card-compatible markdown content
+}
+
+// MarkdownToCard converts standard Markdown text to Feishu card-compatible format.
+// It extracts the first heading as the card title (rendered via card header),
+// and converts unsupported syntax (headings, blockquotes) to supported alternatives.
+func MarkdownToCard(markdown string) *CardContent {
+	lines := strings.Split(markdown, "\n")
+
+	var title string
+	var result strings.Builder
+	var firstContentWritten bool
+
+	for _, line := range lines {
+		// Extract first heading as card title
+		if headingMatch := headingRegex.FindStringSubmatch(line); headingMatch != nil {
+			level := len(headingMatch[1])
+			headingText := strings.TrimSpace(headingMatch[2])
+
+			if title == "" && level <= 2 {
+				// First H1/H2 becomes card header title
+				title = headingText
+				continue
+			}
+
+			// Other headings: convert to bold text
+			// Feishu card markdown doesn't support # syntax
+			if firstContentWritten {
+				result.WriteString("\n\n")
+			}
+			result.WriteString("**" + headingText + "**")
+			result.WriteByte('\n')
+			firstContentWritten = true
+			continue
+		}
+
+		// Convert blockquotes: > text → bold italic or indented
+		// Feishu card markdown doesn't support > syntax
+		if strings.HasPrefix(line, "> ") {
+			quoteText := strings.TrimPrefix(line, "> ")
+			writeNewline(&result, &firstContentWritten)
+			// Use a visual indicator since > is not supported
+			result.WriteString("│ *" + quoteText + "*")
+			continue
+		}
+		if line == ">" {
+			writeNewline(&result, &firstContentWritten)
+			result.WriteString("│")
+			continue
+		}
+
+		// All other lines pass through as-is
+		// (code blocks, lists, bold, italic, links, etc. are natively supported)
+		writeNewline(&result, &firstContentWritten)
+		result.WriteString(line)
+	}
+
+	return &CardContent{
+		Title:    title,
+		Markdown: result.String(),
+	}
+}
+
+// writeNewline writes a newline to the builder if content has already been written.
+func writeNewline(sb *strings.Builder, firstWritten *bool) {
+	if *firstWritten {
+		sb.WriteByte('\n')
+	}
+	*firstWritten = true
+}

@@ -318,5 +318,18 @@ func (o *telegramOutbound) sendMessage(ctx context.Context, chatID, text, parseM
 	return nil
 }
 
+// AddReaction is not supported by Telegram Bot API in this implementation.
+// Returns empty reactionID and nil error.
+func (o *telegramOutbound) AddReaction(ctx context.Context, messageID string, emojiType string) (string, error) {
+	// Telegram Bot API does support reactions (setMessageReaction) but
+	// the implementation is deferred for now.
+	return "", nil
+}
+
+// RemoveReaction is not supported by Telegram Bot API in this implementation.
+func (o *telegramOutbound) RemoveReaction(ctx context.Context, messageID string, reactionID string) error {
+	return nil
+}
+
 var _ gateway.Channel = (*telegramChannel)(nil)
 var _ gateway.OutboundAdapter = (*telegramOutbound)(nil)

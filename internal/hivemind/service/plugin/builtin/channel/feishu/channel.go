@@ -3,7 +3,6 @@ package feishu
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -353,28 +352,45 @@ func (o *feishuOutbound) SendText(ctx context.Context, chatID string, text strin
 }
 
 func (o *feishuOutbound) SendMarkdown(ctx context.Context, chatID string, markdown string, opts *gateway.SendOptions) error {
-	// Convert Markdown to Feishu post format for better rendering.
+	// Smart message type selection:
+	// - If content contains code blocks (```), use interactive card for proper rendering
+	// - Otherwise, use post message which feels more natural for plain text conversations.
+	if needsCardRendering(markdown) {
+		return o.sendAsCard(ctx, chatID, markdown, opts)
+	}
+
+	return o.sendAsPost(ctx, chatID, markdown, opts)
+}
+
+// needsCardRendering checks if the markdown content contains elements that require
+// interactive card rendering (code blocks). Post message cannot render these properly.
+func needsCardRendering(markdown string) bool {
+	return strings.Contains(markdown, "```")
+}
+
+// sendAsCard sends markdown as an interactive card message.
+// Used when content contains code blocks or other elements requiring rich rendering.
+func (o *feishuOutbound) sendAsCard(ctx context.Context, chatID string, markdown string, opts *gateway.SendOptions) error {
+	cardContent := MarkdownToCard(markdown)
+	card := buildMarkdownCard(cardContent)
+	cardJSON, _ := json.Marshal(card)
+
+	logger.Debug("[Feishu] sending interactive card message, content: %s", string(cardJSON))
+
+	_, err := o.sendMessage(ctx, chatID, "interactive", string(cardJSON), opts)
+	return err
+}
+
+// sendAsPost sends markdown as a post (rich text) message.
+// Used for plain text conversations without code blocks - feels more natural.
+func (o *feishuOutbound) sendAsPost(ctx context.Context, chatID string, markdown string, opts *gateway.SendOptions) error {
 	post := MarkdownToPost(markdown)
-	content := map[string]interface{}{"post": post}
-	contentJSON, _ := json.Marshal(content)
+	contentJSON, _ := json.Marshal(post)
 
-	msgID, err := o.sendMessage(ctx, chatID, "post", string(contentJSON), opts)
-	if err != nil {
-		return err
-	}
+	logger.Debug("[Feishu] sending post message, content: %s", string(contentJSON))
 
-	// Add "working" emoji reaction if message was sent successfully
-	if msgID != "" && opts != nil && opts.AddWorkingIndicator {
-		go func() {
-			// Add slight delay to ensure message is visible
-			time.Sleep(500 * time.Millisecond)
-			if err := o.addReaction(context.Background(), msgID, "working"); err != nil {
-				logger.Debug("[Feishu] failed to add working reaction: %v", err)
-			}
-		}()
-	}
-
-	return nil
+	_, err := o.sendMessage(ctx, chatID, "post", string(contentJSON), opts)
+	return err
 }
 
 // sendMessage sends a message via the Feishu/Lark IM API.
@@ -426,29 +442,41 @@ func (o *feishuOutbound) sendMessage(ctx context.Context, chatID, msgType, conte
 
 	// Parse response to get message ID
 	var result struct {
-		Code int `json:"code"`
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
 		Data struct {
 			MessageID string `json:"message_id"`
 		} `json:"data"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		// Return empty ID if parsing fails, but don't fail the send
+		// Return empty ID if parsing fails, but don't fail to send
 		return "", nil
+	}
+
+	if result.Code != 0 {
+		logger.Warn("[Feishu] API returned error: code=%d, msg=%s", result.Code, result.Msg)
+		return "", fmt.Errorf("feishu API error: code=%d, msg=%s", result.Code, result.Msg)
 	}
 
 	return result.Data.MessageID, nil
 }
 
-// addReaction adds an emoji reaction to a message.
-// The emojiType should be a valid Feishu emoji type like "working", "OK", "thumbsUp", etc.
-func (o *feishuOutbound) addReaction(ctx context.Context, messageID, emojiType string) error {
+// AddReaction adds an emoji reaction to a message.
+// The emojiType should be a valid Feishu emoji type like "OnIt", "OK", "THUMBSUP", etc.
+// Returns the reaction_id for later removal.
+// See: https://open.feishu.cn/document/server-docs/im-v1/message-reaction/create
+func (o *feishuOutbound) AddReaction(ctx context.Context, messageID, emojiType string) (string, error) {
 	token, err := o.channel.getTenantToken(ctx)
 	if err != nil {
-		return fmt.Errorf("get tenant token: %w", err)
+		return "", fmt.Errorf("get tenant token: %w", err)
 	}
 
-	payload := map[string]string{
-		"reaction_type": emojiType,
+	// Feishu reaction API requires nested structure:
+	// {"reaction_type": {"emoji_type": "THUMBSUP"}}
+	payload := map[string]interface{}{
+		"reaction_type": map[string]string{
+			"emoji_type": emojiType,
+		},
 	}
 	payloadJSON, _ := json.Marshal(payload)
 
@@ -461,27 +489,48 @@ func (o *feishuOutbound) addReaction(ctx context.Context, messageID, emojiType s
 	url := reactionURL + "/" + messageID + "/reactions"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payloadJSON))
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("add reaction: %w", err)
+		return "", fmt.Errorf("add reaction: %w", err)
 	}
 	defer resp.Body.Close()
 
+	respBody, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode != http.StatusOK {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("feishu reaction API error: status=%d, body=%s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("feishu reaction API error: status=%d, body=%s", resp.StatusCode, string(respBody))
 	}
 
-	return nil
+	// Parse response to get reaction_id for later removal.
+	var result struct {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+		Data struct {
+			ReactionID string `json:"reaction_id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		logger.Debug("[Feishu] failed to parse reaction response: %v", err)
+		return "", nil
+	}
+
+	return result.Data.ReactionID, nil
 }
 
 // RemoveReaction removes an emoji reaction from a message.
-func (o *feishuOutbound) RemoveReaction(ctx context.Context, messageID, emojiType string) error {
+// Note: Feishu DELETE reaction API requires the reaction_id, not emoji_type.
+// Since we don't track reaction_id, we skip removal for now.
+// The reaction will remain on the user's message as a record of processing.
+func (o *feishuOutbound) RemoveReaction(ctx context.Context, messageID, reactionID string) error {
+	if reactionID == "" {
+		return nil
+	}
+
 	token, err := o.channel.getTenantToken(ctx)
 	if err != nil {
 		return fmt.Errorf("get tenant token: %w", err)
@@ -493,7 +542,8 @@ func (o *feishuOutbound) RemoveReaction(ctx context.Context, messageID, emojiTyp
 		reactionURL = larkReactionURL
 	}
 
-	url := reactionURL + "/" + messageID + "/reactions?reaction_type=" + emojiType
+	// DELETE /open-apis/im/v1/messages/:message_id/reactions/:reaction_id
+	url := reactionURL + "/" + messageID + "/reactions/" + reactionID
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 	if err != nil {
 		return err
@@ -575,26 +625,60 @@ func (c *feishuChannel) getTenantToken(ctx context.Context) (string, error) {
 	return c.tenantToken, nil
 }
 
-// buildMarkdownCard builds a Feishu interactive card with markdown content.
-func buildMarkdownCard(markdown string) map[string]interface{} {
-	return map[string]interface{}{
+// buildMarkdownCard builds a Feishu interactive card from parsed CardContent.
+//
+// Card structure:
+//   - header: card title (extracted from first markdown heading), with template color
+//   - elements: markdown content block(s)
+//
+// Feishu card markdown element supports:
+//   - Bold (**), Italic (*), Strikethrough (~~)
+//   - Links [text](url)
+//   - Ordered/unordered lists
+//   - Code blocks (```) with language highlight
+//   - Inline code (`code`)
+//
+// Does NOT support: # headings, > blockquotes, tables.
+func buildMarkdownCard(content *CardContent) map[string]interface{} {
+	card := map[string]interface{}{
 		"config": map[string]interface{}{
 			"wide_screen_mode": true,
 		},
-		"elements": []map[string]interface{}{
-			{
-				"tag":     "markdown",
-				"content": markdown,
-			},
-		},
 	}
-}
 
-// verifySignature verifies the Feishu event callback signature (optional).
-func verifySignature(timestamp, nonce, encryptKey, body, signature string) bool {
-	content := timestamp + nonce + encryptKey + body
-	hash := sha256.Sum256([]byte(content))
-	return fmt.Sprintf("%x", hash) == signature
+	// Set card header if title was extracted from markdown
+	if content.Title != "" {
+		card["header"] = map[string]interface{}{
+			"title": map[string]interface{}{
+				"content": content.Title,
+				"tag":     "plain_text",
+			},
+			"template": "blue",
+		}
+	}
+
+	// Build elements
+	elements := []map[string]interface{}{}
+
+	mdContent := strings.TrimSpace(content.Markdown)
+	if mdContent != "" {
+		elements = append(elements, map[string]interface{}{
+			"tag":     "markdown",
+			"content": mdContent,
+		})
+	}
+
+	// Ensure at least one element
+	if len(elements) == 0 {
+		elements = append(elements, map[string]interface{}{
+			"tag":     "markdown",
+			"content": " ",
+		})
+	}
+
+	card["elements"] = elements
+
+	return card
 }
 
 var _ gateway.Channel = (*feishuChannel)(nil)
