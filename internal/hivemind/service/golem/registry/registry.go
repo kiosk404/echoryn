@@ -12,10 +12,9 @@ import (
 
 // InMemoryRegistry is an in-memory implementation of Registry.
 type InMemoryRegistry struct {
-	cfg      *Config
-	mu       sync.RWMutex
-	nodes    map[string]*NodeState // nodeID → NodeState
-	enricher SkillsEnricher        // optional: enriches node skills from Hivemind-side catalog.
+	cfg   *Config
+	mu    sync.RWMutex
+	nodes map[string]*NodeState // nodeID → NodeState
 
 	cancel  context.CancelFunc
 	stopped chan struct{}
@@ -32,13 +31,6 @@ func NewInMemoryRegistry(cfg *Config) *InMemoryRegistry {
 	}
 }
 
-// SetSkillsEnricher sets the SkillsEnricher used to populate node skills on registration.
-func (m *InMemoryRegistry) SetSkillsEnricher(enricher SkillsEnricher) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.enricher = enricher
-}
-
 func (m *InMemoryRegistry) RegisterNode(ctx context.Context, info *pb.NodeInfo, load *pb.NodeLoadInfo) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -47,23 +39,17 @@ func (m *InMemoryRegistry) RegisterNode(ctx context.Context, info *pb.NodeInfo, 
 		return fmt.Errorf("maximum number of nodes (%d) reached", m.cfg.MaxNodes)
 	}
 
-	// Merge Hivemind-side global skills into the node's InstalledSkills.
-	// Golem-reported skills take precedence (by name) over Hivemind-side ones.
+	// Node only shows skills it actually reports (no global skill injection).
+	// This ensures each node;s InstalledSkills accurately reflects what the Golem node has.
 	logger.Info("[Registry] RegisterNode: incoming InstalledSkills count=%d, enricher=%v",
-		len(info.InstalledSkills), m.enricher != nil)
+		len(info.InstalledSkills))
 	for i, sk := range info.InstalledSkills {
 		logger.Info("[Registry] RegisterNode: incoming skill[%d]: name=%q desc=%s",
 			i, sk.Name, sk.Description[:min(len(sk.Description), 50)])
 	}
 	installedSkills := info.InstalledSkills
-	if m.enricher != nil {
-		globalSkills := m.enricher.GetGlobalSkills()
-		logger.Info("[Registry] RegisterNode: enricher has %d global skills", len(globalSkills))
-		installedSkills = m.mergeSkills(info.InstalledSkills, globalSkills)
-		logger.Info("[Registry] RegisterNode: after merge, total InstalledSkills=%d", len(installedSkills))
-	}
 
-	// Also merge skill-provided capabilities into the node's capabilities.
+	// merge skill-provided capabilities into the node's capabilities.
 	capabilities := info.Capabilities
 	if len(installedSkills) > 0 {
 		capabilities = m.mergeCapabilities(info.Capabilities, installedSkills)
@@ -90,31 +76,9 @@ func (m *InMemoryRegistry) RegisterNode(ctx context.Context, info *pb.NodeInfo, 
 	}
 
 	m.nodes[info.Id] = state
-	logger.Info("[Registry] registered node: id=%s name=%s addr=%s caps=%d skills=%d (enricher=%v)",
-		info.Id, info.Name, info.Address, len(capabilities), len(installedSkills), m.enricher != nil)
+	logger.Info("[Registry] registered node: id=%s name=%s addr=%s caps=%d skills=%d",
+		info.Id, info.Name, info.Address, len(capabilities), len(installedSkills))
 	return nil
-}
-
-// mergeSkills merges Golem-reported skills with Hivemind-side global skills.
-// Golem-reported skills take precedence by name.
-func (m *InMemoryRegistry) mergeSkills(golemSkills, globalSkills []*pb.InstalledSkill) []*pb.InstalledSkill {
-	seen := make(map[string]struct{})
-	var merged []*pb.InstalledSkill
-
-	// Golem-reported skills first (higher priority).
-	for _, s := range golemSkills {
-		seen[s.Name] = struct{}{}
-		merged = append(merged, s)
-	}
-
-	// Add global skills that weren't already reported by Golem.
-	for _, s := range globalSkills {
-		if _, exists := seen[s.Name]; !exists {
-			merged = append(merged, s)
-		}
-	}
-
-	return merged
 }
 
 // mergeCapabilities merges existing capabilities with those declared by installed skills.

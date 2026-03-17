@@ -321,18 +321,6 @@ func InitPluginLifecycle() InitFunc {
 		}
 		logger.Info("[Hivemind] Plugin framework initialized successfully (%d plugins loaded)",
 			deps.Plugin.Registry().Len())
-
-		// Inject SkillsEnricher
-		injectInterface(deps.Plugin, func(p plugin.Plugin) bool {
-			if enricher, ok := p.(registry.SkillsEnricher); ok {
-				deps.Golem.Registry.SetSkillsEnricher(enricher)
-				globalSkills := enricher.GetGlobalSkills()
-				logger.Info("[Hivemind] injected SkillsEnricher into Golem Registry (%d global skills)", len(globalSkills))
-				return true
-			}
-			return false
-		}, "SkillsEnricher")
-
 		return nil
 	}
 }

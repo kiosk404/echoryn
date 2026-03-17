@@ -16,10 +16,8 @@ import (
 	"strings"
 
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
-	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	"github.com/kiosk404/echoryn/pkg/logger"
-	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
 	pkgskills "github.com/kiosk404/echoryn/pkg/skills"
 )
 
@@ -121,36 +119,6 @@ func Factory(args plugin.PluginArgs, handle plugin.Handle) (plugin.Plugin, error
 }
 
 func (p *skillsPlugin) Name() string { return PluginName }
-
-// --- SkillsEnricher interface (registry.SkillsEnricher) ---
-
-// Compile-time check that skillsPlugin implements SkillsEnricher.
-var _ registry.SkillsEnricher = (*skillsPlugin)(nil)
-
-// GetGlobalSkills returns all known skills as proto InstalledSkill messages.
-// This is used by the Golem Registry to enrich node registrations with
-// Hivemind-side skills when Golem nodes don't report their own.
-func (p *skillsPlugin) GetGlobalSkills() []*pb.InstalledSkill {
-	if p.registry == nil {
-		return nil
-	}
-
-	metadata := p.registry.GetMetadata()
-	if len(metadata) == 0 {
-		return nil
-	}
-
-	skills := make([]*pb.InstalledSkill, len(metadata))
-	for i, m := range metadata {
-		skills[i] = &pb.InstalledSkill{
-			Name:         m.Name,
-			Description:  m.Description,
-			Capabilities: m.Capabilities,
-			Path:         m.Path,
-		}
-	}
-	return skills
-}
 
 // --- InitPlugin interface ---
 

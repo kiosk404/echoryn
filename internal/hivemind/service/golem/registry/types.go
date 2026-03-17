@@ -7,16 +7,6 @@ import (
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
 )
 
-// SkillsEnricher provider Hivemind-side skills information to enrich Golem node registrations.
-// When a Golem node registers without reporting its own skills (e.g. because it doesn't have a local
-// skills directory), the Registry uses this enricher to populate the node's
-// InstalledSkills from the Hivemind's globally-known skill catalog.
-type SkillsEnricher interface {
-	// GetGlobalSkills returns all skills known to the hivemind (from the skills plugin).
-	// These will be merged into the node's InstalledSkills on registration.
-	GetGlobalSkills() []*pb.InstalledSkill
-}
-
 // Registry manages all registered Golem nodes.
 type Registry interface {
 	// RegisterNode registers a new Golem node.
@@ -40,9 +30,6 @@ type Registry interface {
 
 	// FindCapableNodes returns nodes that have the specified capabilities.
 	FindCapableNodes(capabilities []string) ([]*NodeState, error)
-
-	// SetSkillsEnricher sets the SkillsEnricher used to populate node skills on registration.
-	SetSkillsEnricher(enricher SkillsEnricher)
 
 	// Start starts the registry (health check loop, etc.).
 	Start(ctx context.Context) error
