@@ -46,6 +46,19 @@ type RunRequest struct {
 	IsTrigger bool
 }
 
+// TriggerDeliverer is an optional interface for delivering trigger responses
+// back to IM channels (e.g. Feishu). When a sub-agent completes and triggers
+// a new turn on the parent session. this interface is used to deliver the
+// response to the original IM channel.
+//
+// This breaks the circular dependency between AgentRunner and the gateway module.
+type TriggerDeliverer interface {
+	// DeliverTrigger consumes the AgentEvent stream and delivers the response
+	// to the IM channel identified by sessionID. The sessionID format is
+	// "{channel_id}:{chat_id}" for IM-triggered sessions.
+	DeliverTrigger(ctx context.Context, sessionID string, sr *schema.StreamReader[*entity.AgentEvent])
+}
+
 // AgentRunner is the top-level orchestrator for agent execution.
 //
 // This is the Echoryn equivalent of:
@@ -82,6 +95,11 @@ type AgentRunner struct {
 	// Active Run tracking (MarkRunActive/Idle) and pending queue draining.
 	// Set via SetSubAgentManager after construction (circular dependency break).
 	subAgentMgr subagent.Manager
+
+	// triggerDeliverer delivers trigger responses to IM channels.
+	// Set via SetTriggerDeliverer after construction.
+	// Optional: if nil, trigger responses are only persisted to session history.
+	TriggerDeliverer TriggerDeliverer
 
 	// activeRuns tracks in-flight abort controllers by run ID.
 	// This enables external callers to cancel a running execution via Abort().
@@ -229,6 +247,13 @@ func (r *AgentRunner) SetSubAgentManager(mgr subagent.Manager) {
 	mgr.Controller().StartTriggerWorker(context.Background())
 }
 
+// SetTriggerDeliverer sets the deliverer for trigger responses.
+// This is called by the gateway module after the AgentRunner is constructed.
+// If nil, trigger responses are only persisted to session history (not sent to IM).
+func (r *AgentRunner) SetTriggerDeliverer(d TriggerDeliverer) {
+	r.TriggerDeliverer = d
+}
+
 // triggerAgentTurn is called by the Announcer when a sub-agent completes
 // and the parent session is idle. It runs a new agent turn on the parent session
 // so the parent agent can process the sub-agent's result and respond to the user.
@@ -239,14 +264,9 @@ func (r *AgentRunner) SetSubAgentManager(mgr subagent.Manager) {
 // sub-agent result is already written to the session as a system message (by
 // deliverDirect), the triggerMessage is a minimal marker.
 //
-// BUG FIX: IsTrigger=true ensures the trigger message is NOT saved as a user
-// message in session history. Previous implementation saved it, polluting the
-// conversation with artificial "[subagent-announce-trigger]" messages.
-//
-// Stream output is consumed and discarded (fire-and-forget) because there's no
-// active SSE connection to route the output to. The agent's response is persisted
-// to session history via the normal executeRun path and will be visible when the
-// user polls or sends the next message.
+// If a TriggerDeliverer is set, the stream output is delivered to the IM channel
+// (e.g. Feishu) Otherwise, it's consumed and discarded (fire-and-forget) -
+// agent's response is still persisted to session history by executeRun.
 func (r *AgentRunner) triggerAgentTurn(ctx context.Context, parentSessionID, triggerMessage string) {
 	// Resolve the parent session to get the agent ID.
 	session, err := r.sessionRepo.Get(ctx, parentSessionID)
@@ -271,9 +291,19 @@ func (r *AgentRunner) triggerAgentTurn(ctx context.Context, parentSessionID, tri
 		return
 	}
 
-	// Consume the stream (fire-and-forget).
+	// If a TriggerDeliverer is set, deliver the response to the IM Channel.
+	// This enables Feishu and other IM integrations to receive trigger response.
+	if r.TriggerDeliverer != nil {
+		safego.Go(ctx, func() {
+			r.TriggerDeliverer.DeliverTrigger(ctx, parentSessionID, sr)
+			logger.Info("[AgentRunner] triggerAgentTurn: delivered response for session %s", parentSessionID)
+		})
+		return
+	}
+
+	// Fallback: consume the stream (fire-and-forget)
 	// The run's output is persisted to session history by executeRun.
-	go func() {
+	safego.Go(ctx, func() {
 		for {
 			_, recvErr := sr.Recv()
 			if recvErr != nil {
@@ -281,7 +311,7 @@ func (r *AgentRunner) triggerAgentTurn(ctx context.Context, parentSessionID, tri
 			}
 		}
 		logger.Info("[AgentRunner] triggerAgentTurn: completed for session %s", parentSessionID)
-	}()
+	})
 }
 
 // Run executes an agent interaction and returns a streaming event reader.

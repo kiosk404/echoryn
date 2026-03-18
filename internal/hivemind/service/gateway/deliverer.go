@@ -12,10 +12,6 @@ import (
 
 // Deliverer consumes an AgentEvent stream and delivers the accumulated
 // assistant response back to the IM platform via the OutboundAdapter.
-//
-// It buffers text deltas until the stream completes, then sends the
-// full response as a single message (or multiple messages if chunking
-// is needed for platform limits).
 type Deliverer struct {
 	channelManager *ChannelManager
 }
@@ -25,61 +21,42 @@ func NewDeliverer(manager *ChannelManager) *Deliverer {
 	return &Deliverer{channelManager: manager}
 }
 
+// DeliverTrigger implements runtime.TriggerDeliverer interface.
+// Called by AgentRunner.triggerAgentTurn when a sub-agent completes
+// and triggers a new turn on the parent session.
+func (d *Deliverer) DeliverTrigger(ctx context.Context, sessionID string, sr *schema.StreamReader[*entity.AgentEvent]) {
+	channelID, chatID := parseSessionID(sessionID)
+	if channelID == "" || chatID == "" {
+		logger.Debug("[Gateway] DeliverTrigger: sessionID %q is not an IM session, skipping", sessionID)
+		return
+	}
+	d.deliver(ctx, channelID, chatID, nil, sr)
+}
+
 // Deliver consumes the AgentEvent stream and sends the response to the IM platform.
-// This method blocks until the stream is fully consumed.
 func (d *Deliverer) Deliver(ctx context.Context, msg *InboundMessage, sr *schema.StreamReader[*entity.AgentEvent]) {
+	if sr == nil || msg == nil {
+		return
+	}
+	opts := &SendOptions{ReplyTo: msg.Extra["message_id"]}
+	d.deliver(ctx, msg.ChannelID, msg.ChatID, opts, sr)
+}
+
+// deliver is the core implementation that consumes an AgentEvent stream
+// and sends the accumulated response to the IM channel.
+func (d *Deliverer) deliver(ctx context.Context, channelID, chatID string, opts *SendOptions, sr *schema.StreamReader[*entity.AgentEvent]) {
 	if sr == nil {
 		return
 	}
 
-	outbound, ok := d.channelManager.GetOutbound(msg.ChannelID)
+	outbound, ok := d.channelManager.GetOutbound(channelID)
 	if !ok {
-		logger.Warn("[Gateway] no outbound adapter for channel %s", msg.ChannelID)
+		logger.Warn("[Gateway] no outbound adapter for channel %s", channelID)
 		return
 	}
 
-	// Accumulate the full response text from text_delta events.
-	var textBuf strings.Builder
-	var hasError bool
-	var errorMsg string
-
-	for {
-		event, err := sr.Recv()
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			logger.Warn("[Gateway] stream read error: channel=%s, chat=%s, err=%v",
-				msg.ChannelID, msg.ChatID, err)
-			hasError = true
-			errorMsg = err.Error()
-			break
-		}
-
-		switch event.Type {
-		case entity.EventTextDelta:
-			textBuf.WriteString(event.Delta)
-
-		case entity.EventError:
-			hasError = true
-			errorMsg = event.Error
-
-		case entity.EventDone:
-			// Stream completed normally.
-
-		case entity.EventToolCallStart:
-			// Log tool calls but don't send to IM (too noisy).
-			if event.ToolCall != nil {
-				logger.Debug("[Gateway] tool call: %s", event.ToolCall.Name)
-			}
-
-		case entity.EventToolCallEnd:
-			// Tool completed — could optionally notify the user.
-		}
-	}
-
-	// Send the accumulated response.
-	responseText := strings.TrimSpace(textBuf.String())
+	// Consume stream and accumulate response.
+	responseText, hasError, errorMsg := consumeStream(sr)
 
 	if hasError && responseText == "" {
 		responseText = "⚠️ 处理请求时出错"
@@ -89,24 +66,53 @@ func (d *Deliverer) Deliver(ctx context.Context, msg *InboundMessage, sr *schema
 	}
 
 	if responseText == "" {
-		logger.Debug("[Gateway] empty response, skipping delivery: channel=%s, chat=%s",
-			msg.ChannelID, msg.ChatID)
+		logger.Debug("[Gateway] empty response, skipping: channel=%s, chat=%s", channelID, chatID)
 		return
 	}
 
-	opts := &SendOptions{
-		ReplyTo: msg.Extra["message_id"],
-	}
-
 	// Try Markdown first, fall back to plain text.
-	if err := outbound.SendMarkdown(ctx, msg.ChatID, responseText, opts); err != nil {
-		logger.Warn("[Gateway] markdown delivery failed, trying plain text: %v", err)
-		if err2 := outbound.SendText(ctx, msg.ChatID, responseText, opts); err2 != nil {
-			logger.Error("[Gateway] delivery failed: channel=%s, chat=%s, err=%v",
-				msg.ChannelID, msg.ChatID, err2)
+	if err := outbound.SendMarkdown(ctx, chatID, responseText, opts); err != nil {
+		logger.Warn("[Gateway] markdown failed, trying plain text: %v", err)
+		if err2 := outbound.SendText(ctx, chatID, responseText, opts); err2 != nil {
+			logger.Error("[Gateway] delivery failed: channel=%s, chat=%s, err=%v", channelID, chatID, err2)
 		}
 	}
 
-	logger.Info("[Gateway] delivered response: channel=%s, chat=%s, len=%d",
-		msg.ChannelID, msg.ChatID, len(responseText))
+	logger.Info("[Gateway] delivered: channel=%s, chat=%s, len=%d", channelID, chatID, len(responseText))
+}
+
+// consumeStream reads all events from the stream and returns the accumulated text.
+func consumeStream(sr *schema.StreamReader[*entity.AgentEvent]) (text string, hasError bool, errorMsg string) {
+	var buf strings.Builder
+	for {
+		event, err := sr.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return buf.String(), true, err.Error()
+		}
+
+		switch event.Type {
+		case entity.EventTextDelta:
+			buf.WriteString(event.Delta)
+		case entity.EventError:
+			return buf.String(), true, event.Error
+		case entity.EventToolCallStart:
+			if event.ToolCall != nil {
+				logger.Debug("[Gateway] tool call: %s", event.ToolCall.Name)
+			}
+		}
+	}
+	return strings.TrimSpace(buf.String()), false, ""
+}
+
+// parseSessionID extracts channelID and chatID from a sessionID.
+// IM sessions use format "{channel_id}:{chat_id}".
+func parseSessionID(sessionID string) (channelID, chatID string) {
+	parts := strings.SplitN(sessionID, ":", 2)
+	if len(parts) != 2 {
+		return "", ""
+	}
+	return parts[0], parts[1]
 }

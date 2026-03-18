@@ -80,13 +80,13 @@ func (m *SteerAwareChatModel) Stream(ctx context.Context, messages []*schema.Mes
 	messages = m.injectSteerMessages(messages)
 
 	// DEBUG: Log the messages being sent to the LLM
-	logger.Info("[SteerAwareChatModel.Stream] sending %d messages to LLM:", len(messages))
+	logger.Debug("[SteerAwareChatModel.Stream] sending %d messages to LLM:", len(messages))
 	for i, msg := range messages {
 		contentPreview := msg.Content
 		if len(contentPreview) > 200 {
 			contentPreview = contentPreview[:200] + "..."
 		}
-		logger.Info("[SteerAwareChatModel.Stream]   msg[%d] role=%s toolCalls=%d content_len=%d content=%.200s",
+		logger.Debug("[SteerAwareChatModel.Stream]   msg[%d] role=%s toolCalls=%d content_len=%d content=%.200s",
 			i, msg.Role, len(msg.ToolCalls), len(msg.Content), contentPreview)
 	}
 

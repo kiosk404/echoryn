@@ -451,6 +451,12 @@ func initChannelGateway(deps *Dependencies) error {
 	manager := gateway.NewChannelManager(dispatcher)
 	dispatcher.SetChannelManager(manager)
 
+	// Create Deliverer for trigger responses and inject into AgentRunner.
+	// This enables sub-agent completion responses to be delivered to IM channels.
+	deliverer := gateway.NewDeliverer(manager)
+	deps.Agents.Runner.SetTriggerDeliverer(deliverer)
+	logger.Info("[Hivemind] TriggerDeliverer injected into AgentRunner")
+
 	// Inject into plugins
 	reg := deps.Plugin.Registry()
 	for _, name := range reg.PluginNames() {
