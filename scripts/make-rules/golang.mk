@@ -86,4 +86,4 @@ go.test.cover: go.test
 .PHONY: go.run.%
 go.run.%:
 	@echo "===========> Running $*"
-	@CGO_ENABLED=$(CGO_ENABLED) $(GO) run $(GO_BUILD_FLAGS) $(ROOT_PACKAGE)/cmd/$* $(RUN_ARGS)
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) run $(GO_BUILD_FLAGS) $(ROOT_PACKAGE)/cmd/$* $(RUN_ARGS)

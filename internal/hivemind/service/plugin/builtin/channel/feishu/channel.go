@@ -166,7 +166,7 @@ func (c *feishuChannel) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	go c.processEvent(r.Context(), body)
 }
 
-// handleChallenge responds to Feishu's URL verification request.
+// handleChallenge responds to Feisal's URL verification request.
 func (c *feishuChannel) handleChallenge(w http.ResponseWriter, envelope *feishuEventEnvelope) {
 	resp := map[string]string{"challenge": envelope.Challenge}
 	w.Header().Set("Content-Type", "application/json")
@@ -336,11 +336,15 @@ type feishuMessage struct {
 
 // feishuOutbound implements gateway.OutboundAdapter for sending messages via Feishu API.
 type feishuOutbound struct {
-	channel *feishuChannel
+	channel  *feishuChannel
+	renderer *MarkdownRenderer
 }
 
 func newFeishuOutbound(ch *feishuChannel) *feishuOutbound {
-	return &feishuOutbound{channel: ch}
+	ob := &feishuOutbound{channel: ch}
+	// Initialize the MarkdownRenderer with the channel's token provider and domain.
+	ob.renderer = NewMarkdownRenderer(ch.getTenantToken, ch.cfg.Domain)
+	return ob
 }
 
 func (o *feishuOutbound) SendText(ctx context.Context, chatID string, text string, opts *gateway.SendOptions) error {
@@ -353,8 +357,8 @@ func (o *feishuOutbound) SendText(ctx context.Context, chatID string, text strin
 
 func (o *feishuOutbound) SendMarkdown(ctx context.Context, chatID string, markdown string, opts *gateway.SendOptions) error {
 	// Smart message type selection:
-	// - If content contains code blocks (```), use interactive card for proper rendering
-	// - Otherwise, use post message which feels more natural for plain text conversations.
+	// - Code Blocks, tables, images -> interactive card (rich rendering)
+	// - Plain text/lists -> post message (more natural for conversations)
 	if needsCardRendering(markdown) {
 		return o.sendAsCard(ctx, chatID, markdown, opts)
 	}
@@ -371,8 +375,7 @@ func needsCardRendering(markdown string) bool {
 // sendAsCard sends markdown as an interactive card message.
 // Used when content contains code blocks or other elements requiring rich rendering.
 func (o *feishuOutbound) sendAsCard(ctx context.Context, chatID string, markdown string, opts *gateway.SendOptions) error {
-	cardContent := MarkdownToCard(markdown)
-	card := buildMarkdownCard(cardContent)
+	card := o.renderer.RenderToCard(markdown)
 	cardJSON, _ := json.Marshal(card)
 
 	logger.Debug("[Feishu] sending interactive card message, content: %s", string(cardJSON))
@@ -381,10 +384,11 @@ func (o *feishuOutbound) sendAsCard(ctx context.Context, chatID string, markdown
 	return err
 }
 
-// sendAsPost sends markdown as a post (rich text) message.
-// Used for plain text conversations without code blocks - feels more natural.
+// sendAsPost sends Markdown as a post (rich text) message.
+// Used the MarkdownRenderer pipeline for preprocessing:
+// code block protection -> table-to-bullets conversion -> post structure build.
 func (o *feishuOutbound) sendAsPost(ctx context.Context, chatID string, markdown string, opts *gateway.SendOptions) error {
-	post := MarkdownToPost(markdown)
+	post := o.renderer.RenderToPost(markdown)
 	contentJSON, _ := json.Marshal(post)
 
 	logger.Debug("[Feishu] sending post message, content: %s", string(contentJSON))
@@ -628,10 +632,10 @@ func (c *feishuChannel) getTenantToken(ctx context.Context) (string, error) {
 // buildMarkdownCard builds a Feishu interactive card from parsed CardContent.
 //
 // Card structure:
-//   - header: card title (extracted from first markdown heading), with template color
-//   - elements: markdown content block(s)
+//   - header: card title (extracted from first Markdown heading), with template color
+//   - elements: Markdown content block(s)
 //
-// Feishu card markdown element supports:
+// Feishu card Markdown element supports:
 //   - Bold (**), Italic (*), Strikethrough (~~)
 //   - Links [text](url)
 //   - Ordered/unordered lists

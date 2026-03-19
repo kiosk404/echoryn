@@ -76,7 +76,7 @@ type HivemindClient struct {
 // NewHivemindClient creates a new client.
 func NewHivemindClient(baseURL, sessionKey, model string, httpClient *http.Client) *HivemindClient {
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 120 * time.Second}
+		httpClient = &http.Client{Timeout: 600 * time.Second}
 	}
 
 	return &HivemindClient{
