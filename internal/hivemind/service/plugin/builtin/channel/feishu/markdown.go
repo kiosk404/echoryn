@@ -49,6 +49,7 @@ func NewMarkdownRenderer(getToken func(ctx context.Context) (string, error), dom
 	// Card pipeline: all transformers that optimize for card rendering.
 	cardPipeline := NewPipeline(
 		&TableTransformer{},
+		&InlineHeadingFixTransformer{},
 		&HeadingTransformer{},
 		&HeadingSpacingTransformer{},
 		&BlockquoteTransformer{},
