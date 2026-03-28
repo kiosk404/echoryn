@@ -51,5 +51,6 @@ frontend/common
 .qwen
 # Storage
 BIZ_BOT_ICON/
+.codebuddy/
 *_SPEC.md
 .echoryn/
