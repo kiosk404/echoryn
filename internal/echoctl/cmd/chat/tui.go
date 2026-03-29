@@ -285,6 +285,7 @@ func RunTUI(client *HivemindClient) error {
 		<-sigCh
 		term.Restore(fd, oldState)
 		fmt.Printf("\n\n%sGoodbye!%s\n\n", colorDim, colorReset)
+		printResumeHint(client.SessionKey)
 		os.Exit(0)
 	}()
 
@@ -296,6 +297,7 @@ func RunTUI(client *HivemindClient) error {
 			// EOF (Ctrl+D) or Ctrl+C
 			term.Restore(fd, oldState)
 			fmt.Printf("\n%sGoodbye!%s\n\n", colorDim, colorReset)
+			printResumeHint(client.SessionKey)
 			return nil
 		}
 
@@ -388,6 +390,15 @@ func RunTUI(client *HivemindClient) error {
 		// Re-enter raw mode for next input.
 		term.MakeRaw(fd)
 	}
+}
+
+// printResumeHint prints the resume command so the user can continue the session later.
+func printResumeHint(sessionKey string) {
+	if sessionKey == "" {
+		return
+	}
+	fmt.Printf("%s  To resume this conversation:%s\n", colorDim, colorReset)
+	fmt.Printf("  %s%s echoctl chat --resume %s%s\n\n", colorBold, colorBlueANSI, sessionKey, colorReset)
 }
 
 // RunOnce performs a single chat request (non-interactive mode) with streaming output to stdout.

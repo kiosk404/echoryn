@@ -13,12 +13,17 @@ import (
 // (steer messages) into the conversation before each LLM call.
 //
 // This implements the Steer delivery path aligned with OpenClaw's
-// queueEmbeddedPiMessage: when a sub-agent completes while the parent
-// agent's ReAct loop is running, the result is pushed into the steer
-// channel. Before each LLM call in the ReAct loop, this wrapper drains
-// the channel and appends the messages as system messages, so the LLM
-// sees the sub-agent results in its current turn without waiting for
-// the next user message.
+// queueEmbeddedPiMessage / activeSession.steer(): when a sub-agent
+// completes while the parent agent's ReAct loop is running, the result
+// is pushed into the steer channel. Before each LLM call in the ReAct
+// loop, this wrapper drains the channel and appends the messages as
+// user-role messages, so the LLM sees the sub-agent results in its
+// current turn without waiting for the next user message.
+//
+// IMPORTANT: Steer messages use the "user" role (not "system") to avoid
+// breaking vLLM / chat-template constraints that require system messages
+// to appear only at the first position. This aligns with OpenClaw where
+// activeSession.steer() injects text as a user turn.
 //
 // Architecture:
 //
@@ -26,10 +31,10 @@ import (
 //	  → steerChannel.ch <- event.FormatForPrompt()
 //	      ↓ (buffered channel, cap=8)
 //	SteerAwareChatModel.Generate/Stream()
-//	  → drain steerCh → append system messages → call inner ChatModel
+//	  → drain steerCh → append user messages → call inner ChatModel
 //
 // This is transparent to the Eino ReAct agent — it only sees a ChatModel
-// that occasionally has extra system messages in its input.
+// that occasionally has extra user messages in its input.
 //
 // The wrapper implements both BaseChatModel and ToolCallingChatModel
 // so it can be used with the ReAct agent which requires tool calling support.
@@ -135,13 +140,20 @@ func (m *SteerAwareChatModel) ConsumedMessages() []*schema.Message {
 }
 
 // injectSteerMessages non-blockingly drains the steer channel and appends
-// any pending sub-agent announcements as a SINGLE system message to the conversation.
+// any pending sub-agent announcements as a SINGLE user message to the conversation.
 //
-// CRITICAL: Multiple steer messages are MERGED into one system message to avoid
-// breaking the user/assistant alternation pattern that LLMs expect. Previous
-// implementation injected N separate user-role messages, which caused:
-//   - Consecutive user messages after tool results (breaks alternation)
-//   - Token repetition / garbled output on models like Hunyuan
+// CRITICAL: Multiple steer messages are MERGED into one user message to avoid
+// breaking the user/assistant alternation pattern that LLMs expect.
+//
+// The user role is used (not system) for two reasons:
+//  1. vLLM and many chat templates (Qwen, Mistral, etc.) require system messages
+//     to appear ONLY at the first position. Inserting system messages mid-conversation
+//     causes template rendering errors like "System message must be at the beginning."
+//  2. This aligns with OpenClaw's design where activeSession.steer() injects
+//     sub-agent results as user-role messages.
+//
+// The message content is prefixed with a runtime context header so the LLM can
+// distinguish it from actual user input.
 //
 // The merged message is appended at the end of the message array so the LLM sees
 // sub-agent completions as the most recent context.
@@ -172,10 +184,10 @@ done:
 		return messages
 	}
 
-	logger.Info("[SteerAwareChatModel] injecting %d steer messages (merged into 1 system message) into LLM context", len(steerMsgs))
+	logger.Info("[SteerAwareChatModel] injecting %d steer messages (merged into 1 user message) into LLM context", len(steerMsgs))
 
-	// Merge all steer messages into a single system message.
-	// This avoids injecting multiple user-role messages which break the
+	// Merge all steer messages into a single user message.
+	// This avoids injecting multiple messages which break the
 	// user/assistant alternation pattern and cause garbled LLM output.
 	//
 	// Format: each sub-agent result is separated by a blank line for clarity.
@@ -195,12 +207,11 @@ done:
 
 	logger.Debug("[SteerAwareChatModel] merged steer message: %.200s...", merged)
 
-	// Append as a single system message at the end.
-	// System role is safe here because it's a single message and doesn't break
-	// the user/assistant alternation. The previous bug was caused by multiple
-	// user-role messages, not by the system role itself.
+	// Append as a single user message at the end.
+	// User role avoids vLLM/chat-template "system must be first" constraints.
+	// Aligned with OpenClaw's activeSession.steer() which injects as user turn.
 	steerMsg := &schema.Message{
-		Role:    schema.System,
+		Role:    schema.User,
 		Content: merged,
 	}
 

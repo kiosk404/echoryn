@@ -30,6 +30,7 @@ var initExample = templates.Examples(`
 type ChatOptions struct {
 	ServerAddr string
 	Session    string
+	Resume     string
 	Model      string
 
 	factory util.Factory
@@ -60,6 +61,7 @@ func NewCmdInfo(f util.Factory, ioStreams genericclioptions.IOStreams) *cobra.Co
 
 	cmd.Flags().StringVar(&o.ServerAddr, "server", o.ServerAddr, "Hivemind HTTP Server Address (default: http://localhost:11789)")
 	cmd.Flags().StringVar(&o.Session, "session", o.Session, "Session ID for the conversation")
+	cmd.Flags().StringVar(&o.Resume, "resume", "", "Resume a previous session by ID (printed on exit)")
 	cmd.Flags().StringVar(&o.Model, "model", o.Model, "Model to use for the conversation (default: Echoryn)")
 
 	return cmd
@@ -76,6 +78,9 @@ func NewChatOptions(f util.Factory, ioStreams genericclioptions.IOStreams) *Chat
 }
 
 func (o *ChatOptions) Complete(args []string) error {
+	if o.Resume != "" {
+		o.Session = o.Resume
+	}
 	if o.Session == "" {
 		o.Session = fmt.Sprintf("echo-%s-%d", o.Model, time.Now().UnixNano())
 	}
@@ -100,7 +105,7 @@ func (o *ChatOptions) Run(ctx context.Context, args []string) error {
 	// Interactive TUI mode.
 	adapter := newClientAdapter(client)
 	teamAPI := NewTeamHTTPClient(o.ServerAddr, o.Session, client.HTTPClient)
-	ui := chatui.New(adapter, chatui.WithTeamAPI(teamAPI))
+	ui := chatui.New(adapter, chatui.WithProgramName("echoctl"), chatui.WithTeamAPI(teamAPI))
 
 	return ui.Run(ctx)
 }

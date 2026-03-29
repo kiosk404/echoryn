@@ -333,13 +333,13 @@ func (p *memoryCorePlugin) onBeforeAgentStart(ctx context.Context, data interfac
 		return nil
 	}
 
-	// Legacy path: inject memory recall instruction as a system message.
+	// Legacy path: inject memory recall instruction as a user message.
 	hookData, ok := data.(map[string]interface{})
 	if !ok {
 		return nil
 	}
 
-	msg := agentEntity.NewSystemMessage(memoryRecallInstruction)
+	msg := agentEntity.NewUserMessage(memoryRecallInstruction)
 	var injected []*agentEntity.Message
 
 	// Preserve existing injected messages from other hooks.

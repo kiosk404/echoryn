@@ -71,7 +71,7 @@ func (m *SkillsMiddleware) ProcessMessages(_ context.Context, messages []*schema
 	}
 
 	hint := &schema.Message{
-		Role:    schema.System,
+		Role:    schema.User,
 		Content: fmt.Sprintf("[Hint: The '%s' skill may be relevant for this task. Consider loading %s/SKILL.md for specialized instructions.]", match.Name, match.Path),
 	}
 

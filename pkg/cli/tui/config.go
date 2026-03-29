@@ -15,6 +15,9 @@ import (
 
 // Config holds all configurable options for the TUI.
 type Config struct {
+	// ProgramName is the CLI binary name in resume hints
+	ProgramName string
+
 	// Prompt is the primary input prompt (default: "> ").
 	Prompt string
 
@@ -31,6 +34,7 @@ type Config struct {
 // DefaultConfig returns a Config with production-ready defaults.
 func DefaultConfig() Config {
 	return Config{
+		ProgramName:     "echoryn",
 		Prompt:          "> ", // bold blue "> "
 		MultilinePrompt: ". ", // gray "· "
 		RequestTimeout:  120 * time.Second,
@@ -43,6 +47,11 @@ type Option func(*Config)
 // WithPrompt sets a custom primary prompt.
 func WithPrompt(prompt string) Option {
 	return func(c *Config) { c.Prompt = prompt }
+}
+
+// WithProgramName sets the CLI binary name for resume hints.
+func WithProgramName(name string) Option {
+	return func(config *Config) { config.ProgramName = name }
 }
 
 // WithRequestTimeout sets the per-request timeout.

@@ -15,11 +15,16 @@ import (
 // applying history limits, compaction summaries, and context pruning.
 //
 // The final message list follows this order:
-//  1. System prompt (from PromptPipeline if available, else Agent.SystemPrompt)
-//  2. Compaction summary (if session was compacted)
-//  3. Memory-injected messages (from plugin hooks, if any)
-//  4. Session history (active messages only, limited by MaxHistoryTurns)
-//  5. Current user input
+//  1. System prompt (from PromptPipeline + compaction summary merged in)
+//  2. Memory-injected messages (from plugin hooks, if any)
+//  3. Session history (active messages only, limited by MaxHistoryTurns)
+//  4. Current user input
+//
+// IMPORTANT: Only ONE system message is produced (at position 0). The compaction
+// summary is merged into the system prompt text rather than being a separate
+// system message. This ensures compatibility with vLLM and chat templates
+// (Qwen, Mistral, etc.) that require system messages to appear only at the
+// first position.
 //
 // After assembly, the message list is pruned to fit within the context window.
 //
@@ -84,18 +89,21 @@ func (cb *ContextBuilder) Build(
 
 	// 1. System prompt — use Pipeline if available, else raw agent.SystemPrompt.
 	systemPrompt := cb.resolveSystemPrompt(agent, session, promptCtx...)
+
+	// 2. Compaction summary — merged INTO the system prompt (not a separate message).
+	// vLLM and many chat templates (Qwen, Mistral, etc.) require system messages
+	// to appear ONLY at the first position. Keeping compaction summary as a separate
+	// system message breaks this constraint. Following OpenClaw's approach, we merge
+	// it into the single system prompt text.
+	if session != nil && session.HasCompaction() {
+		compactionBlock := fmt.Sprintf("\n\n[Conversation Summary]\n%s", session.CompactionSummary)
+		systemPrompt += compactionBlock
+	}
+
 	if systemPrompt != "" {
 		messages = append(messages, &schema.Message{
 			Role:    schema.System,
 			Content: systemPrompt,
-		})
-	}
-
-	// 2. Compaction summary (if session was compacted previously).
-	if session != nil && session.HasCompaction() {
-		messages = append(messages, &schema.Message{
-			Role:    schema.System,
-			Content: fmt.Sprintf("[Conversation Summary]\n%s", session.CompactionSummary),
 		})
 	}
 

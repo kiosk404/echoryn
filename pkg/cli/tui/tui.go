@@ -107,6 +107,7 @@ func (t *TUI) Run(ctx context.Context) error {
 		<-sigCh
 		t.term.Restore()
 		render.PrintGoodbye()
+		render.PrintResumeHint(t.cfg.ProgramName, t.client.SessionKey())
 		os.Exit(0)
 	}()
 
@@ -136,6 +137,7 @@ func (t *TUI) Run(ctx context.Context) error {
 
 		if result.Quit {
 			render.PrintGoodbye()
+			render.PrintResumeHint(t.cfg.ProgramName, t.client.SessionKey())
 			return nil
 		}
 
@@ -152,6 +154,7 @@ func (t *TUI) Run(ctx context.Context) error {
 			if err := t.handleCommand(ctx, line); err != nil {
 				if errors.Is(err, command.ErrQuit) {
 					render.PrintGoodbye()
+					render.PrintResumeHint(t.cfg.ProgramName, t.client.SessionKey())
 					return nil
 				}
 				render.PrintError(err.Error())

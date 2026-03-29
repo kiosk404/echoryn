@@ -336,8 +336,13 @@ func (c *SessionController) processTrigger(ctx context.Context, sessionID string
 // --- Helpers for the Runner to apply pending announcements ---
 
 // FormatAnnouncementsAsMessages converts pending announcements into
-// entity.Message objects (system role) that the runner can append to
-// the session. This is a pure transformation — no session writes.
+// entity.Message objects (user role) that the runner can append to
+// the session. This is a pure transformation - no session writes.
+//
+// User role is used (not system) to avoid vLLM/chat-template constraints
+// that require system messages to appear only at the first position.
+// This aligns with OpenClaw where subagent results are always delivered
+// as use-role message.
 func FormatAnnouncementsAsMessages(announcements []*PendingAnnouncement) []*entity.Message {
 	if len(announcements) == 0 {
 		return nil
@@ -346,7 +351,7 @@ func FormatAnnouncementsAsMessages(announcements []*PendingAnnouncement) []*enti
 	messages := make([]*entity.Message, 0, len(announcements))
 	for _, a := range announcements {
 		content := a.Event.FormatForPrompt()
-		messages = append(messages, entity.NewSystemMessage(content))
+		messages = append(messages, entity.NewUserMessage(content))
 	}
 	return messages
 }

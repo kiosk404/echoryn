@@ -107,18 +107,19 @@ type AgentRunner struct {
 	mu         sync.Mutex
 	activeRuns map[string]*AbortController
 
-	// sessionRunLock provides per-session mutual exclusion for Run execution.
+	// sessionActors provides per-session serialization using the Actor model.
 	//
-	// This ensures that concurrent runs on the same session (e.g., a triggerAgentTurn
-	// run + a user-initiated run) are serialized. The second run waits until the
-	// first completes (including session.Update()), then loads the up-to-date session.
+	// Aligned with OpenClaw's session lane pattern (session:<key>, maxConcurrent=1):
+	// each session gets a dedicated goroutine that processes Run requests sequentially.
+	// This replaces the previous sessionRunMutex which required careful defer ordering
+	// to avoid deadlocks between sessionRelease and MarkRunIdle.
 	//
-	// v2 note: Even with the SessionController's single-writer pattern eliminating
-	// the dual-lock problem, sessionRunLock is still needed to prevent two runs
-	// from independently loading the same session and both trying to append messages.
-	// BoltDB returns deep copies, so without serialization the later Update()
-	// would overwrite the earlier one's changes.
-	sessionRunLock *sessionRunMutex
+	// With the actor model:
+	//   - No explicit Lock/Unlock or defer ordering needed (deadlock-free)
+	//   - Tasks are FIFO-queued and executed one at a time per session
+	//   - Different sessions run fully concurrently
+	//   - triggerAgentTurn just submits to the actor queue (no Acquire blocking)
+	sessionActors *sessionActorPool
 }
 
 // AgentRunnerConfig holds configuration for the AgentRunner.
@@ -209,7 +210,7 @@ func NewAgentRunner(
 		loopDetectCfg:   loopCfg,
 		runTimeout:      cfg.RunTimeout,
 		activeRuns:      make(map[string]*AbortController),
-		sessionRunLock:  newSessionRunMutex(),
+		sessionActors:   newSessionActorPool(),
 	}
 }
 
@@ -254,19 +255,16 @@ func (r *AgentRunner) SetTriggerDeliverer(d TriggerDeliverer) {
 	r.TriggerDeliverer = d
 }
 
-// triggerAgentTurn is called by the Announcer when a sub-agent completes
-// and the parent session is idle. It runs a new agent turn on the parent session
-// so the parent agent can process the sub-agent's result and respond to the user.
+// triggerAgentTurn is called by the SessionController's trigger worker when
+// a sub-agent completes and the parent session is idle. It submits a new
+// agent turn on the parent session so the parent agent can process the
+// sub-agent's result and respond to the user.
 //
 // Aligned with OpenClaw's callGateway({ method: "agent" }) in subagent-announce.ts.
 //
-// The triggerMessage is used as the user input for the new turn. Since the actual
-// sub-agent result is already written to the session as a system message (by
-// deliverDirect), the triggerMessage is a minimal marker.
-//
-// If a TriggerDeliverer is set, the stream output is delivered to the IM channel
-// (e.g. Feishu) Otherwise, it's consumed and discarded (fire-and-forget) -
-// agent's response is still persisted to session history by executeRun.
+// With the Actor model, r.Run() submits to the session's actor queue and returns
+// immediately — no Acquire() blocking, no deadlock risk. The actual execution
+// happens asynchronously in the session actor goroutine.
 func (r *AgentRunner) triggerAgentTurn(ctx context.Context, parentSessionID, triggerMessage string) {
 	// Resolve the parent session to get the agent ID.
 	session, err := r.sessionRepo.Get(ctx, parentSessionID)
@@ -318,44 +316,75 @@ func (r *AgentRunner) triggerAgentTurn(ctx context.Context, parentSessionID, tri
 //
 // Callers consume events via sr.Recv() until io.EOF.
 //
-// Session serialization: Acquires a per-session lock before resolving the session.
-// This ensures that concurrent runs on the same session (e.g., triggerAgentTurn
-// + user message arriving simultaneously) are serialized. Without this, both
-// runs would get independent BoltDB deep-copies of the session, modify them
-// independently, and the later session.Update() would overwrite the earlier one,
-// causing lost messages and broken conversation context.
+// Session serialization uses the Actor model (aligned with OpenClaw's session lane):
+// each session has a dedicated goroutine (actor) that processes runs sequentially.
+// The Run request is submitted to the actor's mailbox; the actor executes it after
+// all previously submitted runs for this session complete. This eliminates explicit
+// Lock/Unlock and the defer-ordering deadlocks of the previous sessionRunMutex approach.
 //
-// v2: The sessionRunLock is still needed for session serialization, but the
-// dual-lock problem (sessionRunLock vs SessionWriteLock) is eliminated. The
-// SessionController no longer writes to the session directly — all session
-// writes go through the runner's single-writer path.
+// Architecture:
+//
+//	Run(req) → sessionActors.Submit(sessionID, task)
+//	  → task is queued in the session's mailbox channel
+//	  → session actor goroutine dequeues and executes sequentially
+//	  → BoltDB deep-copy isolation is preserved (each run sees latest state)
+//	  → no Lock/Unlock, no defer ordering concerns
 func (r *AgentRunner) Run(ctx context.Context, req *RunRequest) (*schema.StreamReader[*entity.AgentEvent], error) {
-	// 1. Resolve agent.
+	// 1. Resolve agent (outside actor — read-only, no session contention).
 	agent, err := r.agentRepo.Get(ctx, req.AgentID)
 	if err != nil {
 		return nil, fmt.Errorf("agent %q: %w", req.AgentID, err)
 	}
 
-	// 2. Acquire per-session lock to serialize concurrent runs on the same session.
-	//    This prevents the lost-update problem where two runs independently modify
-	//    their own deep-copies of the session and overwrite each other's changes.
-	//    The lock is released in the async goroutine's defer after executeRun completes.
+	// 2. Assign session ID if not provided.
 	sessionID := req.SessionID
 	if sessionID == "" {
-		// New session — no contention possible, skip locking.
 		sessionID = uuid.New().String()
 		req.SessionID = sessionID
 	}
-	sessionRelease := r.sessionRunLock.Acquire(sessionID)
 
-	// 3. Load or create session (under lock, so we always get the latest state).
+	// 3. Create streaming event pipe.
+	// Buffer=200 to prevent deadlock between fast producer and slow consumer.
+	sr, sw := schema.Pipe[*entity.AgentEvent](200)
+
+	// 4. Submit the run to the session's actor for serial execution.
+	// This is the Go equivalent of OpenClaw's:
+	//   enqueueCommandInLane("session:<key>", task)
+	//
+	// The task closure captures all state needed for execution. The actor guarantees
+	// that only one task runs per session at a time, eliminating the need for
+	// sessionRunLock and its associated defer-ordering complexity.
+	r.sessionActors.Submit(sessionID, func() {
+		r.runInActor(ctx, agent, req, sw)
+	})
+
+	return sr, nil
+}
+
+// runInActor is the task body executed inside the session actor goroutine.
+// It is always called sequentially for a given session — the actor guarantees
+// mutual exclusion without explicit locks.
+//
+// All session-mutating operations (resolve, append messages, update) happen here,
+// ensuring single-writer semantics via the actor's serialization.
+func (r *AgentRunner) runInActor(
+	ctx context.Context,
+	agent *entity.Agent,
+	req *RunRequest,
+	sw *schema.StreamWriter[*entity.AgentEvent],
+) {
+	// Resolve or create session (safe — we're the only goroutine for this session).
 	session, err := r.resolveSession(ctx, agent, req.SessionID)
 	if err != nil {
-		sessionRelease()
-		return nil, fmt.Errorf("session resolution failed: %w", err)
+		sw.Send(&entity.AgentEvent{
+			Type:  entity.EventError,
+			Error: fmt.Sprintf("session resolution failed: %v", err),
+		}, nil)
+		sw.Close()
+		return
 	}
 
-	// 4. Create run record.
+	// Create run record.
 	run := &entity.Run{
 		ID:        uuid.New().String(),
 		SessionID: session.ID,
@@ -365,54 +394,61 @@ func (r *AgentRunner) Run(ctx context.Context, req *RunRequest) (*schema.StreamR
 		CreatedAt: time.Now(),
 	}
 	if err := r.runRepo.Create(ctx, run); err != nil {
-		sessionRelease()
-		return nil, fmt.Errorf("failed to create run: %w", err)
+		sw.Send(&entity.AgentEvent{
+			Type:  entity.EventError,
+			Error: fmt.Sprintf("failed to create run: %v", err),
+		}, nil)
+		sw.Close()
+		return
 	}
 
-	// 5. Create state machine.
+	// Create state machine.
 	stateMachine := NewRunStateMachine(run)
 	if err := stateMachine.TransitionToInProgress(); err != nil {
-		sessionRelease()
-		return nil, err
+		sw.Send(&entity.AgentEvent{
+			Type:  entity.EventError,
+			Error: err.Error(),
+		}, nil)
+		sw.Close()
+		return
 	}
 
-	// 6. Create abort controller.
+	// Create abort controller.
 	abort := NewAbortController(ctx, run.ID, r.runTimeout)
 
-	// 7. Create streaming event pipe (airi-go schema.Pipe pattern).
-	// BUG FIX: Increased buffer from 20 to 200 to prevent potential deadlock
-	// between the callback goroutine and the consumer. With buffer=20, a fast
-	// producer (ReAct agent with multiple tool calls) could fill the buffer
-	// while the consumer is blocked, causing both sides to deadlock.
-	sr, sw := schema.Pipe[*entity.AgentEvent](200)
-
-	// 8. Register run in activeRuns map for external abort support.
+	// Register run for external abort support.
 	r.registerRun(run.ID, abort)
 
-	// 9. Launch async execution.
-	safego.Go(abort.Context(), func() {
-		defer abort.CleanUp()
-		defer sw.Close()
-		defer r.unregisterRun(run.ID)
-		// Release the per-session lock after executeRun completes.
-		// This ensures the next Run on this session sees the fully-updated session
-		// (with all messages persisted by this run, including pending announcements).
-		defer sessionRelease()
+	// Emit initial run status event.
+	sw.Send(&entity.AgentEvent{
+		Type:      entity.EventRunStatus,
+		RunStatus: entity.RunStatusInProgress,
+	}, nil)
 
-		// Emit initial run status event inside the goroutine to guarantee
-		// ordering: this event is always the first one consumers see.
-		sw.Send(&entity.AgentEvent{
-			Type:      entity.EventRunStatus,
-			RunStatus: entity.RunStatusInProgress,
-		}, nil)
+	// Execute the run synchronously within the actor goroutine.
+	// This is the key difference from the old approach: the entire executeRun
+	// happens inside the actor, so no separate goroutine or lock release is needed.
+	r.executeRun(abort.Context(), agent, session, run, stateMachine, sw, abort, req.Input, req.IsTrigger)
 
-		r.executeRun(abort.Context(), agent, session, run, stateMachine, sw, abort, req.Input, req.IsTrigger)
-	})
+	// Post-run cleanup: MarkRunIdle + retrigger.
+	// No defer-ordering concerns — we execute these sequentially after executeRun.
+	// The actor guarantees no other run for this session can start until we finish.
+	if r.subAgentMgr != nil {
+		pending := r.subAgentMgr.Controller().MarkRunIdle(session.ID)
+		if len(pending) > 0 {
+			logger.Info("[AgentRunner] %d late pending announcements for session %s, re-enqueuing trigger",
+				len(pending), session.ID)
+			r.subAgentMgr.Controller().ReEnqueuePending(session.ID, pending)
+		}
+	}
 
-	return sr, nil
+	// Clean up resources.
+	r.unregisterRun(run.ID)
+	sw.Close()
+	abort.CleanUp()
 }
 
-// executeRun is the async execution body running inside safego.Go.
+// executeRun is the core execution body, called synchronously inside the session actor.
 func (r *AgentRunner) executeRun(
 	ctx context.Context,
 	agent *entity.Agent,
@@ -435,35 +471,16 @@ func (r *AgentRunner) executeRun(
 	// The steer channel is passed to TurnExecutor → AgentFlowBuilder → SteerAwareChatModel
 	// which drains it before each LLM call for real-time sub-agent result injection.
 	//
-	// v2 architecture: MarkRunIdle returns pending announcements instead of writing
-	// to the session. The runner appends them to its own session object before
-	// session.Update(), ensuring single-writer semantics and eliminating the
-	// dual-lock (sessionRunLock vs SessionWriteLock) lost-update problem.
+	// NOTE: MarkRunIdle is called in runInActor() after executeRun returns.
+	// The actor model guarantees sequential execution, so no defer-ordering
+	// concerns exist — MarkRunIdle runs after all session writes are complete
+	// and before the next run for this session can start.
 	var steerCh <-chan string
 	if r.subAgentMgr != nil {
 		sc := r.subAgentMgr.Controller().MarkRunActive(session.ID)
 		if sc != nil {
 			steerCh = sc.Ch
 		}
-		defer func() {
-			// v2: MarkRunIdle returns pending announcements WITHOUT writing to session.
-			// We've already appended them to session and called session.Update() in the
-			// persistence section below (before this defer fires — Go defers are LIFO
-			// but this inner defer was registered first, so it fires LAST among the
-			// executeRun-internal defers). However, new announcements may have arrived
-			// between our persistence and this MarkRunIdle call. Those will be picked
-			// up by the trigger worker (they go into the pending queue and the worker
-			// calls TriggerParentTurn which starts a new run).
-			pending := r.subAgentMgr.Controller().MarkRunIdle(session.ID)
-			if len(pending) > 0 {
-				// These arrived after we already persisted. Enqueue a trigger so
-				// the next run will pick them up.
-				logger.Info("[AgentRunner] %d late pending announcements for session %s, re-enqueuing trigger",
-					len(pending), session.ID)
-				// Put them back into the controller's pending queue.
-				r.subAgentMgr.Controller().ReEnqueuePending(session.ID, pending)
-			}
-		}()
 	}
 
 	// Fire before_agent_start hook (memory injection, etc.).

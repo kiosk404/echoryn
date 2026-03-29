@@ -237,6 +237,24 @@ func PrintGoodbye() {
 	fmt.Println()
 }
 
+// PrintResumeHint prints the resume command after goodbye.
+// This tells the user how to continue this conversation later.
+func PrintResumeHint(programName, sessionKey string) {
+	if sessionKey == "" {
+		return
+	}
+	hint := lipgloss.NewStyle().
+		Foreground(subtleColor).
+		Render("  To resume this conversation:")
+	cmd := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Render(fmt.Sprintf(" --resume %s", sessionKey))
+	fmt.Println(hint)
+	fmt.Println(cmd)
+	fmt.Println()
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Status Bar
 // ─────────────────────────────────────────────────────────────────────────────
