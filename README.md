@@ -137,7 +137,7 @@ make all
 
 ### 运行 Echoryn
 
-![echoryn](./assets/echo-cli-cn.png)
+![echoryn](./docs/assets/echo-cli-cn.png)
 
 #### 1. 启动 Hivemind 服务器
 
