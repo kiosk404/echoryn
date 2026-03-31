@@ -26,6 +26,7 @@ func NewCmdToken(f cmdutil.Factory, ioStreams genericclioptions.IOStreams) *cobr
 
 	cmd.AddCommand(NewCmdTokenCreate(f, ioStreams))
 	cmd.AddCommand(NewCmdTokenDelete(f, ioStreams))
+	cmd.AddCommand(NewCmdTokenList(f, ioStreams))
 
 	return cmd
 }

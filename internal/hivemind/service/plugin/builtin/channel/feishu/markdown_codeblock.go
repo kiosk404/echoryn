@@ -43,7 +43,7 @@ func (g *CodeBlockGuard) Restore(text string, mode RenderMode) string {
 		case RenderModeCard:
 			// Card mode: add <br> around code blocks for visual spacing.
 			// Reference: openclaw-lark cardVersion >= 2 behavior.
-			replacement = "\n<br>\n" + block + "\n<br>\n"
+			replacement = "<br>" + block + "<br>"
 		default:
 			replacement = block
 		}

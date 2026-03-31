@@ -52,5 +52,4 @@ frontend/common
 # Storage
 BIZ_BOT_ICON/
 .codebuddy/
-*_SPEC.md
 .echoryn/

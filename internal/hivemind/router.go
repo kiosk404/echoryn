@@ -78,7 +78,7 @@ func installController(g *gin.Engine, deps *routerDeps) {
 			teamHandler := v1.NewTeamHandler(deps.teamOrchestrator, deps.teamTemplateService, deps.teamMessageBus)
 			apiV1.GET("/teams/templates", teamHandler.ListTemplates)
 			apiV1.POST("/teams", teamHandler.CreateTeam)
-			apiV1.GET("/teams/:id", teamHandler.DissolveTeam)
+			apiV1.GET("/teams/:id", teamHandler.GetTeam)
 			apiV1.DELETE("/teams/:id", teamHandler.DissolveTeam)
 			apiV1.POST("/teams/:id/messages", teamHandler.SendMessage)
 		}

@@ -85,19 +85,18 @@ func (h *HeadingTransformer) Transform(text string, mode RenderMode) string {
 	return text
 }
 
-// HeadingSpacingTransformer adds visual spacing between consecutive headings
+// HeadingSpacingTransformer ensures proper spacing between consecutive headings
 // and between headings and bold-title lines (which represent downgraded H3~H6).
-// In Feishu card rendering, consecutive headings without spacing look cramped.
 //
-// After HeadingTransformer, we have:
-//   - H3/H4 markdown headings (from original H1/H2)
-//   - **bold text** lines (from original H3~H6)
+// Uses a single blank line (\n\n) as separator — this is sufficient for Feishu
+// card rendering. The previous approach used \n<br>\n which produced excessive
+// vertical whitespace (3 lines of spacing instead of 1).
 //
 // Reference: openclaw-lark's optimizeMarkdownStyle step 3.
 type HeadingSpacingTransformer struct{}
 
-// headingOrBoldLineRegex matches either a markdown heading or a standalone bold line.
 var (
+	// Match two consecutive heading/bold lines separated by a single \n.
 	consecutiveHeadingsRegex = regexp.MustCompile(`(?m)(^#{1,4} .+)\n(#{1,4} )`)
 	headingThenBoldRegex     = regexp.MustCompile(`(?m)(^#{1,4} .+)\n(\*\*.+\*\*)$`)
 	boldThenHeadingRegex     = regexp.MustCompile(`(?m)(^\*\*.+\*\*)\n(#{1,4} )`)
@@ -108,26 +107,38 @@ func (h *HeadingSpacingTransformer) Transform(text string, mode RenderMode) stri
 		return text
 	}
 
-	// Insert <br> between consecutive headings for spacing.
-	text = consecutiveHeadingsRegex.ReplaceAllString(text, "$1\n<br>\n$2")
-	// Insert <br> between heading → bold-title.
-	text = headingThenBoldRegex.ReplaceAllString(text, "$1\n<br>\n$2")
-	// Insert <br> between bold-title → heading.
-	text = boldThenHeadingRegex.ReplaceAllString(text, "$1\n<br>\n$2")
+	// Insert a blank line between consecutive heading/bold lines for spacing.
+	text = consecutiveHeadingsRegex.ReplaceAllString(text, "$1\n\n$2")
+	text = headingThenBoldRegex.ReplaceAllString(text, "$1\n\n$2")
+	text = boldThenHeadingRegex.ReplaceAllString(text, "$1\n\n$2")
 
 	return text
 }
 
-// ExcessiveNewlineTransformer compresses more than 2 consecutive newlines into exactly 2.
-// This prevents large empty gaps in rendered output.
+// ExcessiveNewlineTransformer compresses redundant vertical whitespace:
+//   - More than 2 consecutive newlines → exactly 2 (\n\n)
+//   - Consecutive <br> tags with newlines (e.g. \n<br>\n<br>\n) → single \n\n
+//   - Trailing <br> before headings → removed (headings have their own spacing)
 //
 // Reference: openclaw-lark's optimizeMarkdownStyle step 6.
 type ExcessiveNewlineTransformer struct{}
 
-var excessiveNewlineRegex = regexp.MustCompile(`\n{3,}`)
+var (
+	excessiveNewlineRegex = regexp.MustCompile(`\n{3,}`)
+	// Match patterns like \n<br>\n, \n<br>\n<br>\n, etc.
+	excessiveBrRegex = regexp.MustCompile(`(\n\s*<br>\s*){2,}`)
+	// Single <br> surrounded by blank lines → collapse to \n\n.
+	brWithBlankLines = regexp.MustCompile(`\n\n\s*<br>\s*\n`)
+)
 
 func (e *ExcessiveNewlineTransformer) Transform(text string, _ RenderMode) string {
-	return excessiveNewlineRegex.ReplaceAllString(text, "\n\n")
+	// Collapse consecutive <br> blocks into a single blank line.
+	text = excessiveBrRegex.ReplaceAllString(text, "\n\n")
+	// Remove <br> that's already between blank lines (redundant spacing).
+	text = brWithBlankLines.ReplaceAllString(text, "\n\n")
+	// Collapse excessive newlines.
+	text = excessiveNewlineRegex.ReplaceAllString(text, "\n\n")
+	return text
 }
 
 // BlockquoteTransformer converts blockquote syntax for card rendering.

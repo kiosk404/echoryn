@@ -1,0 +1,144 @@
+run:
+  timeout: 5m
+  go: '1.21'
+  skip-dirs:
+    - vendor
+    - third_party
+    - .test-data
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  uniq-by-line: false
+
+linters:
+  enable:
+    # Code quality
+    - errcheck         # unchecked errors
+    - gosimple         # code simplification
+    - ineffassign      # ineffectual assignments
+    - staticcheck       # static analysis
+    - unused           # unused variables/functions
+    - deadcode         # unreachable code
+
+    # Architecture & dependencies
+    - depguard         # guard against unapproved imports
+    - goimports        # import sorting
+    - govet            # go vet issues
+
+    # Code style
+    - gofmt            # gofmt issues
+    - gocyclo          # cyclomatic complexity
+    - misspell         # misspelled words in comments
+    - stylecheck       # style issues
+    - revive           # linting rules
+
+    # Security
+    - gosec            # security issues
+
+  disable-all: false
+
+linters-settings:
+  # Architecture dependency guard
+  depguard:
+    rules:
+      # Rule 1: pkg/ must not import internal/
+      pkg-pkg-internal:
+        deny:
+          - pkg: github.com/kiosk404/echoryn/internal
+            desc: "pkg/ is public library, must not import internal/"
+
+      # Rule 2: handler/ must not directly import store/ or domain/repo
+      handler-layer:
+        list-mode: lax
+        files:
+          - $test
+          - "internal/hivemind/handler/**"
+        deny:
+          - pkg: github.com/kiosk404/echoryn/internal/hivemind/service/*/store
+            desc: "handler/ must use service interfaces, not direct store access"
+
+      # Rule 3: no direct log or fmt usage (use pkg/logger instead)
+      no-std-logging:
+        deny:
+          - pkg: log
+            desc: "Use pkg/logger instead of log package"
+          - pkg: fmt
+            desc: "For logging use pkg/logger; for string formatting use fmt in non-logging contexts"
+
+  # Code cyclomatic complexity
+  gocyclo:
+    min-complexity: 15
+
+  # Import sorting
+  goimports:
+    local-prefixes: github.com/kiosk404/echoryn
+
+  # Go vet
+  govet:
+    check-shadowing: true
+    check-unreachable: true
+    check-named-results: true
+
+  # Revive rules
+  revive:
+    rules:
+      - name: blank-imports
+        severity: warning
+      - name: context-as-argument
+        severity: warning
+      - name: context-keys-type
+        severity: warning
+      - name: dot-imports
+        severity: warning
+      - name: error-naming
+        severity: warning
+      - name: error-strings
+        severity: warning
+      - name: exported
+        severity: warning
+      - name: if-return
+        severity: warning
+      - name: indent-error-flow
+        severity: warning
+      - name: receiver-naming
+        severity: warning
+      - name: redefines-builtin-id
+        severity: warning
+      - name: superfluous-else
+        severity: warning
+      - name: time-naming
+        severity: warning
+      - name: unexported-return
+        severity: warning
+      - name: unreachable-code
+        severity: warning
+      - name: unused-parameter
+        severity: warning
+      - name: var-declaration
+        severity: warning
+      - name: var-naming
+        severity: warning
+
+issues:
+  exclude-rules:
+    # Allow unused params in interface implementations
+    - linters:
+        - revive
+      source: "func \\(.*\\) .* \\("
+      text: "unused-parameter"
+
+    # Allow logger in test files
+    - linters:
+        - depguard
+      path: "_test\\.go$"
+
+    # Allow fmt in main() and tests
+    - linters:
+        - depguard
+      path: "(main|_test)\\.go$"
+      text: "fmt"
+
+  max-issues-per-linter: 0
+  max-same-issues: 0

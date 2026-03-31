@@ -22,6 +22,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
 	websearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/gemini-web-search"
 	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
+	"github.com/kiosk404/echoryn/pkg/paths"
 )
 
 // NewInTreeRegistry creates the in-tree plugin registry with all
@@ -145,7 +146,7 @@ func resolveMemoryConfig(opts *genericoptions.PluginsOptions) *mementity.MemoryC
 	}
 	if v, ok := entry.Config["workspace_dir"]; ok {
 		if s, ok := v.(string); ok && s != "" && s != "." {
-			cfg.WorkspaceDir = s
+			cfg.WorkspaceDir = paths.ResolveWorkspaceDir("", s)
 		}
 	}
 	if v, ok := entry.Config["db_path"]; ok {
