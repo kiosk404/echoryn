@@ -17,10 +17,12 @@ func ToSchemaMessages(msgs []*entity.Message) []*schema.Message {
 // ToSchemaMessage handles bidirectional message conversion between entity and schema.
 func ToSchemaMessage(msg *entity.Message) *schema.Message {
 	sm := &schema.Message{
-		Role:       toSchemaRole(msg.Role),
-		Content:    msg.Content,
-		Name:       msg.Name,
-		ToolCallID: msg.ToolCallID,
+		Role:             toSchemaRole(msg.Role),
+		Content:          msg.Content,
+		Name:             msg.Name,
+		ToolCallID:       msg.ToolCallID,
+		ReasoningContent: msg.ReasoningContent,
+		Extra:            msg.Extra,
 	}
 
 	if len(msg.ToolCalls) > 0 {
@@ -44,10 +46,12 @@ func FromSchemaMessage(sm *schema.Message) *entity.Message {
 		return nil
 	}
 	msg := &entity.Message{
-		Role:       fromSchemaRole(sm.Role),
-		Content:    sm.Content,
-		Name:       sm.Name,
-		ToolCallID: sm.ToolCallID,
+		Role:             fromSchemaRole(sm.Role),
+		Content:          sm.Content,
+		Name:             sm.Name,
+		ToolCallID:       sm.ToolCallID,
+		ReasoningContent: sm.ReasoningContent,
+		Extra:            sm.Extra,
 	}
 
 	if len(sm.ToolCalls) > 0 {

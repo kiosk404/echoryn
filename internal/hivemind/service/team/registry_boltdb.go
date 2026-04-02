@@ -323,5 +323,92 @@ func hasAnyTag(tags []string, filter []string) bool {
 	return false
 }
 
+// --- Reverse Lookup ---
+
+// FindBySessionID searches all teams for a member with the given session ID.
+func (r *BoltDBTeamRegistry) FindBySessionID(_ context.Context, sessionID string) (*Team, *TeamMember, error) {
+	var resultTeam *Team
+	var resultMember *TeamMember
+
+	err := r.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTeams)
+		return b.ForEach(func(_, v []byte) error {
+			if resultTeam != nil {
+				return nil // already found
+			}
+			var t Team
+			if err := json.Unmarshal(v, &t); err != nil {
+				return nil // skip malformed entries
+			}
+			for _, m := range t.Members {
+				if m.SessionID == sessionID {
+					resultTeam = &t
+					memberCopy := *m
+					resultMember = &memberCopy
+					return nil
+				}
+			}
+			return nil
+		})
+	})
+
+	return resultTeam, resultMember, err
+}
+
+// FindByWorkerRef searches all teams for a member with the given WorkerRef.
+func (r *BoltDBTeamRegistry) FindByWorkerRef(_ context.Context, ref WorkerRef) (*Team, *TeamMember, error) {
+	if ref.ID == "" {
+		return nil, nil, nil
+	}
+
+	var resultTeam *Team
+	var resultMember *TeamMember
+
+	err := r.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTeams)
+		return b.ForEach(func(_, v []byte) error {
+			if resultTeam != nil {
+				return nil
+			}
+			var t Team
+			if err := json.Unmarshal(v, &t); err != nil {
+				return nil
+			}
+			for _, m := range t.Members {
+				if m.WorkerRef.ID == ref.ID {
+					resultTeam = &t
+					memberCopy := *m
+					resultMember = &memberCopy
+					return nil
+				}
+			}
+			return nil
+		})
+	})
+
+	return resultTeam, resultMember, err
+}
+
+// ListAll returns all active (non-dissolved) teams.
+func (r *BoltDBTeamRegistry) ListAll(_ context.Context) ([]*Team, error) {
+	var teams []*Team
+
+	err := r.db.View(func(tx *bbolt.Tx) error {
+		b := tx.Bucket(bucketTeams)
+		return b.ForEach(func(_, v []byte) error {
+			var t Team
+			if err := json.Unmarshal(v, &t); err != nil {
+				return nil
+			}
+			if !t.Status.IsTerminal() {
+				teams = append(teams, &t)
+			}
+			return nil
+		})
+	})
+
+	return teams, err
+}
+
 // Compile-time check.
 var _ TeamRegistry = (*BoltDBTeamRegistry)(nil)

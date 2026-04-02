@@ -48,4 +48,17 @@ type TeamRegistry interface {
 
 	// UpdateMemberStatus updates a member's status.
 	UpdateMemberStatus(ctx context.Context, teamID, memberID string, status TeamMemberStatus) error
+
+	// --- Reverse Lookup ---
+
+	// FindBySessionID searches all teams for a member with the given session ID.
+	// Returns the team and the member, or nil if not found.
+	FindBySessionID(ctx context.Context, sessionID string) (*Team, *TeamMember, error)
+
+	// FindByWorkerRef searches all teams for a member with the given WorkerRef.
+	// Returns the team and the member, or nil if not found.
+	FindByWorkerRef(ctx context.Context, ref WorkerRef) (*Team, *TeamMember, error)
+
+	// ListAll returns all active (non-dissolved) teams.
+	ListAll(ctx context.Context) ([]*Team, error)
 }

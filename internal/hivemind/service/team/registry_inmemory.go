@@ -169,6 +169,53 @@ func (r *InMemoryTeamRegistry) UpdateMemberStatus(_ context.Context, teamID, mem
 	return fmt.Errorf("member %s not found in team %s", memberID, teamID)
 }
 
+// --- Reverse Lookup ---
+
+func (r *InMemoryTeamRegistry) FindBySessionID(_ context.Context, sessionID string) (*Team, *TeamMember, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, t := range r.teams {
+		for _, m := range t.Members {
+			if m.SessionID == sessionID {
+				return r.copyTeam(t), r.copyMember(m), nil
+			}
+		}
+	}
+	return nil, nil, nil
+}
+
+func (r *InMemoryTeamRegistry) FindByWorkerRef(_ context.Context, ref WorkerRef) (*Team, *TeamMember, error) {
+	if ref.ID == "" {
+		return nil, nil, nil
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, t := range r.teams {
+		for _, m := range t.Members {
+			if m.WorkerRef.ID == ref.ID {
+				return r.copyTeam(t), r.copyMember(m), nil
+			}
+		}
+	}
+	return nil, nil, nil
+}
+
+func (r *InMemoryTeamRegistry) ListAll(_ context.Context) ([]*Team, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*Team
+	for _, t := range r.teams {
+		if !t.Status.IsTerminal() {
+			result = append(result, r.copyTeam(t))
+		}
+	}
+	return result, nil
+}
+
 // --- Filter helpers ---
 
 func (r *InMemoryTeamRegistry) matchesFilter(t *TeamTemplate, filter *TemplateFilter) bool {

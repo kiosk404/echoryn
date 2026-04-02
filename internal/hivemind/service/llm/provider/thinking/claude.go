@@ -32,7 +32,10 @@ var ClaudeBudgetTokens = map[entity.ThinkingLevel]int{
 }
 
 func (s *ClaudeStrategy) Apply(level entity.ThinkingLevel) []model.Option {
-	budget, ok := ClaudeBudgetTokens[level]
+	budget, ok := GetBudgetOverride("anthropic", level)
+	if !ok {
+		budget, ok = ClaudeBudgetTokens[level]
+	}
 	if !ok {
 		return nil
 	}

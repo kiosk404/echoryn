@@ -337,78 +337,67 @@ func injectInterface(pf *plugin.Framework, injector func(p plugin.Plugin) bool, 
 	logger.Debug("[Hivemind] no %s found among initialized plugins", name)
 }
 
-// injectTeamDependencies creates the Team subsystem and injects into plugins.
+// injectTeamDependencies creates the Team subsystem via the integration layer.
+// This replaces the old manual 8-step wiring with a single integration.AssembleTeamSubsystem call.
 func injectTeamDependencies(deps *Dependencies) error {
-	// 1. Create registry and template service
-	teamRegistry := team.NewInMemoryTeamRegistry()
-	templateSvc := team.NewTemplateService(teamRegistry)
-
-	// 2. Load templates
-	templateDirs := paths.ResolveTemplatesDirs()
-	loader := team.NewTemplateLoader(teamRegistry, templateDirs...)
-	count, err := loader.LoadAll(context.Background())
-	if err != nil {
-		logger.Warn("[Hivemind] template loading errors: %v", err)
-	}
-	if count > 0 {
-		logger.Info("[Hivemind] loaded %d team templates from %v", count, templateDirs)
-	}
-
-	// 3. Create MessageBus and Orchestrator
-	bus := messagebus.NewMessageBus(nil)
 	gatewayCfg := DefaultGatewayConfig()
-	orchestrator := team.NewOrchestrator(teamRegistry, templateSvc, deps.Agents.SubAgentManager, deps.Agents.SessionRepo, bus, gatewayCfg.Defaults.AgentID)
 
-	// 4. Wire resolver
-	if settable, ok := bus.(messagebus.ResolverSetter); ok {
-		settable.SetTeamMemberResolver(orchestrator.(messagebus.TeamMemberResolver))
+	// Delegate to integration layer — single entry point for all Team BC wiring.
+	teamDeps, err := integration.AssembleTeamSubsystem(
+		context.Background(),
+		deps.Agents.SubAgentManager,
+		deps.Agents.SessionRepo,
+		gatewayCfg.Defaults.AgentID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to assemble team subsystem: %w", err)
 	}
 
-	// 5. Set up TranscriptPlugin
-	setupTeamTranscript(deps.Plugin, bus)
+	// Set up transcript via plugin config probe.
+	setupTeamTranscriptViaPlugin(deps.Plugin, teamDeps.MessageBus)
 
-	// 6. Create EventBridge
-	eventBridge := team.NewEventBridge(orchestrator, teamRegistry)
-	deps.Agents.SubAgentManager.SetLifecycleHook(eventBridge)
-	if setter, ok := orchestrator.(interface {
-		SetEventBridge(bridge *team.EventBridge)
-	}); ok {
-		setter.SetEventBridge(eventBridge)
-	}
-
-	// 7. Inject into plugins
+	// Inject into plugins that implement the team setter interfaces.
 	reg := deps.Plugin.Registry()
 	for _, name := range reg.PluginNames() {
 		if p, ok := reg.GetPlugin(name); ok {
+			// v2 path: single Facade setter (preferred).
+			if setter, ok := p.(interface {
+				SetTeamAppService(svc team.TeamApplicationService)
+			}); ok {
+				setter.SetTeamAppService(teamDeps.AppService)
+				logger.Info("[Hivemind] injected TeamApplicationService into plugin %q", name)
+			}
+			// Legacy path: multiple setter injection (backward compat).
 			if setter, ok := p.(interface {
 				SetOrchestrator(orch team.TeamOrchestrator)
 				SetTemplateService(svc team.TeamTemplateService)
 				SetMessageBus(bus messagebus.MessageBus)
 			}); ok {
-				setter.SetOrchestrator(orchestrator)
-				setter.SetTemplateService(templateSvc)
-				setter.SetMessageBus(bus)
-				logger.Info("[Hivemind] injected Team dependencies into plugin %q", name)
+				setter.SetOrchestrator(teamDeps.Orchestrator)
+				setter.SetTemplateService(teamDeps.TemplateService)
+				setter.SetMessageBus(teamDeps.MessageBus)
+				logger.Info("[Hivemind] injected Team dependencies into plugin %q (legacy path)", name)
 			}
 			if setter, ok := p.(interface {
 				SetEventBridge(bridge *team.EventBridge)
 			}); ok {
-				setter.SetEventBridge(eventBridge)
+				setter.SetEventBridge(teamDeps.EventBridge)
 				logger.Info("[Hivemind] injected EventBridge into plugin %q", name)
 			}
 		}
 	}
 
-	deps.TeamOrchestrator = orchestrator
-	deps.TeamTemplateService = templateSvc
-	deps.TeamMessageBus = bus
-	logger.Info("[Hivemind] Team HTTP API dependencies ready")
+	deps.TeamOrchestrator = teamDeps.Orchestrator
+	deps.TeamTemplateService = teamDeps.TemplateService
+	deps.TeamMessageBus = teamDeps.MessageBus
+	logger.Info("[Hivemind] Team subsystem ready (via integration layer)")
 
 	return nil
 }
 
-// setupTeamTranscript creates and registers the TranscriptPlugin.
-func setupTeamTranscript(pf *plugin.Framework, bus messagebus.MessageBus) {
+// setupTeamTranscriptViaPlugin probes plugins for transcript configuration
+// and delegates to the integration layer's SetupTeamTranscript.
+func setupTeamTranscriptViaPlugin(pf *plugin.Framework, bus messagebus.MessageBus) {
 	reg := pf.Registry()
 	for _, name := range reg.PluginNames() {
 		if p, ok := reg.GetPlugin(name); ok {
@@ -416,20 +405,7 @@ func setupTeamTranscript(pf *plugin.Framework, bus messagebus.MessageBus) {
 				TranscriptConfig() (enabled bool, outputDir string)
 			}); ok {
 				enabled, outputDir := provider.TranscriptConfig()
-				if !enabled {
-					logger.Info("[Hivemind] team transcript disabled by config")
-					return
-				}
-				transcript := messagebus.NewTranscriptPlugin(messagebus.TranscriptConfig{
-					Enabled:   true,
-					OutputDir: outputDir,
-					Format:    "markdown",
-				})
-				if hookable, ok := bus.(messagebus.HookRegistrar); ok {
-					hookable.RegisterHook(messagebus.HookMessageSent, transcript.OnMessageSent)
-					hookable.RegisterHook(messagebus.HookMessageBroadcast, transcript.OnMessageBroadcast)
-					logger.Info("[Hivemind] team transcript enabled (output_dir=%s)", outputDir)
-				}
+				integration.SetupTeamTranscript(bus, enabled, outputDir)
 				return
 			}
 		}

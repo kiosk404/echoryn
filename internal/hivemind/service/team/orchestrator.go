@@ -61,6 +61,15 @@ type TeamOrchestrator interface {
 	// NotifyMemberCompleted is called when a member's SubAgent reaches a terminal state.
 	// It updates the member's status and auto-signals WaitForAll when all members are done.
 	NotifyMemberCompleted(ctx context.Context, teamID string, memberID string, status TeamMemberStatus, output string) error
+
+	// SetExecutionPort wires the outbound port to the Execution domain.
+	// This must be called before any team instantiation.
+	// Design: dependency injection to maintain loose coupling.
+	SetExecutionPort(port ExecutionPort)
+
+	// SetTeamPublisher wires an optional event publisher for Team domain events.
+	// If not set, a no-op publisher is used internally.
+	SetTeamPublisher(publisher TeamPublisher)
 }
 
 // --- Request Types ---

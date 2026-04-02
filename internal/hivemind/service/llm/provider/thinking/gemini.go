@@ -34,6 +34,14 @@ var GeminiBudgetTokens = map[entity.ThinkingLevel]*int32{
 }
 
 func (s *GeminiStrategy) Apply(level entity.ThinkingLevel) []model.Option {
+	if overrideBudget, ok := GetBudgetOverride("gemini", level); ok {
+		cfg := &genai.ThinkingConfig{
+			IncludeThoughts: true,
+			ThinkingBudget:  Int32Ptr(int32(overrideBudget)),
+		}
+		return []model.Option{einoGemini.WithThinkingConfig(cfg)}
+	}
+
 	budget, ok := GeminiBudgetTokens[level]
 	if !ok {
 		return nil

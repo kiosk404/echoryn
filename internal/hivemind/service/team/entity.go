@@ -19,6 +19,24 @@ import (
 	"time"
 )
 
+// --- Worker Reference (Value Object) ---
+
+// WorkerRef is a logical reference to an executing worker (SubAgent).
+// It is opaque to the Execution BC — Team BC never accesses SubAgentRecordID or SessionID directly.
+// The mapping from WorkerRef to execution internals is maintained exclusively in the integration layer.
+//
+// This is the "boundary object" that separates Team BC from Execution BC concerns.
+type WorkerRef struct {
+	// ID is the logical identifier (format: "worker-<uuid>").
+	// Only the integration layer knows the mapping to SubAgentRecordID.
+	ID string `json:"id"`
+}
+
+// String returns a string representation of the WorkerRef.
+func (wr WorkerRef) String() string {
+	return wr.ID
+}
+
 // --- Coordination Strategy ---
 
 // CoordinationStrategy defines how team members collaborate.
@@ -365,6 +383,15 @@ type TeamMember struct {
 
 	// SpecID references the MemberSpec this member was created from.
 	SpecID string `json:"spec_id,omitempty"`
+
+	// WorkerRef is the logical reference to the executing worker.
+	// This is the v2 replacement for SubAgentRecordID — Team BC
+	// uses this opaque reference instead of Execution BC internals.
+	WorkerRef WorkerRef `json:"worker_ref,omitempty"`
+
+	// SubAgentRecordID links to the SubAgentRecord in the SubAgent subsystem.
+	// Deprecated: kept for backward compatibility during migration.
+	// Use WorkerRef instead. Will be removed after full migration.
 
 	// SubAgentRecordID links to the SubAgentRecord in the SubAgent subsystem.
 	SubAgentRecordID string `json:"subagent_record_id,omitempty"`

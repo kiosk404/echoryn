@@ -36,6 +36,26 @@ type Message struct {
 	// Only present when Role == RoleTool.
 	ToolCallID string `json:"tool_call_id,omitempty"`
 
+	// ReasoningContent holds the model's thinking/reasoning output.
+	// Populated for assistant messages when the model returns reasoning content
+	// (e.g., DeepSeek R1 reasoning_content, Claude thinking blocks, Gemini thoughts).
+	//
+	// This field is preserved across multi-turn conversations so that providers
+	// requiring reasoning_content on ALL assistant messages (DeepSeek) can function
+	// correctly. The ThinkingBlockSanitizer strips this field before sending to
+	// providers that reject thinking blocks (e.g., some Claude endpoints).
+	//
+	// Inspired by DeerFlow's PatchedChatDeepSeek and PatchedChatOpenAI approach.
+	ReasoningContent string `json:"reasoning_content,omitempty"`
+
+	// Extra holds provider-specific metadata that must be preserved across turns.
+	// Examples:
+	//   - "thought_signature": Gemini thinking models require this field on tool-call
+	//     objects to be echoed back in subsequent requests (DeerFlow PatchedChatOpenAI).
+	//
+	// Mapped to/from Eino's schema.Message.Extra field.
+	Extra map[string]any `json:"extra,omitempty"`
+
 	// Metadata holds additional information (e.g., model name, latency).
 	Metadata map[string]string `json:"metadata,omitempty"`
 
@@ -67,6 +87,17 @@ func NewAssistantMessage(content string) *Message {
 		Role:      RoleAssistant,
 		Content:   content,
 		CreatedAt: time.Now(),
+	}
+}
+
+// NewAssistantMessageWithReasoning creates an assistant message with reasoning content.
+// Used when the model returns both text content and thinking/reasoning output.
+func NewAssistantMessageWithReasoning(content, reasoningContent string) *Message {
+	return &Message{
+		Role:             RoleAssistant,
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		CreatedAt:        time.Now(),
 	}
 }
 

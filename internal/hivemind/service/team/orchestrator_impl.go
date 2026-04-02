@@ -20,15 +20,22 @@ import (
 //   - InstantiateTeam(): like applying a Deployment spec
 //   - Members: like Pods managed by a ReplicaSet
 //   - WaitForAll(): like waiting for rollout complete
+//
+// Note: As of v2, ExecutionPort and TeamPublisher are injected via SetExecutionPort/SetTeamPublisher.
+// The older subAgentManager direct reference is kept for backward compatibility during migration.
 type orchestratorImpl struct {
 	registry        TeamRegistry
 	templateService TeamTemplateService
-	subAgentManager subagent.Manager
+	subAgentManager subagent.Manager       // kept for backward compat; will be replaced by ExecutionPort
 	sessionRepo     repo.SessionRepository // for ensuring parent session exists
 	messageBus      messagebus.MessageBus
 	maxTeamMembers  int
 	defaultAgentID  string       // default agent for external client sessions
 	eventBridge     *EventBridge // optional: for auto-registering members
+
+	// New v2 fields: dependency injection for loose coupling
+	executionPort ExecutionPort
+	teamPublisher TeamPublisher
 
 	mu      sync.RWMutex
 	waitChs map[string]chan struct{} // teamID → completion signal
@@ -54,11 +61,25 @@ func NewOrchestrator(
 		messageBus:      messageBus,
 		maxTeamMembers:  DefaultMaxTeamMembers,
 		defaultAgentID:  defaultAgentID,
+		teamPublisher:   NewNoOpTeamPublisher(), // default to no-op
 		waitChs:         make(map[string]chan struct{}),
 	}
 }
 
 var _ TeamOrchestrator = (*orchestratorImpl)(nil)
+
+// SetExecutionPort injects the ExecutionPort for spawning workers.
+// This must be called before any team instantiation.
+func (o *orchestratorImpl) SetExecutionPort(port ExecutionPort) {
+	o.executionPort = port
+}
+
+// SetTeamPublisher injects an optional event publisher for Team domain events.
+func (o *orchestratorImpl) SetTeamPublisher(publisher TeamPublisher) {
+	if publisher != nil {
+		o.teamPublisher = publisher
+	}
+}
 
 // InstantiateTeam creates a team from a template.
 //
@@ -209,11 +230,7 @@ func (o *orchestratorImpl) DissolveTeam(ctx context.Context, teamID string) erro
 	// Cancel all active members.
 	for _, member := range team.Members {
 		if !member.Status.IsTerminal() {
-			if member.SubAgentRecordID != "" {
-				if err := o.subAgentManager.Cancel(ctx, member.SubAgentRecordID); err != nil {
-					logger.Warn("[TeamOrchestrator] failed to cancel member %s: %v", member.ID, err)
-				}
-			}
+			o.cancelMember(ctx, member)
 			member.MarkFailed()
 		}
 		// Unregister mailbox.
@@ -242,6 +259,13 @@ func (o *orchestratorImpl) DissolveTeam(ctx context.Context, teamID string) erro
 		delete(o.waitChs, teamID)
 	}
 	o.mu.Unlock()
+
+	// Publish domain event.
+	o.teamPublisher.PublishTeamEvent(&TeamEvent{
+		EventType: TeamEventDissolved,
+		TeamID:    teamID,
+		Timestamp: time.Now(),
+	})
 
 	logger.Info("[TeamOrchestrator] dissolved team: id=%s", teamID)
 	return nil
@@ -273,35 +297,66 @@ func (o *orchestratorImpl) AddMember(ctx context.Context, teamID string, req *Ad
 		return nil, fmt.Errorf("team %s has reached max member limit (%d)", teamID, o.maxTeamMembers)
 	}
 
-	// Spawn the SubAgent.
-	spawnReq := &entity.SubAgentSpawnRequest{
-		ParentSessionID: team.ParentSessionID,
-		ParentRunID:     team.ParentRunID,
-		Task:            req.Task,
-		Label:           req.Label,
-	}
-	if req.AgentID != "" {
-		spawnReq.AgentID = req.AgentID
-	}
-	if req.Model != "" {
-		spawnReq.Model = req.Model
-	}
+	var member *TeamMember
 
-	record, err := o.subAgentManager.Spawn(ctx, spawnReq)
-	if err != nil {
-		return nil, fmt.Errorf("failed to spawn SubAgent: %w", err)
-	}
+	// v2 path: use ExecutionPort if available.
+	if o.executionPort != nil {
+		spawnReq := &SpawnWorkerRequest{
+			ParentSessionID: team.ParentSessionID,
+			ParentRunID:     team.ParentRunID,
+			Task:            req.Task,
+			Label:           req.Label,
+			AgentID:         req.AgentID,
+			Model:           req.Model,
+		}
 
-	member := &TeamMember{
-		ID:               generateMemberID(),
-		SubAgentRecordID: record.ID,
-		SessionID:        record.SessionID,
-		AgentID:          record.AgentID,
-		Role:             req.Role,
-		Label:            req.Label,
-		Task:             req.Task,
-		Status:           TeamMemberStatusRunning,
-		JoinedAt:         time.Now(),
+		result, err := o.executionPort.SpawnWorker(ctx, spawnReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to spawn worker: %w", err)
+		}
+
+		member = &TeamMember{
+			ID:        generateMemberID(),
+			WorkerRef: result.WorkerRef,
+			SessionID: result.SessionID,
+			AgentID:   result.AgentID,
+			Role:      req.Role,
+			Label:     req.Label,
+			Task:      req.Task,
+			Status:    TeamMemberStatusRunning,
+			JoinedAt:  time.Now(),
+		}
+	} else {
+		// Legacy path: direct subAgentManager call.
+		spawnReq := &entity.SubAgentSpawnRequest{
+			ParentSessionID: team.ParentSessionID,
+			ParentRunID:     team.ParentRunID,
+			Task:            req.Task,
+			Label:           req.Label,
+		}
+		if req.AgentID != "" {
+			spawnReq.AgentID = req.AgentID
+		}
+		if req.Model != "" {
+			spawnReq.Model = req.Model
+		}
+
+		record, err := o.subAgentManager.Spawn(ctx, spawnReq)
+		if err != nil {
+			return nil, fmt.Errorf("failed to spawn SubAgent: %w", err)
+		}
+
+		member = &TeamMember{
+			ID:               generateMemberID(),
+			SubAgentRecordID: record.ID,
+			SessionID:        record.SessionID,
+			AgentID:          record.AgentID,
+			Role:             req.Role,
+			Label:            req.Label,
+			Task:             req.Task,
+			Status:           TeamMemberStatusRunning,
+			JoinedAt:         time.Now(),
+		}
 	}
 
 	// Register mailbox.
@@ -319,7 +374,6 @@ func (o *orchestratorImpl) AddMember(ctx context.Context, teamID string, req *Ad
 
 	// Update leader if requested.
 	if req.IsLeader {
-		// Re-fetch team to avoid overwriting the member we just added.
 		freshTeam, err := o.registry.Get(ctx, teamID)
 		if err == nil && freshTeam != nil {
 			freshTeam.LeaderID = member.ID
@@ -328,6 +382,20 @@ func (o *orchestratorImpl) AddMember(ctx context.Context, teamID string, req *Ad
 			}
 		}
 	}
+
+	// Publish domain event.
+	o.teamPublisher.PublishTeamEvent(&TeamEvent{
+		EventType: TeamEventMemberSpawned,
+		TeamID:    teamID,
+		MemberID:  member.ID,
+		Timestamp: time.Now(),
+		Payload: &MemberSpawnedPayload{
+			MemberID:  member.ID,
+			WorkerRef: member.WorkerRef,
+			AgentID:   member.AgentID,
+			Role:      member.Role,
+		},
+	})
 
 	logger.Info("[TeamOrchestrator] added member: team=%s, member=%s, role=%s", teamID, member.ID, member.Role)
 	return member, nil
@@ -348,11 +416,9 @@ func (o *orchestratorImpl) RemoveMember(ctx context.Context, teamID string, memb
 		return fmt.Errorf("member %s not found in team %s", memberID, teamID)
 	}
 
-	// Cancel SubAgent if still running.
-	if !member.Status.IsTerminal() && member.SubAgentRecordID != "" {
-		if err := o.subAgentManager.Cancel(ctx, member.SubAgentRecordID); err != nil {
-			logger.Warn("[TeamOrchestrator] failed to cancel member SubAgent: %v", err)
-		}
+	// Cancel worker if still running.
+	if !member.Status.IsTerminal() {
+		o.cancelMember(ctx, member)
 	}
 
 	// Unregister mailbox.
@@ -553,13 +619,7 @@ func (o *orchestratorImpl) NotifyMemberCompleted(ctx context.Context, teamID str
 // FindTeamBySessionID looks up which team a given session belongs to.
 // Returns the team and the member, or nil if the session is not part of any team.
 func (o *orchestratorImpl) FindTeamBySessionID(ctx context.Context, sessionID string) (*Team, *TeamMember, error) {
-	// This is a simple scan — for production, consider maintaining a sessionID → teamID index.
-	// For now, iterate teams from the registry.
-	// Since InMemoryTeamRegistry doesn't have a "list all" method, we rely on the parent session
-	// being the same. This is a known limitation of the current implementation.
-	//
-	// A practical optimization would be to maintain a reverse index in the orchestrator.
-	return nil, nil, nil
+	return o.registry.FindBySessionID(ctx, sessionID)
 }
 
 // completeTeam marks a team as dissolved and signals waiters.
@@ -604,7 +664,36 @@ func (o *orchestratorImpl) completeTeam(ctx context.Context, team *Team) {
 		o.eventBridge.UnregisterTeam(team.ID)
 	}
 
+	// Publish domain event.
+	o.teamPublisher.PublishTeamEvent(&TeamEvent{
+		EventType: TeamEventAllMembersCompleted,
+		TeamID:    team.ID,
+		Timestamp: time.Now(),
+		Payload: &AllMembersCompletedPayload{
+			Results: memberResults,
+			Success: allSuccess,
+		},
+	})
+
 	logger.Info("[TeamOrchestrator] team completed: id=%s, success=%v, members=%d", team.ID, allSuccess, len(team.Members))
+}
+
+// cancelMember cancels a running member using the appropriate path.
+func (o *orchestratorImpl) cancelMember(ctx context.Context, member *TeamMember) {
+	// v2 path: use ExecutionPort.
+	if o.executionPort != nil && member.WorkerRef.ID != "" {
+		if err := o.executionPort.CancelWorker(ctx, member.WorkerRef); err != nil {
+			logger.Warn("[TeamOrchestrator] failed to cancel worker %s: %v", member.WorkerRef.ID, err)
+		}
+		return
+	}
+
+	// Legacy path: direct subAgentManager call.
+	if member.SubAgentRecordID != "" {
+		if err := o.subAgentManager.Cancel(ctx, member.SubAgentRecordID); err != nil {
+			logger.Warn("[TeamOrchestrator] failed to cancel member %s: %v", member.ID, err)
+		}
+	}
 }
 
 // SetEventBridge sets the EventBridge for auto-registering spawned members.
@@ -651,6 +740,58 @@ func (o *orchestratorImpl) spawnMember(
 		label = fmt.Sprintf("%s-%d", label, instanceIndex)
 	}
 
+	// v2 path: use ExecutionPort if available.
+	if o.executionPort != nil {
+		req := &SpawnWorkerRequest{
+			ParentSessionID: team.ParentSessionID,
+			ParentRunID:     team.ParentRunID,
+			Task:            task,
+			AgentID:         agentID,
+			Label:           label,
+			Model:           model,
+		}
+
+		result, err := o.executionPort.SpawnWorker(ctx, req)
+		if err != nil {
+			return nil, fmt.Errorf("spawn worker failed: %w", err)
+		}
+
+		member := &TeamMember{
+			ID:        generateMemberID(),
+			SpecID:    spec.ID,
+			WorkerRef: result.WorkerRef,
+			SessionID: result.SessionID,
+			AgentID:   result.AgentID,
+			Role:      spec.Role,
+			Label:     label,
+			Task:      task,
+			Status:    TeamMemberStatusRunning,
+			JoinedAt:  time.Now(),
+		}
+
+		// Publish domain event.
+		o.teamPublisher.PublishTeamEvent(&TeamEvent{
+			EventType: TeamEventMemberSpawned,
+			TeamID:    team.ID,
+			MemberID:  member.ID,
+			Timestamp: time.Now(),
+			Payload: &MemberSpawnedPayload{
+				MemberID:  member.ID,
+				WorkerRef: result.WorkerRef,
+				AgentID:   result.AgentID,
+				Role:      spec.Role,
+			},
+		})
+
+		// Register in EventBridge for lifecycle tracking (backward compat).
+		if o.eventBridge != nil {
+			o.eventBridge.RegisterMember(team.ID, member.ID, member.SessionID)
+		}
+
+		return member, nil
+	}
+
+	// Legacy path: direct subAgentManager call.
 	spawnReq := &entity.SubAgentSpawnRequest{
 		ParentSessionID: team.ParentSessionID,
 		ParentRunID:     team.ParentRunID,

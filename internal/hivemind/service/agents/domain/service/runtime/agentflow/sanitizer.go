@@ -80,11 +80,29 @@ func NewDefaultSanitizerPipeline() *SanitizerPipeline {
 //
 // Unlike OpenClaw which operates on multi-content blocks with type:"thinking",
 // Eino uses a flat ReasoningContent field, so we simply clear it.
-type ThinkingBlockSanitizer struct{}
+//
+// Multi-turn thinking preservation (inspired by DeerFlow):
+//
+//   - DeepSeek requires reasoning_content on ALL assistant messages in multi-turn.
+//     Set KeepReasoningContent=true for DeepSeek provider.
+//   - Claude/Gemini/most providers: strip thinking blocks (default behavior).
+//   - Gemini via OpenAI gateway: thought_signature in Extra is preserved by default
+//     (Extra is not touched by this sanitizer).
+type ThinkingBlockSanitizer struct {
+	// KeepReasoningContent when true, preserves ReasoningContent on assistant
+	// messages instead of stripping them. Set this for providers like DeepSeek
+	// that require reasoning_content on all assistant messages in multi-turn
+	// conversations. Default false strips ReasoningContent (safe for most providers).
+	KeepReasoningContent bool
+}
 
 func (s *ThinkingBlockSanitizer) Name() string { return "thinking_block_sanitizer" }
 
 func (s *ThinkingBlockSanitizer) Sanitize(messages []*schema.Message) []*schema.Message {
+	if s.KeepReasoningContent {
+		return messages
+	}
+
 	modified := false
 	for _, msg := range messages {
 		if msg.Role == schema.Assistant && msg.ReasoningContent != "" {
