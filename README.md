@@ -3,7 +3,7 @@
 </h1>
 
 <p align="center">
-  <b>开源 AI 虚拟角色容器平台 —— 分离式分布式 Agent Harness</b>
+  <b>开源 AI 虚拟角色容器平台 —— 分布式 Agent Harness</b>
 </p>
 
 <p align="center">
