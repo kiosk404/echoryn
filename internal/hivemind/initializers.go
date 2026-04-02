@@ -17,6 +17,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/scheduler"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/tokenmanager"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/integration"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
 	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	llmService "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/service"
