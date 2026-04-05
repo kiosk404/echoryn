@@ -11,16 +11,19 @@ import (
 // Other BCs (Collaboration, plugins) subscribe to these events via the event bus.
 type TeamEvent struct {
 	// EventType categorizes the event.
-	EventType TeamEventType `json:"event_type"`
+	EventType TeamEventType ` json:"event_type,omitempty"`
 
 	// TeamID identifies the team this event concerns.
-	TeamID string `json:"team_id"`
+	TeamID string `json:"team_id,omitempty"`
 
 	// MemberID identifies the team member (if applicable).
 	MemberID string `json:"member_id,omitempty"`
 
+	// MemberLabel is a display-friendly label for the member (populated for SSE)
+	MemberLabel string `json:"member_label,omitempty"`
+
 	// Timestamp is when the event was generated.
-	Timestamp time.Time `json:"timestamp"`
+	Timestamp time.Time ` json:"timestamp,omitempty"`
 
 	// Payload contains event-specific data (type depends on EventType).
 	Payload interface{} `json:"payload,omitempty"`

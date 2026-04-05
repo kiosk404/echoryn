@@ -404,21 +404,21 @@ context_compaction_total、agent_toolloop_detected_total
 
 ### 8.6 skills (技能加载框架)
 
-| 属性 | 值 |
-|------|---|
-| **ID** | `skills` |
-| **Kind** | `tools` (Slot 多占) |
-| **位置** | `internal/hivemind/service/plugin/builtin/skills/` |
-| **大小** | 10.26 KB |
-| **优先级** | P2 |
-| **接口** | Plugin + InitPlugin + ToolProvider |
-| **工具** | `skill_list` / `skill_view` |
+| 属性 | 值                                                      |
+|------|--------------------------------------------------------|
+| **ID** | `skills`                                               |
+| **Kind** | `tools\general` (Slot 多占)                              |
+| **位置** | `internal/hivemind/service/plugin/builtin/skills/`     |
+| **大小** | 10.26 KB                                               |
+| **优先级** | P2                                                     |
+| **接口** | Plugin + InitPlugin + LifecyclePlugin + PromptProvider |
+| **工具** | `skill_list` / `skill_view`                            |
 
-**功能**：从文件系统动态加载 `.skill.md` 定义的技能文件。技能文件遵循 Markdown 格式，包含参数定义、执行说明和示例。
+**功能**：三源加载 Skills (Project > Hivemind > Golem) 在系统提示词中区分两类 Skills 语义：
 
-**技能路径**: `~/.echoryn/workspace/skills/`
+- **Hivemind Skills** (`~/.echoryn/skills/`): 全局决策知识和工作流指导，帮助 Agent 理解系统能力并规划任务，Agent 通过 `list_skills` / `view_skills` 加载后，参考其中的指令和工作流决策，具体执行方式由 Skill 内容指导（可能是调用工具、编排 Golem、或直接 LLM 推理）
+- **Golem Skills** (`~/.echoryn/golem/skills`): 本地执行能力，描述特定 Golem 节点可直接执行的任务。由 Golem 上报，驱动 Scheduler 节点选择，Agent 通过 `cluster_execute_skill` / `cluster_dispatch_task` 调度执行
 
-**配置**: `skills_dir` / `auto_reload` / `reload_interval_sec`
 
 ### 8.7 web-search (Web 搜索)
 

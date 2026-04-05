@@ -21,6 +21,7 @@ type routerDeps struct {
 	teamOrchestrator    team.TeamOrchestrator
 	teamTemplateService team.TeamTemplateService
 	teamMessageBus      messagebus.MessageBus
+	teamPublisher       *team.ChannelTeamPublisher
 }
 
 func initRouter(g *gin.Engine, deps *routerDeps) {
@@ -75,12 +76,13 @@ func installController(g *gin.Engine, deps *routerDeps) {
 
 		// Team management (only registered when team subsystem is available).
 		if deps.teamOrchestrator != nil && deps.teamTemplateService != nil {
-			teamHandler := v1.NewTeamHandler(deps.teamOrchestrator, deps.teamTemplateService, deps.teamMessageBus)
+			teamHandler := v1.NewTeamHandler(deps.teamOrchestrator, deps.teamTemplateService, deps.teamMessageBus, deps.teamPublisher)
 			apiV1.GET("/teams/templates", teamHandler.ListTemplates)
 			apiV1.POST("/teams", teamHandler.CreateTeam)
 			apiV1.GET("/teams/:id", teamHandler.GetTeam)
 			apiV1.DELETE("/teams/:id", teamHandler.DissolveTeam)
 			apiV1.POST("/teams/:id/messages", teamHandler.SendMessage)
+			apiV1.GET("/teams/:id/events", teamHandler.SubscribeEvents)
 		}
 	}
 }

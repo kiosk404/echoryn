@@ -731,6 +731,9 @@ Scheduler (defaultScheduler)
 │   ├── memory.db                                 ← SQLite FTS5 + 向量搜索
 │   └── embeddings/                               ← 向量缓存
 │
+├── skills/                                       ← Hivemind Skills (全局决策能力)
+│                                                 ← 描述系统级任务
+│
 ├── workspace/                                    ← Hivemind 专属
 │   ├── SOUL.md / IDENTITY.md / AGENTS.md         ← Agent 身份定义 (WorkspaceLoader 热更新)
 │   ├── memory/                                   ← 工作空间记忆
@@ -738,7 +741,7 @@ Scheduler (defaultScheduler)
 │
 └── golem/                                        ← Golem 专属
     ├── workspace/                                ← 工作空间
-    ├── skills/                                   ← 技能插件
+    ├── skills/                                   ← 技能插件 (Golem 级别)
     └── data/                                     ← 数据存储
         ├── logs/                                 ← 执行日志
         └── cache/                                ← 缓存数据
@@ -747,6 +750,8 @@ Scheduler (defaultScheduler)
 **路径解析** (`pkg/paths/resolve.go` + `pkg/paths/ensure.go`):
 - `pkg/paths.ResolveStateDir()` → 返回 `~/.echoryn/` (可通过 `ECHORYN_STATE_DIR` 环境变量自定义)
 - `pkg/paths.ResolveConfigPath(role)` → Hivemind → `hivemind.json`，Golem → `golem.json`
+- `pkg/paths.ResolveHivemindSkillsDir()` → `~/.echoryn/skills/`（Hivemind 决策能力目录）
+- `pkg/paths.ResolveGolemSkillsDir()` → `~/.echoryn/golem/skills/`（Golem 执行能力目录）
 - `pkg/paths.ResolveAdminTokenPath()` → `~/.echoryn/credentials/admin_token`
 - `pkg/paths.EnsureStateDirForRole(role)` → 按角色初始化完整目录结构 (0o700 权限)
 

@@ -441,6 +441,11 @@ func resolveSkillsConfig(opts *genericoptions.PluginsOptions) *skillsplugin.Conf
 			cfg.Enabled = b
 		}
 	}
+	if v, ok := entry.Config[""]; ok {
+		if s, ok := v.(string); ok {
+			cfg.HivemindSkillsDir = s
+		}
+	}
 	if v, ok := entry.Config["global_skills_dir"]; ok {
 		if s, ok := v.(string); ok && s != "" {
 			cfg.GlobalSkillsDir = s

@@ -38,8 +38,8 @@ const (
 	ErrSessionDelete   = 100303
 
 	// Model errors (1004xx).
-	ErrModelList         = 100401
-	ErrModelConfigMissing = 100402
+	ErrModelList           = 100401
+	ErrModelConfigMissing  = 100402
 	ErrModelManagerNotInit = 100403
 
 	// Team errors (1005xx).
@@ -49,6 +49,7 @@ const (
 	ErrTeamMessage        = 100504
 	ErrTeamTemplateList   = 100505
 	ErrTeamMemberNotFound = 100506
+	ErrTeamSSE            = 100507
 )
 
 func init() {
@@ -87,6 +88,7 @@ func init() {
 	errorx.MustRegister(newCoder(ErrTeamMessage, http.StatusInternalServerError, "Failed to send team message"))
 	errorx.MustRegister(newCoder(ErrTeamTemplateList, http.StatusInternalServerError, "Failed to list team templates"))
 	errorx.MustRegister(newCoder(ErrTeamMemberNotFound, http.StatusNotFound, "Team member not found"))
+	errorx.MustRegister(newCoder(ErrTeamSSE, http.StatusInternalServerError, "Team SSE stream error"))
 }
 
 type coder struct {

@@ -37,6 +37,7 @@ type apiServer struct {
 	teamOrchestrator    team.TeamOrchestrator
 	teamTemplateService team.TeamTemplateService
 	teamMessageBus      messagebus.MessageBus
+	teamPublisher       *team.ChannelTeamPublisher
 }
 
 type preparedAPIServer struct {
@@ -101,6 +102,7 @@ func createAPIServer(cfg *config.Config) (*apiServer, error) {
 		teamOrchestrator:    deps.TeamOrchestrator,
 		teamTemplateService: deps.TeamTemplateService,
 		teamMessageBus:      deps.TeamMessageBus,
+		teamPublisher:       deps.TeamPublisher,
 	}, nil
 }
 
@@ -115,6 +117,7 @@ func (s *apiServer) PrepareRun() preparedAPIServer {
 		teamOrchestrator:    s.teamOrchestrator,
 		teamTemplateService: s.teamTemplateService,
 		teamMessageBus:      s.teamMessageBus,
+		teamPublisher:       s.teamPublisher,
 	})
 
 	// Start IM channel gateway if ChannelManager is initialized.

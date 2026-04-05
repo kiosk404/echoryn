@@ -81,6 +81,7 @@ type Dependencies struct {
 	TeamOrchestrator    team.TeamOrchestrator
 	TeamTemplateService team.TeamTemplateService
 	TeamMessageBus      messagebus.MessageBus
+	TeamPublisher       *team.ChannelTeamPublisher
 
 	// Gateway
 	ChannelManager *gateway.ChannelManager
@@ -391,6 +392,11 @@ func injectTeamDependencies(deps *Dependencies) error {
 	deps.TeamOrchestrator = teamDeps.Orchestrator
 	deps.TeamTemplateService = teamDeps.TemplateService
 	deps.TeamMessageBus = teamDeps.MessageBus
+
+	teamPublisher := team.NewChannelTeamPublisher()
+	teamDeps.Orchestrator.SetTeamPublisher(teamPublisher)
+	deps.TeamPublisher = teamPublisher
+
 	logger.Info("[Hivemind] Team subsystem ready (via integration layer)")
 
 	return nil

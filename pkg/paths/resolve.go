@@ -220,6 +220,14 @@ func ResolveGolemSkillsDir() string {
 	return filepath.Join(ResolveGolemDataDir(), "skills")
 }
 
+// ResolveHivemindSkillsDir returns the hivemind-level skills directory.
+// These are global decision-making skills that describe what the system
+// can accomplish by orchestrating Golem nodes.
+// Layout: <stateDir>/skills
+func ResolveHivemindSkillsDir() string {
+	return filepath.Join(ResolveStateDir(), "skills")
+}
+
 // ResolveCredentialsDir returns the credentials directory.
 // Layout: <stateDir>/credentials
 func ResolveCredentialsDir() string {

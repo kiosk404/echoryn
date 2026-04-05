@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -9,6 +10,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/team"
 	"github.com/kiosk404/echoryn/internal/pkg/core"
 	"github.com/kiosk404/echoryn/pkg/errorx"
+	"github.com/kiosk404/echoryn/pkg/utils/json"
 )
 
 // TeamHandler handles Team REST API endpoints.
@@ -16,6 +18,7 @@ type TeamHandler struct {
 	orchestrator    team.TeamOrchestrator
 	templateService team.TeamTemplateService
 	messageBus      messagebus.MessageBus
+	publisher       *team.ChannelTeamPublisher // nil when SSE is not available
 }
 
 // NewTeamHandler creates a new TeamHandler.
@@ -23,11 +26,13 @@ func NewTeamHandler(
 	orch team.TeamOrchestrator,
 	tmplSvc team.TeamTemplateService,
 	bus messagebus.MessageBus,
+	publisher *team.ChannelTeamPublisher,
 ) *TeamHandler {
 	return &TeamHandler{
 		orchestrator:    orch,
 		templateService: tmplSvc,
 		messageBus:      bus,
+		publisher:       publisher,
 	}
 }
 
@@ -231,4 +236,108 @@ func toTeamResponse(t *team.Team) TeamResponse {
 		Status:   string(t.Status),
 		Members:  members,
 	}
+}
+
+// SubscribeEvents handles GET /v1/teams/:id/events (SSE).
+//
+// Opens a Server-Sent Events stream that pushes real-time team lifecycle events
+// to the client. The connection stays open until the client disconnects or the
+// team is dissolved.
+//
+// Event format:
+//
+//	event: <event_type>
+//	data: {"team_id":"...","member_id":"...","member_label":"...","member_status":"...","timestamp":"..."}
+//
+// Supported by both TUI (via TeamHTTPSubscriber) and future GUI clients.
+func (h *TeamHandler) SubscribeEvents(c *gin.Context) {
+	teamID := c.Param("id")
+
+	if h.publisher == nil {
+		core.WriteResponse(c, errorx.WrapC(nil, ErrTeamSSE, "team event streaming not available"), nil)
+		return
+	}
+
+	// Verify team exists.
+	t, err := h.orchestrator.GetTeam(c.Request.Context(), teamID)
+	if err != nil || t == nil {
+		core.WriteResponse(c, errorx.WrapC(err, ErrTeamNotFound, "team %q not found", teamID), nil)
+		return
+	}
+
+	// SSE headers.
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+
+	w := c.Writer
+
+	// Subscribe to team events.
+	ch, unsub := h.publisher.Subscribe(teamID)
+	defer unsub()
+
+	// Send connected event with current team snapshot.
+	fmt.Fprintf(w, "event: connected\ndata: {\"team_id\":%s,\"member_count\":%d}\n\n",
+		mustJSON(teamID), len(t.Members))
+	w.Flush()
+
+	ctx := c.Request.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case event, ok := <-ch:
+			if !ok {
+				return // channel closed (unsubscribed or publisher shut down)
+			}
+			data, _ := json.Marshal(toSSEEventPayload(event))
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.EventType, data)
+			w.Flush()
+		}
+	}
+}
+
+// sseEventPayload is the JSON payload for SSE events.
+// Flattened from team.TeamEvent for easy client consumption.
+type sseEventPayload struct {
+	EventType    string `json:"event_type"`
+	TeamID       string `json:"team_id"`
+	MemberID     string `json:"member_id,omitempty"`
+	MemberLabel  string `json:"member_label,omitempty"`
+	MemberRole   string `json:"member_role,omitempty"`
+	MemberStatus string `json:"member_status,omitempty"`
+	Output       string `json:"output,omitempty"`
+	Success      *bool  `json:"success,omitempty"`
+	Timestamp    string `json:"timestamp"`
+}
+
+func toSSEEventPayload(event *team.TeamEvent) *sseEventPayload {
+	p := &sseEventPayload{
+		EventType:   string(event.EventType),
+		TeamID:      event.TeamID,
+		MemberID:    event.MemberID,
+		MemberLabel: event.MemberLabel,
+		Timestamp:   event.Timestamp.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	// Extract fields from typed payloads.
+	switch payload := event.Payload.(type) {
+	case *team.MemberSpawnedPayload:
+		p.MemberRole = payload.Role
+	case *team.MemberCompletedPayload:
+		p.MemberStatus = string(payload.Status)
+		p.Output = payload.Output
+	case *team.AllMembersCompletedPayload:
+		p.Success = &payload.Success
+		p.Output = payload.Error
+	}
+
+	return p
+}
+
+// mustJSON returns a JSON-safe string (with quotes).
+func mustJSON(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }

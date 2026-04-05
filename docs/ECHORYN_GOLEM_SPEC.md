@@ -176,15 +176,22 @@ internal/hivemind/
 
 ### 3.4 公共 Skills 基础设施（`pkg/skills/`）
 
-基于 [eino-skills](https://github.com/dyike/eino-skills) 封装，适配 Echoryn 的 `pkg/paths`、`pkg/logger`、`pkg/utils/json` 等基础设施：
+基于 [eino-skills](https://github.com/dyike/eino-skills) 封装，适配 Echoryn 的 `pkg/paths`、`pkg/logger`、`pkg/utils/json` 等基础设施。
+
+**三源加载模型** (Priority: Project > Hivemind > Golem)：
+- Golem Skills（`~/.echoryn/golem/skills/`）— 本地执行能力
+- Hivemind Skills（`~/.echoryn/skills/`）— 全局决策能力
+- Project Skills（`.echoryn/skills/`）— 项目级覆盖
 
 ```
 pkg/skills/
-├── types.go                        # 核心类型：Skill, SkillFile, SkillMetadata, Frontmatter, Errors
+├── types.go                        # 核心类型：Skill, SkillFile, SkillMetadata, Frontmatter, SkillSource
+│                                   # SkillSource: global | golem | hivemind | project | builtin
 ├── parser.go                       # SKILL.md 解析器（frontmatter + body + section + TOC）
-├── loader.go                       # Skill 加载器（全局 + 项目目录，按需加载）
+├── loader.go                       # Skill 加载器（三源加载：Golem + Hivemind + Project）
+│                                   # WithHivemindSkillsDir("") 可禁用 Hivemind 源（Golem 端使用）
 ├── registry.go                     # Skill 注册中心（元数据缓存、按需加载、关键词匹配）
-├── watcher.go                      # 热加载监听器（fsnotify + debounce）
+├── watcher.go                      # 热加载监听器（fsnotify + debounce，监听三个目录）
 ├── tools/                          # Eino Tool 封装
 │   ├── skills.go                   # NewSkillTools() 入口
 │   ├── list_skills.go              # list_skills Tool (InvokableTool)
@@ -197,16 +204,17 @@ pkg/skills/
 
 | 决策 | 说明 |
 |------|------|
-| 默认全局目录 | `paths.ResolveGolemSkillsDir()` → `~/.echoryn/golem/skills/` |
-| 项目级目录 | `.echoryn/skills/`（项目级 Skill 覆盖全局同名 Skill） |
+| 三源加载 | Golem(`~/.echoryn/golem/skills/`) + Hivemind(`~/.echoryn/skills/`) + Project(`.echoryn/skills/`)，优先级 Project > Hivemind > Golem |
+| Hivemind Skills | 全局决策能力，描述系统战略性任务（不可直接执行）。Agent 用于规划，通过 `cluster_execute_skill` 调度 |
+| Golem Skills | 本地执行能力，描述节点可直接执行的任务。由 Golem 上报给 Scheduler 用于节点选择 |
+| Golem 端禁用 Hivemind 源 | `skills.NewLoader(skills.WithHivemindSkillsDir(""))` — Golem 端只加载 Project + Golem 两源 |
 | 渐进式披露 | `LoadMetadataOnly()` 只解析 frontmatter (~100 tokens)，`GetContent()` 按需加载全文 |
-| 热加载 | `Watcher` 基于 fsnotify + 100ms debounce，监听 SKILL.md 变更 → 自动 Reload |
+| 热加载 | `Watcher` 基于 fsnotify + 100ms debounce，监听所有配置目录变更 → 自动 Reload |
 | Eino 集成 | `list_skills` / `view_skill` 实现 `tool.InvokableTool`，直接注入 Agent tool list |
 | JSON 序列化 | 使用 `pkg/utils/json`（sonic）而非标准库 |
 | 日志 | 使用 `logger.InfoX("skills", ...)` 带 module 标识 |
 
 ---
-
 ## 四、核心通信流程
 
 ### 4.1 通信协议概览

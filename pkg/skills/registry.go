@@ -70,12 +70,16 @@ func (r *Registry) Initialize(ctx context.Context) error {
 }
 
 // StartWatching begins monitoring skill directories for changes.
+// Watches all configured directories: Golem(golabl), Hivemind (if enabled)
 func (r *Registry) StartWatching(ctx context.Context) error {
 	if r.watcher != nil {
 		return fmt.Errorf("watcher already started")
 	}
 
 	dirs := []string{r.loader.GlobalDir(), r.loader.ProjectDir()}
+	if hd := r.loader.HivemindDir(); hd != "" {
+		dirs = append(dirs, hd)
+	}
 	watcher, err := NewWatcher(r, dirs)
 	if err != nil {
 		return err

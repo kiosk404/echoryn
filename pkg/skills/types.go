@@ -55,9 +55,29 @@ const (
 type SkillSource string
 
 const (
-	SourceGlobal  SkillSource = "global"  // ~/.echoryn/golem/skills/
-	SourceProject SkillSource = "project" // <project>/.echoryn/skills/
-	SourceBuiltin SkillSource = "builtin" // compiled into binary
+	// SourceGlobal is the legacy name for Golem-level global skills.
+	// Retained for backward compatibility; new code should prefer SourceGolem.
+	// Directory: ~/.echoryn/golem/skills/
+	SourceGlobal SkillSource = "global"
+
+	// SourceGolem explicitly denotes Golem-local execution skills.
+	// These describe what a specific Golem node can directly execute.
+	// Directory: ~/.echoryn/golem/skills/
+	SourceGolem SkillSource = "golem"
+
+	// SourceHivemind denotes Hivemind-level global decision skills.
+	// These describe strategic capabilities the system can accomplish
+	// by orchestrating one or more Golem nodes — they are NOT directly executable.
+	// Directory: ~/.echoryn/skills/
+	SourceHivemind SkillSource = "hivemind"
+
+	// SourceProject denotes project-level skills local to a workspace.
+	// These take highest priority and override same-named skills from other sources.
+	// Directory: <project>/.echoryn/skills/
+	SourceProject SkillSource = "project"
+
+	// SourceBuiltin denotes skills compiled into the binary.
+	SourceBuiltin SkillSource = "builtin"
 )
 
 // Frontmatter represents the YAML frontmatter of a SKILL.md file.

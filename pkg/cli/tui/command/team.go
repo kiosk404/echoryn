@@ -240,9 +240,12 @@ func teamCreate(ctx context.Context, env *Env, args string) error {
 	}
 
 	// Update env with the new team state.
+	// Both the persistent state (via SetTeamState) and the current env must be updated,
+	// because teamStatus(env) reads from env.TeamState which is a snapshot.
 	if env.SetTeamState != nil {
 		env.SetTeamState(state)
 	}
+	env.TeamState = state
 
 	fmt.Fprintf(env.Out, "✅ Team '%s' created with %d members.\n", state.Name, len(state.Members))
 	return teamStatus(env)
@@ -269,6 +272,7 @@ func teamDissolve(ctx context.Context, env *Env) error {
 	if env.SetTeamState != nil {
 		env.SetTeamState(nil)
 	}
+	env.TeamState = nil
 
 	fmt.Fprintln(env.Out, "✅ Team dissolved.")
 	return nil

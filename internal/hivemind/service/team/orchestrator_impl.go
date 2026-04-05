@@ -608,6 +608,30 @@ func (o *orchestratorImpl) NotifyMemberCompleted(ctx context.Context, teamID str
 		return err
 	}
 
+	// Publish member completion/failure event.
+	eventType := TeamEventMemberCompleted
+	if status == TeamMemberStatusFailed {
+		eventType = TeamEventMemberFailed
+	}
+	// Resolve member label for display-friendly SSE events.
+	member := team.GetMember(memberID)
+	memberLabel := ""
+	if member != nil {
+		memberLabel = member.Label
+	}
+	o.teamPublisher.PublishTeamEvent(&TeamEvent{
+		EventType:   eventType,
+		TeamID:      teamID,
+		MemberID:    memberID,
+		MemberLabel: memberLabel,
+		Timestamp:   time.Now(),
+		Payload: &MemberCompletedPayload{
+			MemberID: memberID,
+			Status:   status,
+			Output:   output,
+		},
+	})
+
 	// Check if all members have reached terminal states.
 	if team.AllMembersTerminal() {
 		o.completeTeam(ctx, team)

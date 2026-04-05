@@ -61,8 +61,10 @@ type TUI struct {
 	messages []ChatMessage
 
 	// Team collaboration state.
-	teamState *command.TeamState
-	teamAPI   command.TeamAPI
+	teamState    *command.TeamState
+	teamAPI      command.TeamAPI
+	teamEventSub command.TeamEventSubscriber
+	eventWatcher *teamEventWatcher
 }
 
 // New creates a TUI instance. Call [TUI.Run] to start the interactive loop.
@@ -72,11 +74,20 @@ func New(client Client, opts ...Option) *TUI {
 		opt(&cfg)
 	}
 
-	return &TUI{
-		client:  client,
-		cfg:     cfg,
-		teamAPI: cfg.TeamAPI,
+	t := &TUI{
+		client:       client,
+		cfg:          cfg,
+		teamAPI:      cfg.TeamAPI,
+		teamEventSub: cfg.TeamEventSubscriber,
 	}
+
+	// Initialize event watcher if subscriber is available.
+	if t.teamEventSub != nil {
+		handler := &tuiEventHandler{teamState: &t.teamState}
+		t.eventWatcher = newTeamEventWatcher(t.teamEventSub, handler)
+	}
+
+	return t
 }
 
 // Run starts the interactive TUI main loop.
@@ -97,6 +108,13 @@ func (t *TUI) Run(ctx context.Context) error {
 	t.term = terminal.New(os.Stdin)
 	stopResize := t.term.ListenResize()
 	defer stopResize()
+
+	// Ensure event watcher is stopped on exit.
+	defer func() {
+		if t.eventWatcher != nil {
+			t.eventWatcher.Stop()
+		}
+	}()
 
 	// --- Signal handling ---
 	sigCh := make(chan os.Signal, 1)
@@ -215,16 +233,43 @@ func (t *TUI) handleCommand(ctx context.Context, rawInput string) error {
 		return fmt.Errorf("unknown command: %s (type /help for available commands)", rawInput)
 	}
 
+	// Capture team ID before command execution for change detection.
+	prevTeamID := ""
+	if t.teamState != nil {
+		prevTeamID = t.teamState.ID
+	}
+
 	env := &command.Env{
 		Out:          os.Stdout,
 		ClearHistory: func() { t.messages = nil },
 		Model:        t.client.Model,
 		SessionKey:   t.client.SessionKey,
+		TeamState:    t.teamState,
 		SetTeamState: func(state *command.TeamState) { t.teamState = state },
 		TeamAPI:      t.teamAPI,
 	}
 
-	return cmd.Execute(ctx, env, args)
+	if err := cmd.Execute(ctx, env, args); err != nil {
+		return err
+	}
+
+	// Detect team state transitions and manage event watcher lifecycle.
+	newTeamID := ""
+	if t.teamState != nil {
+		newTeamID = t.teamState.ID
+	}
+	if t.eventWatcher != nil {
+		switch {
+		case newTeamID != "" && newTeamID != prevTeamID:
+			// Team created: start watching events.
+			t.eventWatcher.Start(ctx, newTeamID)
+		case newTeamID == "" && prevTeamID != "":
+			// Team dissolved: stop watching events.
+			t.eventWatcher.Stop()
+		}
+	}
+
+	return nil
 }
 
 // handleChat sends a user message to the server and streams the response.

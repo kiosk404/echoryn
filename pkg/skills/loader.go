@@ -16,10 +16,18 @@ import (
 const logModule = "skills"
 
 // Loader handles discovering and loading skills from the filesystem.
+//
+// Three-source loading model (priority: Project > Hivemind > Golem):
+//   - globalDir:   Golem-local execution skills   (~/.echoryn/golem/skills)
+//   - hivemindDir: Hivemind global decision skills (~/.echoryn/skills)
+//   - projectDir:  Project-level skills            (.echoryn/skills)
+//
+// When hivemindDir is empty, Hivemind source is skipped (for Golem-side use).
 type Loader struct {
-	globalDir  string
-	projectDir string
-	parser     *Parser
+	globalDir   string // Golem execution skills
+	hivemindDir string // Hivemind decision skills (empty = disabled)
+	projectDir  string
+	parser      *Parser
 }
 
 // LoaderOption configures the loader.
@@ -41,12 +49,31 @@ func WithProjectSkillsDir(dir string) LoaderOption {
 	}
 }
 
+// WithHivemindSkillsDir sets the Hivemind global decision skills directory.
+// Default: paths.ResolveHivemindSkillsDir() (~/.echoryn/skills).
+// Pass an empty string to disable Hivemind skill loading (for Golem-side use).
+func WithHivemindSkillsDir(dir string) LoaderOption {
+	return func(loader *Loader) {
+		if dir == "" {
+			loader.hivemindDir = ""
+		} else {
+			loader.hivemindDir = expandPath(dir)
+		}
+	}
+}
+
 // NewLoader creates a new skills loader with the given options.
+//
+// Default directories:
+//   - globalDir:   paths.ResolveGolemSkillsDir()    (~/.echoryn/golem/skills)
+//   - hivemindDir: paths.ResolveHivemindSkillsDir() (~/.echoryn/skills)
+//   - projectDir:  .echoryn/skills
 func NewLoader(opts ...LoaderOption) *Loader {
 	l := &Loader{
-		globalDir:  paths.ResolveGolemSkillsDir(),
-		projectDir: ".echoryn/skills",
-		parser:     NewParser(),
+		globalDir:   paths.ResolveGolemSkillsDir(),
+		hivemindDir: paths.ResolveHivemindSkillsDir(),
+		projectDir:  ".echoryn/skills",
+		parser:      NewParser(),
 	}
 
 	for _, opt := range opts {
@@ -56,27 +83,43 @@ func NewLoader(opts ...LoaderOption) *Loader {
 	return l
 }
 
-// GlobalDir returns the global skills directory path.
+// GlobalDir returns the Golem global skills directory path.
 func (l *Loader) GlobalDir() string { return l.globalDir }
+
+// HivemindDir returns the Hivemind decision skills directory path.
+// Empty string means Hivemind source is disabled.
+func (l *Loader) HivemindDir() string { return l.hivemindDir }
 
 // ProjectDir returns the project-level skills directory path.
 func (l *Loader) ProjectDir() string { return l.projectDir }
 
-// LoadAll loads all skills from both global and project directories.
-// Project skills take precedence over global skills with the same name.
+// LoadAll loads all skills from Golem, Hivemind, and Project directories.
+// Priority (last wins): Golem(global) < Hivemind < Project.
+// When hivemindDir is empty, the Hivemind source is skipped (Golem-side use).
 func (l *Loader) LoadAll(ctx context.Context) ([]*Skill, error) {
 	skills := make(map[string]*Skill)
 
-	// Load global skills first.
+	// 1. Load Golem (global) skills — lowest priority.
 	globalSkills, err := l.loadFromDir(ctx, l.globalDir, SourceGlobal)
 	if err != nil && !os.IsNotExist(err) {
-		return nil, fmt.Errorf("failed to load global skills: %w", err)
+		return nil, fmt.Errorf("failed to load golem skills: %w", err)
 	}
 	for _, s := range globalSkills {
 		skills[s.Name] = s
 	}
 
-	// Load project skills (override global).
+	// 2. Load Hivemind skills — overrides Golem if same name.
+	if l.hivemindDir != "" {
+		hivemindSkills, err := l.loadFromDir(ctx, l.hivemindDir, SourceHivemind)
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to load hivemind skills: %w", err)
+		}
+		for _, s := range hivemindSkills {
+			skills[s.Name] = s
+		}
+	}
+
+	// 3. Load project skills — highest priority, overrides all.
 	projectSkills, err := l.loadFromDir(ctx, l.projectDir, SourceProject)
 	if err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("failed to load project skills: %w", err)
@@ -95,15 +138,27 @@ func (l *Loader) LoadAll(ctx context.Context) ([]*Skill, error) {
 
 // LoadMetadataOnly loads only skill metadata for system prompt injection.
 // This is more efficient as it doesn't load full content.
+// Priority: Golem(global) < Hivemind < Project.
 func (l *Loader) LoadMetadataOnly(ctx context.Context) ([]SkillMetadata, error) {
 	metadata := make(map[string]SkillMetadata)
 
+	// 1. Golem (global) — lowest priority.
 	if err := l.loadMetadataFromDir(ctx, l.globalDir, SourceGlobal, metadata); err != nil {
 		if !os.IsNotExist(err) {
 			return nil, err
 		}
 	}
 
+	// 2. Hivemind — overrides Golem.
+	if l.hivemindDir != "" {
+		if err := l.loadMetadataFromDir(ctx, l.hivemindDir, SourceHivemind, metadata); err != nil {
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+	}
+
+	// 3. Project — highest priority.
 	if err := l.loadMetadataFromDir(ctx, l.projectDir, SourceProject, metadata); err != nil {
 		if !os.IsNotExist(err) {
 			return nil, err
@@ -119,14 +174,23 @@ func (l *Loader) LoadMetadataOnly(ctx context.Context) ([]SkillMetadata, error) 
 }
 
 // LoadSkill loads a specific skill by name.
+// Search order: Project → Hivemind → Golem(global).
 func (l *Loader) LoadSkill(ctx context.Context, name string) (*Skill, error) {
-	// Try project first.
+	// Try project first (highest priority).
 	projectPath := filepath.Join(l.projectDir, name)
 	if skill, err := l.loadSingleSkill(ctx, projectPath, SourceProject); err == nil {
 		return skill, nil
 	}
 
-	// Try global.
+	// Try hivemind (if enabled).
+	if l.hivemindDir != "" {
+		hivemindPath := filepath.Join(l.hivemindDir, name)
+		if skill, err := l.loadSingleSkill(ctx, hivemindPath, SourceHivemind); err == nil {
+			return skill, nil
+		}
+	}
+
+	// Try global (Golem).
 	globalPath := filepath.Join(l.globalDir, name)
 	if skill, err := l.loadSingleSkill(ctx, globalPath, SourceGlobal); err == nil {
 		return skill, nil

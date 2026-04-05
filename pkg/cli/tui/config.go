@@ -29,6 +29,12 @@ type Config struct {
 
 	// TeamAPI provides the backend API for team operations (optional).
 	TeamAPI command.TeamAPI
+
+	// TeamEventSubscriber provides real-time team event streaming (optional).
+	// When set, the TUI starts a background goroutine to listen for team events.
+	// after a team is created. Different implementations can be used for TUI(SSE)
+	// GUI (websocket), or testing (in-memory channel)
+	TeamEventSubscriber command.TeamEventSubscriber
 }
 
 // DefaultConfig returns a Config with production-ready defaults.
@@ -62,4 +68,8 @@ func WithRequestTimeout(d time.Duration) Option {
 // WithTeamAPI sets the team API for the TUI, enabling team commands.
 func WithTeamAPI(api command.TeamAPI) Option {
 	return func(c *Config) { c.TeamAPI = api }
+}
+
+func WithTeamEventSubscriber(sub command.TeamEventSubscriber) Option {
+	return func(c *Config) { c.TeamEventSubscriber = sub }
 }
