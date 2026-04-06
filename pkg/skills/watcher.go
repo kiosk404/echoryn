@@ -73,7 +73,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 	for _, dir := range w.dirs {
 		expanded := expandPath(dir)
 		if err := w.addDirRecursive(expanded); err != nil {
-			logger.WarnX(logModule, "could not watch %s:%w", dir, err)
+			logger.WarnX(logModule, "could not watch %s:%v", dir, err)
 		}
 	}
 

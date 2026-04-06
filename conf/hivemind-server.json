@@ -66,6 +66,19 @@
           "enabled": true
         }
       },
+      "langfuse-tracing": {
+        "config": {
+          "enabled": false,
+          "host": "http://localhost:3000",
+          "public_key": "${LANGFUSE_PUBLIC_KEY}",
+          "secret_key": "${LANGFUSE_SECRET_KEY}",
+          "sample_rate": 1.0,
+          "flush_at": 15,
+          "flush_interval_ms": 500,
+          "mask_input": false,
+          "mask_output": false
+        }
+      },
       "llm-task": {
         "config": {
           "enabled": true

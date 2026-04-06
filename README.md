@@ -40,7 +40,7 @@
 
 ### Team 团队协作
 
-多 Agent 协同工作框架，支持通过 **YAML 模板**定义团队结构。内置并行、流水线、辩论、Leader 驱动等多种协作策略，成员间通过 **MessageBus** 异步通信。
+多 Agent 协同工作框架，支持通过 **YAML 模板**定义团队结构。内置并行、流水线、辩论、Leader 驱动等多种协作策略，成员间通过 **MessageBus** 异步通信。支持 **SSE 实时事件推送**，TUI 和 GUI 均可订阅团队动态。
 
 ### Plugin 插件框架
 
@@ -188,7 +188,84 @@ Echoryn 通过 **SPI 四层插件架构**（Provider → ChatModel → Compat �
 | GLM | ✅ | 智谱 ChatGLM |
 | Kimi | ✅ | Moonshot AI |
 
-> 新增 Provider 只需实现 `spi.ChatModelPlugin` 接口并在 Registry 注册，即可自动接入 Fallback、Probe 和 Compat 体系。
+---
+
+## 可观测性
+
+Echoryn 提供**双层可观测体系**，分别面向基础设施运维和 LLM 应用分析。
+
+### Diagnostics — 基础设施级
+
+内置 `diagnostics` 插件提供运维级可观测性：
+- **指标收集**：LLM 调用次数、成功/失败计数
+- **轻量追踪**：自建 Tracer，记录 LLM 调用 span（provider、model、token 用量）
+- **诊断工具**：Agent 可通过 `diagnostics_status` 工具查询自身运行状态
+- **可选 OTLP 导出**：支持将 span 导出到 Jaeger / Grafana Tempo
+
+默认启用，无需额外配置。
+
+### Langfuse — LLM 应用级
+
+内置 `langfuse-tracing` 插件集成 [Langfuse](https://langfuse.com) 开源 LLM 可观测平台，提供完整的**LLM 调用链追踪**：
+
+- **自动全链路追踪**：通过 Eino Callback 自动拦截所有 ChatModel / ToolsNode / Graph 节点，零侵入
+- **Prompt / Completion 记录**：完整记录每次 LLM 调用的输入输出内容
+- **Token 用量与成本分析**：自动统计每次调用的 token 消耗和费用
+- **可视化 Dashboard**：Web UI 查看调用链、延迟分布、成本趋势
+- **隐私模式**：可配置脱敏，不上报 prompt/completion 内容
+
+#### 启用步骤
+
+**1. 部署 Langfuse 服务**
+
+```bash
+git clone https://github.com/langfuse/langfuse.git
+cd langfuse
+# 修改 docker-compose.yml 中 # CHANGEME 标记的密钥
+docker compose up -d
+```
+
+启动后访问 `http://localhost:3000`，注册账号并创建项目，在 **Settings → API Keys** 中获取 Public Key 和 Secret Key。
+
+> Langfuse v3 包含 Postgres + ClickHouse + Redis + MinIO，建议机器至少 4 核 16G 内存。
+
+**2. 配置 Echoryn**
+
+在 `conf/hivemind-server.json` 的 `plugins.entries` 中启用：
+
+```json
+"langfuse-tracing": {
+  "config": {
+    "enabled": true,
+    "host": "http://localhost:3000",
+    "public_key": "${LANGFUSE_PUBLIC_KEY}",
+    "secret_key": "${LANGFUSE_SECRET_KEY}"
+  }
+}
+```
+
+```bash
+export LANGFUSE_PUBLIC_KEY="pk-lf-你的公钥"
+export LANGFUSE_SECRET_KEY="sk-lf-你的密钥"
+```
+
+**3. 启动并查看**
+
+启动 Hivemind 后，发起对话，然后在 Langfuse Dashboard 的 **Traces** 页面查看完整调用链。
+
+#### 配置参数
+
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `enabled` | bool | false | 是否启用 Langfuse 追踪 |
+| `host` | string | — | Langfuse 服务地址 |
+| `public_key` | string | — | 项目公钥，支持 `${ENV}` 引用 |
+| `secret_key` | string | — | 项目密钥，支持 `${ENV}` 引用 |
+| `sample_rate` | float | 1.0 | 采样率（0.0~1.0），生产环境建议 0.1~0.5 |
+| `flush_at` | int | 15 | 批量发送事件的数量阈值 |
+| `flush_interval_ms` | int | 500 | 自动刷新间隔（毫秒） |
+| `mask_input` | bool | false | 隐私模式：不上报 prompt 内容 |
+| `mask_output` | bool | false | 隐私模式：不上报 completion 内容 |
 
 ---
 
@@ -198,7 +275,7 @@ Echoryn 通过 **SPI 四层插件架构**（Provider → ChatModel → Compat �
 
 | 渠道 | 传输方式 | 状态 | 说明 |
 |------|---------|------|------|
-| 飞书 / Lark | Webhook + Event | ✅ 已实现 | 内置 `channel-feishu` 插件 |
+| 飞书 / Lark | WebSocket + Event | ✅ 已实现 | 内置 `channel-feishu` 插件 |
 | Telegram | Bot API | ✅ 已实现 | 内置 `channel-telegram` 插件 |
 | Web Chat | HTTP SSE | ✅ 已实现 | OpenAI 兼容接口直接对接 |
 | Slack | — | 🔜 计划中 | — |
@@ -210,7 +287,8 @@ Echoryn 通过 **SPI 四层插件架构**（Provider → ChatModel → Compat �
 | 插件 | Slot | 功能 |
 |------|------|------|
 | `memory-core` | `memory` | 核心记忆系统（SQLite FTS5 + 向量搜索 + 混合检索） |
-| `diagnostics` | — | OpenTelemetry 追踪和可观测性 |
+| `diagnostics` | — | 运维级可观测性（指标收集 + LLM span 追踪） |
+| `langfuse-tracing` | — | LLM 应用级全链路追踪（Langfuse 集成） |
 | `llm-task` | — | LLM 子任务执行工具 |
 | `subagent` | — | 子智能体管理工具 |
 | `skills` | — | 技能加载与管理 |
@@ -218,46 +296,6 @@ Echoryn 通过 **SPI 四层插件架构**（Provider → ChatModel → Compat �
 | `channel-feishu` | `channel` | 飞书 IM 渠道 |
 | `channel-telegram` | `channel` | Telegram IM 渠道 |
 | `web-search` | — | Web 搜索（Gemini） |
-
-<details>
-<summary><b>创建自定义插件</b></summary>
-
-```go
-package myplugin
-
-import (
-    "context"
-    "github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
-)
-
-type MyPlugin struct{}
-
-func (p *MyPlugin) Name() string { return "my-plugin" }
-
-// 可选：实现 InitPlugin 注册 Tool/Hook/Service
-func (p *MyPlugin) Init(api plugin.PluginAPI) {
-    api.RegisterTool(myTool)
-    api.RegisterHook("before-run", myHook)
-}
-
-// 可选：实现 LifecyclePlugin
-func (p *MyPlugin) Start(ctx context.Context) error { return nil }
-func (p *MyPlugin) Stop(ctx context.Context) error  { return nil }
-```
-
-在配置中启用：
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "my-plugin": { "config": { "enabled": true } }
-    }
-  }
-}
-```
-
-</details>
 
 ---
 
@@ -276,69 +314,6 @@ make run.%      # 运行指定二进制，如 make run.golem
 make clean      # 清理 output/
 make help       # 显示帮助
 ```
-
----
-
-## 项目结构
-
-```
-echoryn/
-├── cmd/                          # 可执行入口
-│   ├── hivemind/                 #   中央服务器
-│   ├── golem/                    #   工作节点
-│   └── echoctl/                  #   CLI 管理工具
-├── internal/                     # 内部实现
-│   ├── hivemind/                 #   Hivemind 核心
-│   │   ├── handler/              #     请求处理（gRPC + HTTP）
-│   │   └── service/              #     业务服务
-│   │       ├── agents/           #       智能体（DDD 分层）
-│   │       ├── llm/              #       LLM 多模型管理
-│   │       ├── plugin/           #       插件框架
-│   │       ├── team/             #       团队协作
-│   │       ├── golem/            #       Golem 节点调度
-│   │       ├── mcp/              #       MCP 工具协议
-│   │       └── subagent/         #       子智能体
-│   ├── golem/                    #   Golem 工作节点
-│   └── echoctl/                  #   CLI 实现
-├── pkg/                          # 公共库
-│   ├── app/                      #   应用框架（Cobra）
-│   ├── cli/                      #   TUI 框架（BubbleTea）
-│   ├── proto/                    #   Protobuf 生成代码
-│   ├── skills/                   #   技能加载
-│   └── ...                       #   logger / errorx / http / utils
-├── idl/                          # Protobuf 协议定义
-├── conf/                         # 配置示例
-├── docs/                         # 项目文档
-└── scripts/                      # 构建脚本
-```
-
----
-
-## API 参考
-
-Echoryn 对外暴露 **OpenAI 兼容**的 HTTP API：
-
-```
-POST   /v1/chat/completions          流式对话（SSE）
-GET    /v1/models                     模型列表
-
-POST   /v1/agents                     创建 Agent
-GET    /v1/agents                     列出 Agent
-GET    /v1/agents/:id                 获取 Agent
-DELETE /v1/agents/:id                 删除 Agent
-
-GET    /v1/agents/:id/sessions        列出会话
-GET    /v1/sessions/:id               获取会话
-DELETE /v1/sessions/:id               删除会话
-
-GET    /v1/teams/templates            团队模板
-POST   /v1/teams                      创建团队
-GET    /v1/teams/:id                  获取团队
-DELETE /v1/teams/:id                  解散团队
-POST   /v1/teams/:id/messages         发送团队消息
-```
-
-gRPC 服务默认端口 `11788`，HTTP 服务默认端口 `11789`。
 
 ---
 
@@ -364,6 +339,7 @@ gRPC 服务默认端口 `11788`，HTTP 服务默认端口 `11789`。
 | 类别 | 技术 |
 |------|------|
 | AI/LLM 框架 | [CloudWeGo Eino](https://github.com/cloudwego/eino) + 多模型扩展 |
+| LLM 追踪 | [Langfuse](https://langfuse.com) (eino-ext/callbacks/langfuse) |
 | MCP | [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) |
 | Web | Gin + pprof + SSE |
 | RPC | gRPC + Protobuf |
@@ -372,7 +348,6 @@ gRPC 服务默认端口 `11788`，HTTP 服务默认端口 `11789`。
 | 存储 | SQLite3 (FTS5) + BoltDB + BBolt |
 | IM | 飞书 SDK (oapi-sdk-go) · Telegram Bot |
 | 日志 | Logrus |
-| 可观测 | OpenTelemetry |
 | JSON | Bytedance Sonic |
 
 ---
@@ -408,6 +383,7 @@ gRPC 服务默认端口 `11788`，HTTP 服务默认端口 `11789`。
 ## 致谢
 
 - **[CloudWeGo Eino](https://github.com/cloudwego/eino)** — 高性能 LLM 编排框架
+- **[Langfuse](https://langfuse.com)** — 开源 LLM 可观测平台
 - **[Model Context Protocol](https://spec.modelcontextprotocol.org/)** — AI 工具标准协议
 - **[DeerFlow](https://github.com/bytedance/deer-flow)** — Super Agent Harness 理念启发
 - **[Openclaw](https://github.com/openclaw/openclaw)** — 原始架构灵感

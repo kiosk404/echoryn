@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/glamour v0.10.0
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/cloudwego/eino v0.7.32
+	github.com/cloudwego/eino-ext/callbacks/langfuse v0.0.0-20260331071634-4f359694d2d9
 	github.com/cloudwego/eino-ext/components/model/claude v0.1.15
 	github.com/cloudwego/eino-ext/components/model/deepseek v0.1.2
 	github.com/cloudwego/eino-ext/components/model/gemini v0.1.28
@@ -33,7 +34,6 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/moby/term v0.5.2
 	github.com/muesli/termenv v0.16.0
-	github.com/reeflective/readline v1.1.4
 	github.com/russross/blackfriday v1.6.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2
@@ -42,7 +42,6 @@ require (
 	go.etcd.io/bbolt v1.4.3
 	go.uber.org/automaxprocs v1.6.0
 	golang.org/x/sync v0.19.0
-	golang.org/x/sys v0.40.0
 	golang.org/x/term v0.39.0
 	google.golang.org/genai v1.36.0
 	google.golang.org/grpc v1.78.0
@@ -79,6 +78,7 @@ require (
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
+	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.4.1 // indirect
 	github.com/charmbracelet/x/ansi v0.11.6 // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.15 // indirect
@@ -89,6 +89,7 @@ require (
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.5.0 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
+	github.com/cloudwego/eino-ext/libs/acl/langfuse v0.0.0-20251124083837-ce2e7e196f9f // indirect
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.13 // indirect
 	github.com/cohesion-org/deepseek-go v1.3.2 // indirect
 	github.com/dlclark/regexp2 v1.11.4 // indirect
@@ -170,6 +171,7 @@ require (
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/net v0.49.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
 	golang.org/x/time v0.6.0 // indirect
 	google.golang.org/api v0.197.0 // indirect

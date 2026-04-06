@@ -103,18 +103,19 @@ func (r *Runner) Run(ctx context.Context, req *entity.LLMTaskRequest) (*entity.L
 		timeoutMs = r.cfg.TimeoutMs
 	}
 
-	// Build the system prompt for JSON-only output.
-	systemMsg := buildSystemPrompt(req.Prompt, req.Schema)
-
-	// Build the user message (include input if provided).
-	userMsg := ""
-	if req.Input != nil {
-		inputJSON, err := json.Marshal(req.Input)
-		if err != nil {
-			return nil, fmt.Errorf("failed to marshal input: %w", err)
-		}
-		userMsg = string(inputJSON)
-	}
+	// Build messages.
+	//
+	// System message: JSON format constraints + optional schema.
+	// User message: prompt (task instruction) + optional input data.
+	//
+	// Previous bug: prompt was only in system message, and when input was nil,
+	// user message was empty. DeepSeek and other LLMs require at least one
+	// user-role message, returning 400 "No query found in messages".
+	//
+	// Fix: prompt always goes into user message so the actual task instruction
+	// is never lost. System message only contains the JSON output format rules.
+	systemMsg := buildSystemPrompt(req.Schema)
+	userMsg := buildUserMessage(req.Prompt, req.Input)
 
 	// Apply timeout.
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutMs)*time.Millisecond)
@@ -170,18 +171,37 @@ func (r *Runner) Run(ctx context.Context, req *entity.LLMTaskRequest) (*entity.L
 	return result, nil
 }
 
-// buildSystemPrompt constructs the system message for JSON-only mode.
-func buildSystemPrompt(prompt string, schema json.RawMessage) string {
+// buildSystemPrompt constructs the system message with JSON format constraints only.
+// The actual task instruction (prompt) is placed in the user message to ensure
+// it is never lost when input is nil.
+func buildSystemPrompt(schema json.RawMessage) string {
 	var sb strings.Builder
 	sb.WriteString("You are a structured data generator. You MUST respond with valid JSON only.\n")
 	sb.WriteString("Do NOT include any explanation, markdown formatting, or code fences.\n")
-	sb.WriteString("Respond with ONLY the JSON object/array.\n\n")
-	sb.WriteString("Task:\n")
-	sb.WriteString(prompt)
+	sb.WriteString("Respond with ONLY the JSON object/array.\n")
 
 	if len(schema) > 0 {
-		sb.WriteString("\n\nThe output MUST conform to this JSON Schema:\n")
+		sb.WriteString("\nThe output MUST conform to this JSON Schema:\n")
 		sb.Write(schema)
+	}
+
+	return sb.String()
+}
+
+// buildUserMessage constructs the user message combining the task prompt and
+// optional input data. This ensures the prompt (task instruction) is always
+// present in the user-role message, fixing the "No query found in messages"
+// error from LLMs that require at least one user message.
+func buildUserMessage(prompt string, input interface{}) string {
+	var sb strings.Builder
+	sb.WriteString(prompt)
+
+	if input != nil {
+		inputJSON, err := json.Marshal(input)
+		if err == nil {
+			sb.WriteString("\n\nInput data:\n")
+			sb.Write(inputJSON)
+		}
 	}
 
 	return sb.String()
