@@ -231,15 +231,18 @@ docker compose up -d
 
 **2. 配置 Echoryn**
 
-在 `conf/hivemind-server.json` 的 `plugins.entries` 中启用：
+在 `conf/hivemind-server.json` 的 `plugins.slots` 中选择追踪后端，并在 `entries` 中配置：
 
 ```json
-"langfuse-tracing": {
-  "config": {
-    "enabled": true,
-    "host": "http://localhost:3000",
-    "public_key": "${LANGFUSE_PUBLIC_KEY}",
-    "secret_key": "${LANGFUSE_SECRET_KEY}"
+"slots": { "tracing": "langfuse-tracing" },
+"entries": {
+  "langfuse-tracing": {
+    "config": {
+      "enabled": true,
+      "host": "http://localhost:3000",
+      "public_key": "${LANGFUSE_PUBLIC_KEY}",
+      "secret_key": "${LANGFUSE_SECRET_KEY}"
+    }
   }
 }
 ```

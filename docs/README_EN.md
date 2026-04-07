@@ -1,9 +1,13 @@
-<h1 align="center">Project Echoryn</h1>
-
-<p align="center">Recreating Openclaw in Go, building soul containers for AI virtual characters.</p>
+<h1 align="center">
+  Echoryn
+</h1>
 
 <p align="center">
-  <strong>🚧 Work in progress (WIP) – this project is not finished yet.</strong>
+  <b>Open Source AI Virtual Character Container Platform — Distributed Agent Harness</b>
+</p>
+
+<p align="center">
+  Organizes Skills, Sub-Agents, Memory, Plugins, and distributed execution nodes together,<br/>giving your AI agents "soul" and "body".
 </p>
 
 ![Header](./docs/assets/github-header-banner.png)
@@ -29,148 +33,142 @@ The platform provides a complete infrastructure for AI agents, including LLM int
 - [English Version](docs/README_EN.md) - English documentation (main)
 - [中文版本](./README.md) - Chinese documentation
 
-## 🚀 Features
+## Core Features
 
-### Core Architecture
-- **Hivemind**: Central coordination server for node management and task scheduling
-- **Golem**: Worker nodes that execute skills and tasks locally
-- **Echoctl**: Command-line management tool (similar to kubectl)
+### Skills & Tools
 
-### AI Capabilities
-- **Multi-LLM Provider Support**: OpenAI, Claude, DeepSeek, Gemini, Ollama, and more
-- **Model Context Protocol (MCP)**: Standardized tool and resource integration
-- **CloudWeGo Eino Integration**: Advanced LLM framework with reasoning capabilities
-- **Memory System**: Vector search, semantic memory, and context management
+Supports an on-demand progressive loading **skill system** (Markdown-defined), with built-in skills for Shell execution, file operations, etc., and seamless third-party tool extension via **MCP Server** (Model Context Protocol). Supports stdio/SSE dual transport protocols, compatible with Claude Desktop configuration format.
 
-### Plugin System
-- **Kubernetes-inspired Plugin Framework**: Interface-driven extensibility
-- **Slot Mechanism**: Ensures only one plugin of a specific type is active
-- **Multiple Integration Types**: Tools, hooks, services, CLI commands, prompts
-- **Automatic Discovery**: Framework auto-detects plugin interfaces
+### Sub-Agents
 
-### Developer Experience
-- **gRPC-based Communication**: Bidirectional streaming for real-time task distribution
-- **Comprehensive Configuration**: Support for JSON, environment variables, and flags
-- **Built-in Observability**: OpenTelemetry integration for monitoring and tracing
-- **Production-ready Design**: Graceful shutdown, health checks, and lifecycle management
-- **Modern TUI**: Beautiful terminal interfaces using BubbleTea and LipGloss
+Supports decomposing complex tasks into multiple sub-agents for parallel processing. Provides complete **SubAgentManager** + **Scheduler** + **AnnounceController** orchestration capabilities. Sub-agents have independent contexts and lifecycles.
 
-## 🏗️ Architecture
+### Team Collaboration
 
-### System Components
+Multi-Agent collaborative work framework, supports defining team structures via **YAML templates**. Built-in parallel, pipeline, debate, Leader-driven collaboration strategies. Members communicate asynchronously via **MessageBus**. Supports **SSE real-time event streaming**, both TUI and GUI can subscribe to team dynamics.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                       Hivemind (Brain)                      │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  Node Mgmt  │  │ Task Sched  │  │  Plugin Registry  │    │
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  LLM Proxy  │  │  Memory     │  │   API Gateway     │    │
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-                           │
-            gRPC (bidirectional streaming)
-                           │
-┌─────────────────────────────────────────────────────────────┐
-│                       Golem (Worker)                        │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  Skill Exec │  │  Local Res  │  │   Heartbeat       │    │ 
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
-│  ┌─────────────┐  ┌─────────────┐  ┌───────────────────┐    │
-│  │  Tool Runner│  │  Task Queue │  │   State Sync      │    │
-│  └─────────────┘  └─────────────┘  └───────────────────┘    │
-└─────────────────────────────────────────────────────────────┘
-```
+### Plugin Framework
 
-### Directory Structure
+Kubernetes-style compile-time plugin framework with **Slot mutual exclusion mechanism** ensuring only one plugin of a specific type is active. Provides Tool / Hook / Service / CLI / PromptSection **five capability injections**. Built-in core plugins for memory, diagnostics, LLM tasks, etc.
+
+### Context Engineering
+
+Efficiently manages ultra-long context windows through isolated sub-agent contexts, **two-stage pruning** (ContextBuilder → ContextPruner), and **Compaction multi-round summary compression**. Built-in TokenEstimator for accurate token consumption estimation.
+
+### Memory & Long-term Memory
+
+Hybrid retrieval memory system based on SQLite FTS5 + vector search, supporting cross-session accumulation of user preferences and work habits. Provides OpenAI / Gemini dual Embedding Providers, integrated into Agent runtime via plugins.
+
+---
+
+## Architecture Overview
 
 ```
-echoryn/
-├── cmd/                    # Executable entry points
-│   ├── hivemind/          # Main server (Hivemind)
-│   ├── golem/             # Worker node (Golem)
-│   └── echoctl/           # Command-line management tool
-├── internal/              # Internal packages
-│   ├── hivemind/          # Hivemind implementation
-│   ├── golem/             # Golem implementation
-│   └── echoctl/           # CLI implementation
-├── pkg/                   # Public library packages
-│   ├── app/               # Application framework
-│   ├── cli/               # CLI utilities
-│   ├── http/              # HTTP utilities
-│   ├── logger/            # Logging system
-│   └── utils/             # Utility functions
-├── idl/                   # Interface definition language
-│   └── golem/             # Golem gRPC protocol definitions
-├── conf/                  # Configuration files
-├── docs/                  # Documentation
-├── scripts/               # Build scripts
-└── golem-worker/          # Golem workspace directory
+                         ┌─ echoctl (TUI CLI) ─┐
+                         │  BubbleTea Interactive Chat │
+                         │  SSE Streaming / Team Panel │
+                         └──────────┬───────────┘
+                                    │
+                            HTTP / SSE / gRPC
+                                    │
+┌───────────────────────────────────┴───────────────────────────────────┐
+│                        Hivemind (Collective Intelligence)              │
+│                                                                       │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────────────┐ │
+│  │  Agents Runtime  │  │   LLM Module     │  │   Plugin Framework  │ │
+│  │  AgentRunner     │  │   8 Providers    │  │   Slot Mutex        │ │
+│  │  SubAgentManager │  │   SPI 4-Layer    │  │   5 Capability      │ │
+│  │  Eino DAG Flow   │  │   Fallback       │  │   Memory / Diag     │ │
+│  └──────────────────┘  └──────────────────┘  └─────────────────────┘ │
+│                                                                       │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌─────────────────────┐ │
+│  │  MCP Module      │  │  Team Collaboration│  │  Golem Scheduler   │ │
+│  │  stdio / SSE     │  │  MessageBus      │  │  PriorityQueue      │ │
+│  │  Claude Compatible│  │  Multi-Strategy  │  │  AI 6-D Scoring    │ │
+│  └──────────────────┘  └──────────────────┘  └─────────────────────┘ │
+│                                                                       │
+│         OpenAI Compatible API: /v1/chat/completions · /v1/models     │
+│         gRPC: :11788  ·  HTTP: :11789                                 │
+└────────────┬─────────────────────┬────────────────────────────────────┘
+             │                     │
+        gRPC Bidirectional     gRPC Bidirectional
+             │                     │
+     ┌───────┴──────┐      ┌──────┴───────┐
+     │   Golem #1   │      │   Golem #2   │      ...
+     │  Browser Node│      │  Dev Node    │
+     │  Web Search  │      │  Code Writing│
+     └──────────────┘      └──────────────┘
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
-- **Go 1.25.0** or higher
-- **Git** for version control
-- **Make** for build automation
-- **SQLite** (optional, for local storage)
+- **Go 1.25.0+**
+- **Make**
+- **Git**
 
-### Installation
+### Clone & Build
 
 ```bash
-# Clone the repository
 git clone https://github.com/kiosk404/echoryn.git
 cd echoryn
-
-# Install dependencies and build
-make all
+make all    # tidy + format + lint + build
 ```
 
-This will:
-1. Run `go mod tidy` to manage dependencies
-2. Format the code
-3. Run lint checks
-4. Build all binaries
+### Configure Models
 
-### Running Echoryn
+Edit `conf/hivemind-server.json` to configure your LLM Provider:
 
-![echoryn](docs/assets/echo-cli-en.png)
+```json
+{
+  "models": {
+    "default-provider": "deepseek",
+    "default-model": "deepseek-chat",
+    "providers": {
+      "deepseek": {
+        "base-url": "https://api.deepseek.com/v1",
+        "api-key": "${DEEPSEEK_API_KEY}"
+      }
+    }
+  }
+}
+```
 
-#### 1. Start Hivemind Server
+Set environment variables:
 
 ```bash
-# Using make (development)
-make run.hivemind
+export DEEPSEEK_API_KEY="your-api-key"
+# Optional: other Providers
+export OPENAI_API_KEY="your-api-key"
+export ANTHROPIC_API_KEY="your-api-key"
+export GOOGLE_API_KEY="your-api-key"
+```
 
-# Or directly with configuration
+### Run
+
+#### 1. Start Hivemind
+
+```bash
+make run.hivemind
+# Or manually with configuration
 ./output/platforms/linux/amd64/hivemind --config conf/hivemind-server.json
 ```
 
-#### 2. Start Golem Worker
+#### 2. Start Golem (Optional, for distributed execution)
 
 ```bash
-# In a separate terminal
+# In another terminal
 make run.golem
-
-# Or directly with configuration
-./output/platforms/linux/amd64/golem --config conf/golem-worker.json
 ```
 
-#### 3. Use Echoctl for Management
+#### 3. Chat via echoctl
 
 ```bash
-# List available tokens
-./output/platforms/linux/amd64/echoctl token list
-
-# Create a new token
-./output/platforms/linux/amd64/echoctl token create --name "admin"
-
-# Get system information
-./output/platforms/linux/amd64/echoctl info
+./output/platforms/linux/amd64/echoctl chat --server localhost:11789
 ```
+
+![echoryn-cli](./docs/assets/echo-cli-en.png)
 
 ## 📦 Build Options
 

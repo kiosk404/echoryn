@@ -18,8 +18,11 @@ type SlotConfig map[string]string
 // slotDefaults defines the default active plugin for each slot kind.
 // This corresponds to OpenClaw's default slot selections.
 var slotDefaults = map[string]string{
-	"memory":   "memory-core",
-	"subagent": "subagent",
+	"memory":     "memory-core",
+	"subagent":   "subagent",
+	"tracing":    "",
+	"channel":    "",
+	"web-search": "",
 }
 
 // ResolveSlot determines whether a plugin should be activated based on

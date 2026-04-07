@@ -7,23 +7,20 @@ package builtin
 
 import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/golem"
-	"github.com/kiosk404/echoryn/internal/hivemind/service/llm/provider/helper"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	feishuchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/feishu"
 	telegramchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/telegram"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics"
-	diagentity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics/entity"
 	golemcluster "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/golem-cluster"
-	langfusetracing "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/langfuse-tracing"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask"
-	llmentity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask/entity"
-	memorycore "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core"
-	mementity "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory-core/entity"
+	memorycore "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory/memory-core"
 	skillsplugin "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/skills"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
-	websearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/gemini-web-search"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langfuse-tracing"
+	langsmithtracing "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langsmith-tracing"
+	ddgsearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/duckduckgo-web-search"
+	geminisearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/gemini-web-search"
 	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
-	"github.com/kiosk404/echoryn/pkg/paths"
 )
 
 // NewInTreeRegistry creates the in-tree plugin registry with all
@@ -45,7 +42,7 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		memorycore.PluginDefinition(),
 		memorycore.Factory,
 		plugin.PluginArgs{
-			"config": resolveMemoryConfig(opts),
+			"config": memorycore.ResolveMemoryConfig(opts),
 		},
 	)
 
@@ -54,7 +51,7 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		diagnostics.PluginDefinition(),
 		diagnostics.Factory,
 		plugin.PluginArgs{
-			"config": resolveDiagnosticsConfig(opts),
+			"config": diagnostics.ResolveDiagnosticsConfig(opts),
 		},
 	)
 
@@ -63,7 +60,7 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		llmtask.PluginDefinition(),
 		llmtask.Factory,
 		plugin.PluginArgs{
-			"config": resolveLLMTaskConfig(opts),
+			"config": llmtask.ResolveLLMTaskConfig(opts),
 		},
 	)
 
@@ -72,16 +69,25 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		langfusetracing.PluginDefinition(),
 		langfusetracing.Factory,
 		plugin.PluginArgs{
-			"config": resolveLangfuseConfig(opts),
+			"config": langfusetracing.ResolveLangfuseConfig(opts),
 		},
 	)
+
+	// --- langsmith-tracing: LLM application-level observability via LangSmith ---
+	// Slot: "tracing" -- mutually exclusive with langsmith-tracing.
+	registry.Register(
+		langsmithtracing.PluginDefinition(),
+		langsmithtracing.Factory,
+		plugin.PluginArgs{
+			"config": langsmithtracing.ResolveLangSmithConfig(opts),
+		})
 
 	// --- subagent: sub-agent orchestration (sessions_spawn/sessions_status) ---
 	registry.Register(
 		subagent.PluginDefinition(),
 		subagent.Factory,
 		plugin.PluginArgs{
-			"config": resolveSubAgentConfig(opts),
+			"config": subagent.ResolveSubAgentConfig(opts),
 		},
 	)
 
@@ -92,7 +98,7 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		golemcluster.PluginDefinition(),
 		golemcluster.Factory,
 		plugin.PluginArgs{
-			"config":     resolveGolemClusterConfig(opts),
+			"config":     golemcluster.ResolveGolemClusterConfig(opts),
 			"registry":   golemModule.Registry,
 			"dispatcher": golemModule.Dispatcher,
 			"scheduler":  golemModule.Scheduler,
@@ -103,15 +109,24 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		skillsplugin.PluginDefinition(),
 		skillsplugin.Factory,
 		plugin.PluginArgs{
-			"config": resolveSkillsConfig(opts),
+			"config": skillsplugin.ResolveSkillsConfig(opts),
 		})
 
-	// --- web-search: web search via Gemini Google search grounding ---
+	// --- web-search (gemini): web search via Gemini Google search grounding ---
 	registry.Register(
-		websearch.PluginDefinition(),
-		websearch.Factory,
+		geminisearch.PluginDefinition(),
+		geminisearch.Factory,
 		plugin.PluginArgs{
-			"config": resolveWebSearchConfig(opts),
+			"config": geminisearch.ResolveWebSearchConfig(opts),
+		})
+
+	// --- web-search (duckduckgo): privacy-focused web search, no API key required ---
+	// Slot: "web-search" — mutually exclusive with gemini-web-search.
+	registry.Register(
+		ddgsearch.PluginDefinition(),
+		ddgsearch.Factory,
+		plugin.PluginArgs{
+			"config": ddgsearch.ResolveDDGSearchConfig(opts),
 		})
 
 	// --- channel-feishu: Feishu/Lark IM integration (websocket/webhook) ---
@@ -119,7 +134,7 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		feishuchannel.PluginDefinition(),
 		feishuchannel.Factory,
 		plugin.PluginArgs{
-			"config": resolveFeishuConfig(opts),
+			"config": feishuchannel.ResolveFeishuConfig(opts),
 		})
 
 	// --- channel-telegram: Telegram Bot integration ---
@@ -127,462 +142,8 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		telegramchannel.PluginDefinition(),
 		telegramchannel.Factory,
 		plugin.PluginArgs{
-			"config": resolveTelegramConfig(opts),
+			"config": telegramchannel.ResolveTelegramConfig(opts),
 		})
 
 	return registry
-}
-
-// resolveMemoryConfig extracts memory-core config from PluginsOptions.entries["memory-core"].config,
-// falling back to DefaultMemoryConfig if not specified.
-//
-// Path fields (workspace_dir, db_path) default to ~/.echoryn paths via DefaultMemoryConfig().
-func resolveMemoryConfig(opts *genericoptions.PluginsOptions) *mementity.MemoryConfig {
-	cfg := mementity.DefaultMemoryConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[memorycore.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	// Apply user overrides from plugins.entries.memory-core.config.
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["workspace_dir"]; ok {
-		if s, ok := v.(string); ok && s != "" && s != "." {
-			cfg.WorkspaceDir = paths.ResolveWorkspaceDir("", s)
-		}
-	}
-	if v, ok := entry.Config["db_path"]; ok {
-		if s, ok := v.(string); ok && s != "" && s != "." {
-			cfg.Store.Path = s
-		}
-	}
-	if v, ok := entry.Config["embedding_provider"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.Embedding.Provider = s
-		}
-	}
-	if v, ok := entry.Config["embedding_model"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.Embedding.Model = s
-		}
-	}
-	if v, ok := entry.Config["embedding_api_key"]; ok {
-		if s, ok := v.(string); ok {
-			if cfg.Embedding.Remote == nil {
-				cfg.Embedding.Remote = &mementity.RemoteEmbeddingConfig{}
-			}
-			cfg.Embedding.Remote.APIKey = s
-		}
-	}
-	if v, ok := entry.Config["embedding_base_url"]; ok {
-		if s, ok := v.(string); ok {
-			if cfg.Embedding.Remote == nil {
-				cfg.Embedding.Remote = &mementity.RemoteEmbeddingConfig{}
-			}
-			cfg.Embedding.Remote.BaseURL = s
-		}
-	}
-
-	return cfg
-}
-
-// resolveDiagnosticsConfig extracts diagnostics config from PluginsOptions.entries["diagnostics"].config,
-// falling back to defaults if not specified.
-func resolveDiagnosticsConfig(opts *genericoptions.PluginsOptions) *diagentity.DiagnosticsConfig {
-	cfg := diagentity.DefaultDiagnosticsConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[diagnostics.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["otel_endpoint"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.OTEL.Endpoint = s
-		}
-	}
-	if v, ok := entry.Config["otel_enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.OTEL.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["enable_traces"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.OTEL.Traces = b
-		}
-	}
-	if v, ok := entry.Config["enable_metrics"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.OTEL.Metrics = b
-		}
-	}
-	if v, ok := entry.Config["enable_logs"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.OTEL.Logs = b
-		}
-	}
-	if v, ok := entry.Config["service_name"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.OTEL.ServiceName = s
-		}
-	}
-
-	return cfg
-}
-
-// resolveLLMTaskConfig extracts llm-task config from PluginsOptions.entries["llm-task"].config,
-// falling back to defaults if not specified.
-func resolveLLMTaskConfig(opts *genericoptions.PluginsOptions) *llmentity.LLMTaskConfig {
-	cfg := llmentity.DefaultLLMTaskConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[llmtask.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["default_provider"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.DefaultProvider = s
-		}
-	}
-	if v, ok := entry.Config["default_model"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.DefaultModel = s
-		}
-	}
-	if v, ok := entry.Config["max_tokens"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.MaxTokens = int(f)
-		}
-	}
-	if v, ok := entry.Config["timeout_ms"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.TimeoutMs = int64(f)
-		}
-	}
-
-	return cfg
-}
-
-// resolveSubAgentConfig extracts subagent config from PluginsOptions.entries["subagent"].config,
-// falling back to defaults if not specified.
-func resolveSubAgentConfig(opts *genericoptions.PluginsOptions) *subagent.Config {
-	cfg := subagent.DefaultConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[subagent.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["max_concurrent"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.MaxConcurrent = int(f)
-		}
-	}
-	if v, ok := entry.Config["archive_after_minutes"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.ArchiveAfterMinutes = int(f)
-		}
-	}
-
-	return cfg
-}
-
-// resolveFeishuConfig extracts channel-feishu config from PluginsOptions.entries["channel-feishu"].config,
-// falling back to defaults if not specified.
-func resolveFeishuConfig(opts *genericoptions.PluginsOptions) *feishuchannel.FeishuConfig {
-	cfg := feishuchannel.DefaultFeishuConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[feishuchannel.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["app_id"]; ok {
-		if b, ok := v.(string); ok {
-			cfg.AppID = helper.ResolveEnvValue(b)
-		}
-	}
-	if v, ok := entry.Config["app_secret"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.AppSecret = helper.ResolveEnvValue(s)
-		}
-	}
-	if v, ok := entry.Config["verification_token"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.VerificationToken = s
-		}
-	}
-	if v, ok := entry.Config["encrypt_key"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.EncryptKey = s
-		}
-	}
-	if v, ok := entry.Config["agent_id"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.AgentID = s
-		}
-	}
-	if v, ok := entry.Config["listen_addr"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.ListenAddr = s
-		}
-	}
-	if v, ok := entry.Config["webhook_path"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.WebhookPath = s
-		}
-	}
-
-	return cfg
-}
-
-// resolveTelegramConfig extracts channel-telegram config from PluginsOptions.entries["channel-telegram"].config,
-// falling back to defaults if not specified.
-func resolveTelegramConfig(opts *genericoptions.PluginsOptions) *telegramchannel.TelegramConfig {
-	cfg := telegramchannel.DefaultTelegramConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[telegramchannel.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["bot_token"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.BotToken = s
-		}
-	}
-	if v, ok := entry.Config["agent_id"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.AgentID = s
-		}
-	}
-	if v, ok := entry.Config["polling_timeout"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.PollingTimeout = int(f)
-		}
-	}
-
-	return cfg
-}
-
-// resolveGolemServer
-func resolveGolemClusterConfig(opts *genericoptions.PluginsOptions) *golemcluster.Config {
-	cfg := golemcluster.DefaultConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[golemcluster.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	return cfg
-}
-
-// resolveSkillsConfig extracts skills config from PluginsOptions.entries["skills"].config,
-// falling back to defaults if not specified.
-func resolveSkillsConfig(opts *genericoptions.PluginsOptions) *skillsplugin.Config {
-	cfg := skillsplugin.DefaultConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[skillsplugin.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config[""]; ok {
-		if s, ok := v.(string); ok {
-			cfg.HivemindSkillsDir = s
-		}
-	}
-	if v, ok := entry.Config["global_skills_dir"]; ok {
-		if s, ok := v.(string); ok && s != "" {
-			cfg.GlobalSkillsDir = s
-		}
-	}
-	if v, ok := entry.Config["project_skills_dir"]; ok {
-		if s, ok := v.(string); ok && s != "" {
-			cfg.ProjectSkillsDir = s
-		}
-	}
-	if v, ok := entry.Config["hot_reload"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.HotReload = b
-		}
-	}
-
-	return cfg
-}
-
-// resolveWebSearchConfig extracts web-search config from PluginsOptions.entries["web-search"].config,
-// falling back to defaults if not specified.
-func resolveWebSearchConfig(opts *genericoptions.PluginsOptions) *websearch.Config {
-	cfg := websearch.DefaultConfig()
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[websearch.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["provider"]; ok {
-		if s, ok := v.(string); ok && s != "" {
-			cfg.Provider = s
-		}
-	}
-	if v, ok := entry.Config["timeout_seconds"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.TimeoutSeconds = int(f)
-		}
-	}
-
-	// Resolve nested gemini config.
-	if geminiRaw, ok := entry.Config["gemini"]; ok {
-		if geminiMap, ok := geminiRaw.(map[string]interface{}); ok {
-			if v, ok := geminiMap["api_key"]; ok {
-				if s, ok := v.(string); ok {
-					cfg.Gemini.APIKey = helper.ResolveEnvValue(s)
-				}
-			}
-			if v, ok := geminiMap["model"]; ok {
-				if s, ok := v.(string); ok && s != "" {
-					cfg.Gemini.Model = s
-				}
-			}
-		}
-	}
-
-	return cfg
-}
-
-// resolveLangfuseConfig extracts langfuse-tracing config from PluginsOptions.entries["langfuse-tracing"].config,
-// falling back to defaults if not specified.
-//
-// API keys support ${ENV_VAR} expansion via helper.ResolveEnvValue for secure config management.
-func resolveLangfuseConfig(opts *genericoptions.PluginsOptions) *langfusetracing.Config {
-	cfg := &langfusetracing.Config{}
-	if opts == nil {
-		return cfg
-	}
-
-	entry, ok := opts.Entries[langfusetracing.PluginName]
-	if !ok || entry.Config == nil {
-		return cfg
-	}
-
-	if v, ok := entry.Config["enabled"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.Enabled = b
-		}
-	}
-	if v, ok := entry.Config["host"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.Host = s
-		}
-	}
-	if v, ok := entry.Config["public_key"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.PublicKey = helper.ResolveEnvValue(s)
-		}
-	}
-	if v, ok := entry.Config["secret_key"]; ok {
-		if s, ok := v.(string); ok {
-			cfg.SecretKey = helper.ResolveEnvValue(s)
-		}
-	}
-	if v, ok := entry.Config["sample_rate"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.SampleRate = f
-		}
-	}
-	if v, ok := entry.Config["flush_at"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.FlushAt = int(f)
-		}
-	}
-	if v, ok := entry.Config["flush_interval_ms"]; ok {
-		if f, ok := v.(float64); ok {
-			cfg.FlushIntervalMs = int(f)
-		}
-	}
-	if v, ok := entry.Config["mask_input"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.MaskInput = b
-		}
-	}
-	if v, ok := entry.Config["mask_output"]; ok {
-		if b, ok := v.(bool); ok {
-			cfg.MaskOutput = b
-		}
-	}
-
-	return cfg
 }

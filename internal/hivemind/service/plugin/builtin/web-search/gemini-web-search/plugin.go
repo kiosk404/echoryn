@@ -10,15 +10,15 @@ import (
 
 const (
 	// PluginName is the unique identifier for this plugin.
-	PluginName = "web-search"
+	PluginName = "gemini-web-search"
 )
 
 // PluginDefinition returns the static metadata for this plugin.
 func PluginDefinition() plugin.Definition {
 	return plugin.Definition{
 		ID:          PluginName,
-		Name:        "Web Search",
-		Kind:        "",
+		Name:        "Gemini Web Search",
+		Kind:        "web-search",
 		Description: "Web search tool using Gemini with Google Search grounding for real-time information retrieval",
 	}
 }
@@ -79,21 +79,14 @@ func (p *webSearchPlugin) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Initialize the searcher based on provider.
-	switch p.cfg.Provider {
-	case "gemini", "":
-		searcher, err := newGeminiSearcher(p.cfg)
-		if err != nil {
-			logger.Warn("[WebSearch] failed to initialize Gemini searcher: %v", err)
-			return nil
-		}
-		p.searcher = searcher
-	default:
-		logger.Warn("[WebSearch] unsupported provider %q, only 'gemini' is currently supported", p.cfg.Provider)
+	searcher, err := newGeminiSearcher(p.cfg)
+	if err != nil {
+		logger.Warn("[GeminiWebSearch] failed to initialize searcher: %v", err)
 		return nil
 	}
+	p.searcher = searcher
 
-	logger.Info("[WebSearch] started (provider=%s, model=%s, timeout=%ds)",
+	logger.Info("[GeminiWebSearch] started (provider=%s, model=%s, timeout=%ds)",
 		p.cfg.Provider, p.cfg.Gemini.Model, p.cfg.TimeoutSeconds)
 	return nil
 }

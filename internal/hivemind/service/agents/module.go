@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/repo"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime"
@@ -13,6 +14,7 @@ import (
 	boltdbStore "github.com/kiosk404/echoryn/internal/hivemind/service/agents/store/boltdb"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/store/inmemory"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
+	llmEntity "github.com/kiosk404/echoryn/internal/hivemind/service/llm/domain/entity"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/mcp"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/subagent/observer"
@@ -135,6 +137,56 @@ type Dependencies struct {
 	MCP     mcp.Manager // MCP tool provider (maybe nil if no MCP servers configured)
 }
 
+// ensureDefaultAgent checks if the default "main" agent exists in the store;
+// if not, it auto-creates one with the system's default model binding.
+//
+// This is the server-startup counterpart of ChatCompletionsHandler.ensureAgent(),
+// which only runs on HTTP requests. Without this bootstrap step, a fresh
+// deployment will fail with:
+//
+//	agent "main" failed to unmarshal agent: agent "main" not found
+//
+// on any request path that doesn't go through the HTTP handler (e.g., IM gateway,
+// echoctl CLI, or plugin-triggered agent runs).
+func ensureDefaultAgent(ctx context.Context, agentStore repo.AgentRepository, llmModule *llm.Module, agentID string) {
+	_, err := agentStore.Get(ctx, agentID)
+	if err == nil {
+		// Agent already exists — nothing to do.
+		return
+	}
+
+	// Resolve default model for binding.
+	defaultModel, modelErr := llmModule.Manager.GetDefaultModel(ctx)
+	if modelErr != nil {
+		logger.Warn("[Agents] cannot auto-create default agent %q: no default model available (check your models config and API keys): %v",
+			agentID, modelErr)
+		return
+	}
+
+	agent := &entity.Agent{
+		ID:   agentID,
+		Name: agentID,
+		ModelRef: llmEntity.ModelRef{
+			ProviderID: defaultModel.ProviderID,
+			ModelID:    defaultModel.ModelID,
+		},
+		Fallback: llmEntity.FallbackConfig{
+			Primary: llmEntity.ModelRef{
+				ProviderID: defaultModel.ProviderID,
+				ModelID:    defaultModel.ModelID,
+			},
+		},
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+
+	if createErr := agentStore.Create(ctx, agent); createErr != nil {
+		logger.Warn("[Agents] failed to auto-create default agent %q: %v", agentID, createErr)
+		return
+	}
+	logger.Info("[Agents] auto-created default agent %q with model %s/%s", agentID, defaultModel.ProviderID, defaultModel.ModelID)
+}
+
 // Module is the top-level Agents module, holding all domain services.
 //
 // It exposes:
@@ -163,7 +215,7 @@ func (m *Module) Close() error {
 }
 
 // New creates and initializes the Agents module from a completed config.
-func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, error) {
+func (c CompletedConfig) New(ctx context.Context, deps Dependencies) (*Module, error) {
 	logger.Info("[Agents] creating Agents module...")
 
 	if deps.LLM == nil {
@@ -205,6 +257,11 @@ func (c CompletedConfig) New(_ context.Context, deps Dependencies) (*Module, err
 		subAgentStore = inmemory.NewSubAgentStore()
 		logger.Info("[Agents] using in-memory store")
 	}
+
+	// Bootstrap: ensure the default agent exists in the store.
+	// On a fresh deployment the BoltDB is empty — without this step, the first
+	// request referencing "main" would fail with "agent not found".
+	ensureDefaultAgent(ctx, agentStore, deps.LLM, c.AgentID)
 
 	// Runtime: AgentRunner with all dependencies.
 	runner := runtime.NewAgentRunner(

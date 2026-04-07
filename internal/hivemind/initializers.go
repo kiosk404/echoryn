@@ -242,8 +242,10 @@ func InitAgents() InitFunc {
 		// 1. Create plugin framework
 		pluginCfg := &plugin.Config{
 			SlotConfig: plugin.SlotConfig{
-				"memory":  deps.Config.PluginOptions.Slots.Memory,
-				"channel": deps.Config.PluginOptions.Slots.Channel,
+				"memory":     deps.Config.PluginOptions.Slots.Memory,
+				"channel":    deps.Config.PluginOptions.Slots.Channel,
+				"tracing":    deps.Config.PluginOptions.Slots.Tracing,
+				"web-search": deps.Config.PluginOptions.Slots.WebSearch,
 			},
 			RuntimeAPI: plugin.NewRuntimeAPI(&modelManagerAdapter{deps.LLM.Manager}),
 		}

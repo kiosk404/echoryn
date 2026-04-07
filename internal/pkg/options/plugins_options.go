@@ -27,8 +27,10 @@ type PluginsOptions struct {
 // PluginSlotsConfig maps slot kind -> desired Plugin ID
 // Aligned with the plugin system configuration file.
 type PluginSlotsConfig struct {
-	Memory  string `json:"memory" mapstructure:"memory"`
-	Channel string `json:"channel" mapstructure:"channel"`
+	Memory    string `json:"memory" mapstructure:"memory"`
+	Channel   string `json:"channel" mapstructure:"channel"`
+	Tracing   string `json:"tracing" mapstructure:"tracing"`
+	WebSearch string `json:"web-search" mapstructure:"web-search"`
 }
 
 // PluginEntryConfig holds per-plugin configuration.
