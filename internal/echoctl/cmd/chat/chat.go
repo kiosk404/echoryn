@@ -123,16 +123,30 @@ func newClientAdapter(c *HivemindClient) *chatui.ClientAdapter {
 			msgs []chatui.ChatMessage,
 			cb chatui.StreamCallback,
 			toolCb chatui.ToolCallCallback,
-		) (string, error) {
+		) (*chatui.ChatResult, error) {
 			// Convert tui.ChatMessage → chat.ChatMessage.
 			apiMsgs := make([]ChatMessage, len(msgs))
 			for i, m := range msgs {
 				apiMsgs[i] = ChatMessage{Role: m.Role, Content: m.Content}
 			}
-			return c.ChatStream(ctx, apiMsgs, StreamCallback(cb), ToolCallCallback(toolCb))
+			result, err := c.ChatStream(ctx, apiMsgs, StreamCallback(cb), ToolCallCallback(toolCb))
+			if err != nil || result == nil {
+				return nil, err
+			}
+			return &chatui.ChatResult{
+				Content: result.Content,
+				Usage: &chatui.TokenUsage{
+					PromptTokens:     result.PromptTokens,
+					CompletionTokens: result.CompletionTokens,
+					TotalTokens:      result.TotalTokens,
+				},
+			}, nil
 		},
 		ModelName: c.Model,
 		ServerURL: c.BaseURL,
 		Session:   c.SessionKey,
+		AbortFn: func(ctx context.Context) error {
+			return c.Abort(ctx)
+		},
 	}
 }

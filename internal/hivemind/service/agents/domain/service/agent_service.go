@@ -40,4 +40,13 @@ type AgentService interface {
 
 	// ListRunsBySession returns all runs for a session.
 	ListRunsBySession(ctx context.Context, sessionID string) ([]*entity.Run, error)
+
+	// AbortRun cancels a running execution by run ID.
+	// Delegates to AgentRunner.Abort(), which triggers the AbortController
+	// and transitions the run state to Cancelled.
+	AbortRun(ctx context.Context, runID string) error
+
+	// LastRunID returns the most recent run ID for a session.
+	// This is a convenience for HTTP handlers that need to expose run IDs to clients.
+	LastRunID(sessionID string) string
 }

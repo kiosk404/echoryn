@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	einoModel "github.com/cloudwego/eino/components/model"
@@ -52,6 +53,18 @@ You have access to a persistent memory system. Follow these guidelines:
 - When you learn important facts, decisions, user preferences, or actionable information during a conversation, use the memory_write tool to save them for future reference.
 - Use memory_delete to remove outdated or incorrect memories when appropriate.
 - Memory files are organized as Markdown under the memory/ directory.`
+
+	// sessionMemorySystemPrompt is the system prompt for post-turn memory extraction.
+	// Differentiated from pre-compaction flush: focuses on incremental summary
+	// rather than comprehensive dump before compression.
+	sessionMemorySystemPrompt = "You are a session memory extractor. Your job is to identify and summarize " +
+		"the most important information from recent conversation turns that should be remembered for future sessions. " +
+		"Focus on: user preferences, decisions made, action items, key facts learned, and technical choices. " +
+		"Be concise — output only what is worth persisting. If nothing significant was discussed, reply exactly: NOTHING_TO_STORE"
+
+	// sessionMemoryUserPrompt is the template for the user-facing extraction prompt.
+	sessionMemoryUserPrompt = "Recent conversation turns to analyze for durable memories:\n\n%s\n" +
+		"Extract key information worth remembering. Reply NOTHING_TO_STORE if nothing significant."
 )
 
 // PluginDefinition returns the static metadata for this plugin.
@@ -74,6 +87,11 @@ type memoryCorePlugin struct {
 	cfg                  *entity.MemoryConfig
 	manager              *manager.Manager
 	promptPipelineActive bool // set to true when PromptSections() is a called by the agent
+
+	// Session memory tracking fields (post-turn extraction).
+	handle    plugin.Handle
+	trackerMu sync.RWMutex
+	trackers  map[string]*SessionMemoryTracker // sessionID → tracker
 }
 
 // Factory is the PluginFactory for memory-core.
@@ -90,7 +108,8 @@ func Factory(args plugin.PluginArgs, handle plugin.Handle) (plugin.Plugin, error
 	}
 
 	return &memoryCorePlugin{
-		cfg: memCfg,
+		cfg:    memCfg,
+		handle: handle,
 	}, nil
 }
 
@@ -152,6 +171,9 @@ func (p *memoryCorePlugin) Init(api plugin.PluginAPI) error {
 	api.RegisterHook(plugin.HookBeforeAgentStart, p.onBeforeAgentStart)
 	api.RegisterHook(plugin.HookBeforeCompaction, p.onBeforeCompaction)
 
+	// Register post-turn hook for automatic session memory extraction.
+	api.RegisterAfterTurnHook(p.onAfterTurn)
+
 	return nil
 }
 
@@ -191,6 +213,155 @@ func (p *memoryCorePlugin) Stop(ctx context.Context) error {
 		return p.manager.Close()
 	}
 	return nil
+}
+
+// --- Session Memory Post-Turn Methods ---
+
+// getOrCreateTracker returns the tracker for a session, creating one if needed.
+// Thread-safe via double-checked locking.
+func (p *memoryCorePlugin) getOrCreateTracker(sessionID string) *SessionMemoryTracker {
+	p.trackerMu.RLock()
+	if t, ok := p.trackers[sessionID]; ok {
+		p.trackerMu.RUnlock()
+		return t
+	}
+	p.trackerMu.RUnlock()
+
+	p.trackerMu.Lock()
+	defer p.trackerMu.Unlock()
+
+	// Double-check after acquiring write lock.
+	if t, ok := p.trackers[sessionID]; ok {
+		return t
+	}
+
+	t := NewSessionMemoryTracker()
+	if p.trackers == nil {
+		p.trackers = make(map[string]*SessionMemoryTracker)
+	}
+	p.trackers[sessionID] = t
+	return t
+}
+
+// onAfterTurn implements the PostSamplingHook for automatic session memory extraction.
+// Registered via api.RegisterAfterTurnHook during Init().
+//
+// Trigger conditions (dual-threshold, OR logic):
+//   - Turns since last extraction >= TurnThreshold (default 10)
+//   - OR cumulative tokens since last extraction >= TokenThreshold (default 8192)
+//
+// Plus guards: MinMessages check, MinInterval protection.
+func (p *memoryCorePlugin) onAfterTurn(ctx context.Context, data plugin.AfterTurnData) error {
+	smCfg := p.cfg.SessionMemory
+	if !smCfg.Enabled || p.manager == nil {
+		return nil
+	}
+
+	// 1. Get or create session tracker.
+	tracker := p.getOrCreateTracker(data.SessionID)
+
+	// 2. Record this turn.
+	tracker.RecordTurn(data.TokensUsed)
+
+	// 3. Check dual threshold + interval guard.
+	if !tracker.ShouldExtract(smCfg) {
+		return nil
+	}
+
+	// 4. Guard: need enough messages to make extraction meaningful.
+	if len(data.Messages) < smCfg.MinMessages {
+		logger.Debug("[MemoryCore] session memory skipped: insufficient messages (%d < %d)",
+			len(data.Messages), smCfg.MinMessages)
+		return nil
+	}
+
+	logger.Info("[MemoryCore] session memory extraction triggered: session=%s, turns=%d, tokens=%d",
+		data.SessionID, tracker.TurnCount(), tracker.TokenCount())
+
+	// 5. Execute LLM-driven extraction.
+	if err := p.llmExtractMemories(ctx, data.SessionID, data.Messages); err != nil {
+		logger.Warn("[MemoryCore] session memory extraction failed: %v", err)
+		// Don't reset tracker on failure — retry next turn
+		return nil
+	}
+
+	// 6. Reset tracker for next cycle.
+	tracker.Reset()
+	return nil
+}
+
+// llmExtractMemories performs LLM-driven memory extraction for a session.
+func (p *memoryCorePlugin) llmExtractMemories(
+	ctx context.Context,
+	sessionID string,
+	messages []*agentEntity.Message,
+) error {
+	chatModel, err := p.getChatModel(ctx)
+	if err != nil {
+		return fmt.Errorf("no chat model available: %w", err)
+	}
+
+	// Build conversation context from messages passed in AfterTurnData.
+	var convCtx strings.Builder
+	convCtx.WriteString("Recent conversation:\n\n")
+	for _, msg := range messages {
+		role := string(msg.Role)
+		content := msg.Content
+		if len([]rune(content)) > 500 {
+			runes := []rune(content)
+			content = string(runes[:400]) + "\n...[truncated]..."
+		}
+		convCtx.WriteString(fmt.Sprintf("[%s]: %s\n\n", role, content))
+	}
+
+	userPrompt := fmt.Sprintf(sessionMemoryUserPrompt, convCtx.String())
+
+	resp, err := chatModel.Generate(ctx, []*schema.Message{
+		{Role: schema.System, Content: sessionMemorySystemPrompt},
+		{Role: schema.User, Content: userPrompt},
+	})
+	if err != nil {
+		return fmt.Errorf("LLM extraction call failed: %w", err)
+	}
+
+	responseText := strings.TrimSpace(resp.Content)
+
+	// Check sentinel.
+	if strings.Contains(strings.ToUpper(responseText), nothingToStoreToken) {
+		logger.Info("[MemoryCore] session memory: nothing to store")
+		return nil
+	}
+
+	// Write extracted memories.
+	now := time.Now()
+	datePath := fmt.Sprintf("memory/%s.md", now.Format("2006-01-02"))
+	entry := fmt.Sprintf("\n## %s (session memory)\n\n%s\n",
+		now.Format("15:04:05"),
+		responseText,
+	)
+
+	if err := p.manager.WriteMemory(ctx, datePath, entry, true); err != nil {
+		return fmt.Errorf("write memory failed: %w", err)
+	}
+
+	logger.Info("[MemoryCore] session memory: stored to %s", datePath)
+	return nil
+}
+
+// getChatModel retrieves the default chat model from the runtime API.
+func (p *memoryCorePlugin) getChatModel(ctx context.Context) (einoModel.BaseChatModel, error) {
+	if p.handle == nil {
+		return nil, fmt.Errorf("no handle available")
+	}
+	runtimeAPI := p.handle.RuntimeAPI()
+	if runtimeAPI == nil {
+		return nil, fmt.Errorf("no runtime API available")
+	}
+	mm := runtimeAPI.ModelManager()
+	if mm == nil {
+		return nil, fmt.Errorf("no model manager available")
+	}
+	return mm.GetDefaultChatModel(ctx)
 }
 
 // --- Tool Handlers ---

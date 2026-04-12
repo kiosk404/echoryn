@@ -78,32 +78,62 @@ func (p *PluginTool) IsStream() bool {
 	return false
 }
 
+// AdaptResult holds the adapted tools and deferred tool names.
+type AdaptResult struct {
+	// ActiveTools are fully adapted Eino tools (non-deferred).
+	ActiveTools []tool.BaseTool
+	// DeferredNames are tool names that are deferred (only name sent to LLM).
+	DeferredNames []string
+}
+
 // AdaptPluginTools converts plugin-registered tools matching the given names to Eino tools.
-// If no names are provided, all registered tools are converted.
+// Deferred tools (ShouldDefer=true) are NOT converted — only their names are returned
+// in DeferredNames. The LLM discovers deferred tools via the tool_search tool.
 // If toolNames is empty, all registered tools are adapted.
-func AdaptPluginTools(registry *pluginPkg.Registry, toolNames []string) []tool.BaseTool {
+func AdaptPluginTools(registry *pluginPkg.Registry, toolNames []string) AdaptResult {
 	allTools := registry.GetTools()
-	tools := make([]tool.BaseTool, 0, len(toolNames))
+	var result AdaptResult
+
+	filter := func(def pluginPkg.ToolDefinition) {
+		if def.ShouldDefer {
+			result.DeferredNames = append(result.DeferredNames, def.Name)
+		} else {
+			result.ActiveTools = append(result.ActiveTools, &PluginTool{def: def})
+		}
+	}
 
 	if len(toolNames) == 0 {
 		for _, def := range allTools {
-			tools = append(tools, &PluginTool{def: def})
+			filter(def)
 		}
-		return tools
+		return result
 	}
 
 	nameSet := make(map[string]struct{}, len(toolNames))
 	for _, name := range toolNames {
 		nameSet[name] = struct{}{}
 	}
-
 	for name, def := range allTools {
 		if _, ok := nameSet[name]; ok {
-			tools = append(tools, &PluginTool{def: def})
+			filter(def)
 		}
 	}
+	return result
+}
 
-	return tools
+// AdaptPluginToolsFromDefs converts a pre-filtered list of ToolDefinitions to Eino tools.
+// This is used when the ToolPolicyPipeline has already filtered the definitions,
+// so no registry lookup or name matching is needed.
+func AdaptPluginToolsFromDefs(defs []pluginPkg.ToolDefinition) AdaptResult {
+	var result AdaptResult
+	for _, def := range defs {
+		if def.ShouldDefer {
+			result.DeferredNames = append(result.DeferredNames, def.Name)
+		} else {
+			result.ActiveTools = append(result.ActiveTools, &PluginTool{def: def})
+		}
+	}
+	return result
 }
 
 // invalidEscapeRe matches a backslash followed by a character that is Not a Valid

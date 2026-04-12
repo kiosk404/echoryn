@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 )
 
 // ChatStreamFunc is the function signature of HivemindClient.ChatStream.
@@ -12,7 +13,10 @@ type ChatStreamFunc func(
 	messages []ChatMessage,
 	cb StreamCallback,
 	toolCb ToolCallCallback,
-) (string, error)
+) (*ChatResult, error)
+
+// AbortFunc is the function signature for aborting a running execution.
+type AbortFunc func(ctx context.Context) error
 
 // ClientAdapter wraps the raw function pointers from the chat package's
 // HivemindClient so that they satisfy the [Client] interface.
@@ -25,6 +29,7 @@ type ChatStreamFunc func(
 // Without exposing HivemindClient's concrete type to the tui package.
 type ClientAdapter struct {
 	ChatStreamFn ChatStreamFunc
+	AbortFn      AbortFunc
 	ModelName    string
 	ServerURL    string
 	Session      string
@@ -39,8 +44,18 @@ func (a *ClientAdapter) ChatStream(
 	messages []ChatMessage,
 	cb StreamCallback,
 	toolCb ToolCallCallback,
-) (string, error) {
+) (*ChatResult, error) {
+	if a.ChatStreamFn == nil {
+		return nil, fmt.Errorf("chat stream not configured")
+	}
 	return a.ChatStreamFn(ctx, messages, cb, toolCb)
+}
+
+func (a *ClientAdapter) Abort(ctx context.Context) error {
+	if a.AbortFn == nil {
+		return fmt.Errorf("abort not supported")
+	}
+	return a.AbortFn(ctx)
 }
 
 // Model returns the configured model name.

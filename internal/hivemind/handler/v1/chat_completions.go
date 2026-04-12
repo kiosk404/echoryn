@@ -102,6 +102,11 @@ func (h *ChatCompletionsHandler) Handle(c *gin.Context) {
 		return
 	}
 
+	// Expose run ID in response header for abort support.
+	if runID := h.svc.LastRunID(sessionID); runID != "" {
+		c.Header("X-Run-ID", runID)
+	}
+
 	completionID := "chatcmpl-" + uuid.New().String()[:8]
 	model := req.Model
 	if model == "" {

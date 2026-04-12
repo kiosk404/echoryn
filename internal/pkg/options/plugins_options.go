@@ -22,6 +22,35 @@ type PluginsOptions struct {
 	// Entries holds per-plugin configuration.
 	// Key is the plugin ID. (e.g. "memory-core", "diagnostics", "llm-task")
 	Entries map[string]PluginEntryConfig `json:"entries" mapstructure:"entries"`
+	// Tools holds tool-level policy configuration (profile, allow/deny, per-provider rules).
+	Tools ToolsOptions `json:"tools" mapstructure:"tools"`
+}
+
+// ToolsOptions holds tool-level policy configuration.
+// Applied to every agent turn via the ToolPolicyPipeline.
+type ToolsOptions struct {
+	// Profile is the active tool profile preset.
+	// Values: "minimal", "coding", "full", "golem", "team"
+	// Default: "" (no profile, all tools allowed)
+	Profile string `json:"profile" mapstructure:"profile"`
+
+	// Allow lists explicitly allowed tools (supports group:xxx syntax).
+	// Empty means allow all (subject to Deny).
+	Allow []string `json:"allow" mapstructure:"allow"`
+
+	// Deny lists explicitly denied tools (supports group:xxx syntax).
+	// Deny always wins over Allow.
+	Deny []string `json:"deny" mapstructure:"deny"`
+
+	// ByProvider holds per-LLM-provider tool allow/deny rules.
+	// Key is the provider ID (e.g., "openai", "deepseek", "ollama").
+	ByProvider map[string]ToolAllowDeny `json:"by_provider" mapstructure:"by_provider"`
+}
+
+// ToolAllowDeny holds allow/deny lists for a specific context.
+type ToolAllowDeny struct {
+	Allow []string `json:"allow" mapstructure:"allow"`
+	Deny  []string `json:"deny" mapstructure:"deny"`
 }
 
 // PluginSlotsConfig maps slot kind -> desired Plugin ID

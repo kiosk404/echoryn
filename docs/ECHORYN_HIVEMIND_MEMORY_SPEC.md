@@ -25,7 +25,7 @@ memorycore Plugin
   │
   ├── plugin.go              # 插件入口 (Plugin + InitPlugin + LifecyclePlugin + PromptProvider)
   │   ├─ 4 个工具: memory_search / memory_read / memory_write / memory_delete
-  │   ├─ 2 个 Hook: before_agent_start (记忆同步) + agent_end (记忆 flush)
+  │   ├─ 3 个 Hook: before_agent_start (记忆同步) + before_compaction (预压缩刷写) + after_turn (轮后提取)
   │   └─ PromptProvider: MemorySection (Priority=400)
   │
   ├── manager/manager.go     # Manager — 索引管理器核心 ★
@@ -102,12 +102,13 @@ type MemoryConfig struct {
 | `memory_write` | path, content, append? | 写入/追加记忆文件 |
 | `memory_delete` | path | 删除记忆文件 + 清理索引 |
 
-### 4.2 Hook (2 个)
+### 4.2 Hook (3 个)
 
-| Hook | 触发时机 | 行为 |
-|------|---------|------|
-| `before_agent_start` | Agent 执行前 | 同步记忆文件 + 注入记忆系统指令 |
-| `agent_end` | Agent 执行后 | 提取最近对话要点，写入 `memory/YYYY-MM-DD.md` |
+| Hook                 | 触发时机     | 行为                                |
+|----------------------|----------|-----------------------------------|
+| `before_agent_start` | Agent 执行前 | 同步记忆文件 + 注入记忆系统指令                 |
+| `before_compaction`  | 压缩前      | LLM 驱动的预压缩记忆刷写                    |
+| `after_turn`         | 每轮对话后    | 自动提取对话关键信息写入记忆库（PostSamplingHook） |
 
 ### 4.3 PromptProvider
 
@@ -335,29 +336,133 @@ NewProvider(cfg):
   └─ "auto"  → 先 OpenAI → 失败 → Gemini → 都失败 → error
 ```
 
----
+## 九、Memory Flush (before_compaction Hook)
 
-## 九、Memory Flush (agent_end Hook)
-
-会话结束时自动提取要点写入记忆：
+压缩前自动提取要点写入记忆（LLM 驱动）：
 
 ```
-agent_end Hook:
-  ├─ 1. 查找最近一轮 user + assistant 消息
-  ├─ 2. 格式化为 Markdown 日记条目:
-  │     ## HH:MM
-  │     **User**: <用户输入摘要>
-  │     **Assistant**: <助手回复摘要>
+before_compaction Hook:
+  ├─ 1. 检查会话是否需要刷写（频率控制，每周期仅一次）
+  ├─ 2. 获取 ChatModel
+  ├─ 3. 构建对话上下文（截断每条消息至 500 字符）
+  ├─ 4. 调用 LLM 提取关键信息
+  │     System Prompt: "Pre-compaction memory flush turn..."
+  │     User Prompt:   memoryFlushPrompt + 对话上下文
+  ├─ 5. 若返回非 NOTHING_TO_STORE → 写入 memory/YYYY-MM-DD.md
+  └─ 6. 无模型时降级为 lightweightFlush（提取最后一轮）
+```
+
+**与 PostSamplingHook 的区别：**
+
+| 特性 | Pre-Compaction Flush | PostSamplingHook (Session Memory) |
+|------|---------------------|--------------------------------|
+| 触发时机 | Context 接近 token 上限时 | 每 N 轮或 M tokens 后 |
+| 目的 | 压缩前保存完整上下文 | 增量提取关键信息 |
+| 频率控制 | `session.ShouldMemoryFlush()` | 双阈值 + MinInterval |
+| 输出标签 | `(pre-compaction flush)` | `(session memory)` |
+| Prompt | 全量总结风格 | 增量摘要风格 |
+
+---
+
+## 十、Session Memory (PostSamplingHook / after_turn)
+
+> **新增功能** (2026-04): 基于 AfterTurnData 的轮后自动记忆提取。
+
+### 10.1 设计目标
+
+在 Agent 正常对话过程中（而非仅在压缩时），定期调用 LLM 提取对话中的关键信息写入 SQLite 记忆库。这确保了即使长时间未触发 compaction，重要信息也能被持久化。
+
+### 10.2 触发机制 — 双阈值 OR 逻辑
+
+```
+after_turn 触发条件（满足任一即触发）:
+  条件 A: turns_since_last_extract >= TurnThreshold    (默认: 10)
+  条件 B: accumulated_tokens >= TokenThreshold         (默认: 8192)
+
+守卫条件（必须同时满足）:
+  ✓ SessionMemory.Enabled == true
+  ✓ manager 已初始化
+  ✓ len(messages) >= MinMessages                        (默认: 4)
+  ✓ time_since(last_extract) >= MinIntervalSec          (默认: 30s)
+```
+
+### 10.3 数据流
+
+```
+AgentRunner.fireAfterTurnHooks()
   │
-  ├─ 3. 写入 memory/YYYY-MM-DD.md (追加模式)
-  └─ 4. 触发同步 (mark dirty → Sync)
+  ├─ data = AfterTurnData{
+  │     AgentID, SessionID, RunID,
+  │     TokensUsed, MaxTokens,
+  │     Messages: session.ActiveMessages()   ← 新增字段
+  │   }
+  │
+  └─ for hook in hooks → hook(ctx, data)
+       │
+       └─ memoryCore.onAfterTurn(data):
+            ├─ getOrCreateTracker(sessionID)
+            ├─ tracker.RecordTurn(data.TokensUsed)
+            ├─ tracker.ShouldExtract(cfg)?
+            │   ├─ No → return nil (正常退出)
+            │   └─ Yes → llmExtractMemories()
+            │        ├─ getChatModel() via Handle.RuntimeAPI().ModelManager()
+            │        ├─ 构建 prompt (system + conversation context)
+            │        ├─ chatModel.Generate() → LLM 提取
+            │        ├─ NOTHING_TO_STORE? → return
+            │        └─ manager.WriteMemory("memory/YYYY-MM-DD.md", entry, append=true)
+            └─ tracker.Reset()  // 仅成功时重置
 ```
+
+### 10.4 配置
+
+```json
+{
+  "session_memory": {
+    "enabled": true,
+    "turn_threshold": 10,
+    "token_threshold": 8192,
+    "min_messages": 4,
+    "min_interval_sec": 30
+  }
+}
+```
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `enabled` | `true` | 是否启用 PostSamplingHook |
+| `turn_threshold` | `10` | 多少轮后触发 |
+| `token_threshold` | `8192` | 累积多少 token 后触发 |
+| `min_messages` | `4` | 最少消息数才提取（防短会话误触） |
+| `min_interval_sec` | `30` | 同一会话两次提取最小间隔 |
+
+### 10.5 关键文件
+
+| 文件 | 变更类型 | 职责 |
+|------|---------|------|
+| `entity/config.go` | **修改** | `SessionMemoryConfig` + `DefaultSessionMemoryConfig()` |
+| `session_tracker.go` | **新建** | `SessionMemoryTracker`: 双阈值状态跟踪器 |
+| `plugin.go` | **修改** | `onAfterTurn()` + `llmExtractMemories()` + Hook 注册 |
+| `hooks.go` | **修改** | `AfterTurnData.Messages` 字段 |
+| `runner.go` | **修改** | `fireAfterTurnHooks` 中填充 Messages |
+
+### 10.6 错误处理策略
+
+| 错误场景 | 处理方式 | Tracker 行为 |
+|---------|---------|-------------|
+| 配置禁用 / 无 manager | 静默跳过 | 不创建 tracker |
+| 低于双阈值 | 静默等待 | 继续累积 |
+| 消息数不足 | Debug 日志 | 继续累积 |
+| 无 ChatModel 可用 | Warn 日志 | **不重置**（下次再试） |
+| LLM 调用失败 | Warn 日志 | **不重置**（下次再试） |
+| WriteMemory 失败 | Warn 日志 | **不重置**（数据不丢失） |
+| 返回 NOTHING_TO_STORE | Info 日志 | **正常重置**（无内容可存） |
+| 成功写入 | Info 日志 | **正常重置** |
 
 ---
 
-## 十、安全机制
+## 十一、安全机制
 
-### 10.1 路径遍历防护
+### 11.1 路径遍历防护
 
 ```go
 func (m *Manager) resolveMemoryPath(relPath string) (string, error) {
@@ -372,15 +477,15 @@ func (m *Manager) resolveMemoryPath(relPath string) (string, error) {
 
 `ReadFile` 和 `WriteMemory` 都使用此方法验证路径安全性。
 
-### 10.2 SQL 注入防护
+### 11.2 SQL 注入防护
 
 所有 SQL 查询使用参数化占位符 `?`，符合项目安全规范。
 
 ---
 
-## 十一、与 OpenClaw 对比
+## 十二、与 OpenClaw 对比
 
-### 11.1 完全对齐项
+### 12.1 完全对齐项
 
 | 功能 | Echoryn | OpenClaw | 对齐状态 |
 |------|---------|----------|---------|
@@ -394,7 +499,7 @@ func (m *Manager) resolveMemoryPath(relPath string) (string, error) {
 | 全局实例缓存 | `map[string]*Manager` | `INDEX_CACHE` | ✅ 模式一致 |
 | Markdown 切片 | ChunkMarkdown (重叠窗口) | 相同算法 | ✅ 算法一致 |
 
-### 11.2 差异项
+### 12.2 差异项
 
 | 功能 | Echoryn | OpenClaw | 差异说明 |
 |------|---------|----------|---------|
@@ -406,7 +511,7 @@ func (m *Manager) resolveMemoryPath(relPath string) (string, error) {
 | **会话记忆** | 未实现 (仅文件记忆) | sessions/ 目录 | OpenClaw 有会话级记忆 |
 | **远程存储** | 不支持 | remote/batch 远程同步 | OpenClaw 支持远程 |
 
-### 11.3 设计理念差异
+### 12.3 设计理念差异
 
 | 理念 | Echoryn | OpenClaw |
 |------|---------|----------|
@@ -418,7 +523,7 @@ func (m *Manager) resolveMemoryPath(relPath string) (string, error) {
 
 ---
 
-## 十二、配置示例
+## 十三、配置示例
 
 ```json
 {
@@ -446,6 +551,13 @@ func (m *Manager) resolveMemoryPath(relPath string) (string, error) {
               "vectorWeight": 0.7,
               "textWeight": 0.3
             }
+          },
+          "session_memory": {
+            "enabled": true,
+            "turn_threshold": 10,
+            "token_threshold": 8192,
+            "min_messages": 4,
+            "min_interval_sec": 30
           }
         }
       }
@@ -456,4 +568,4 @@ func (m *Manager) resolveMemoryPath(relPath string) (string, error) {
 
 ---
 
-> 最后更新: 2026-02-13
+> 最后更新: 2026-04-12

@@ -129,7 +129,7 @@ func (f *Framework) Init() error {
 
 		// Step 4: Call InitPlugin.Init() if implemented.
 		if initP, ok := p.(InitPlugin); ok {
-			api := newPluginAPI(f.registry, p.Name())
+			api := newPluginAPI(f.registry, p.Name(), f.promptPipeLine)
 			if err := initP.Init(api); err != nil {
 				return fmt.Errorf("plugin %q Init() failed: %w", def.ID, err)
 			}

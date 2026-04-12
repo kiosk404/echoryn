@@ -16,6 +16,37 @@ type ToolDefinition struct {
 	Parameters []ParameterDef
 	// Handler is the function that is called when the tool is invoked.
 	Handler ToolHandler
+
+	// --- Deferred loading (ToolSearch) ---
+
+	// ShouldDefer indicates this tool should be deferred (not sent with full schema).
+	// When true, only the tool name is sent to the LLM; the full schema is
+	// retrieved on demand via the tool_search tool.
+	// Default: false (always loaded).
+	ShouldDefer bool
+
+	// AlwaysLoad forces this tool to always send its full schema, even when
+	// the ToolSearch auto-threshold triggers deferral for all tools.
+	// Only meaningful as an explicit opt-out of deferral.
+	AlwaysLoad bool
+
+	// SearchHint is a 3-10 word phrase used by ToolSearch for keyword matching.
+	// Example: "web content fetch HTML markdown extract"
+	SearchHint string
+
+	// --- Tool metadata ---
+
+	// Category classifies the tool for grouping and policy filtering.
+	// Examples: "core", "memory", "web", "cluster", "team"
+	Category string
+
+	// IsReadOnly indicates the tool does not modify external state.
+	// Used for concurrent execution partitioning.
+	IsReadOnly bool
+
+	// IsConcurrencySafe indicates the tool can be executed concurrently
+	// with other concurrency-safe tools.
+	IsConcurrencySafe bool
 }
 
 // ParameterDef defines a single parameter for a tool.

@@ -28,6 +28,7 @@ type Spinner struct {
 	interval time.Duration
 	label    string
 	output   *termenv.Output
+	model    string // optional model name for display
 
 	mu      sync.Mutex
 	running bool
@@ -51,6 +52,11 @@ func WithInterval(d time.Duration) SpinnerOption {
 // WithOutput sets a custom termenv output (useful for testing).
 func WithOutput(o *termenv.Output) SpinnerOption {
 	return func(s *Spinner) { s.output = o }
+}
+
+// WithModel sets the model name for display during long operations.
+func WithModel(model string) SpinnerOption {
+	return func(s *Spinner) { s.model = model }
 }
 
 // NewSpinner creates a Spinner with the given label.
@@ -143,6 +149,11 @@ func (s *Spinner) renderFrame(idx int) {
 			Foreground(dimColor).
 			Render(fmt.Sprintf(" (%0.1fs)", elapsed.Seconds()))
 		line = fmt.Sprintf("\r %s%s%s", styledFram, styledLabel, elapsedText)
+		info := elapsedText
+		if s.model != "" {
+			info += dimStyle.Render("|" + s.model)
+		}
+		line = fmt.Sprintf("\r %s%s%s", styledFram, styledLabel, info)
 	} else {
 		line = fmt.Sprintf("\r%s%s", styledFram, styledLabel)
 	}

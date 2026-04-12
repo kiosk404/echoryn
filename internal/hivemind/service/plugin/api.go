@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/cloudwego/eino/components/model"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/service/runtime/prompt"
 )
 
 // RuntimeAPI is the bridge between plugins and core runtime modules.
@@ -62,22 +63,39 @@ type PluginAPI interface {
 
 	// RegisterService registers a background service with Start/Stop lifecycle.
 	RegisterService(svc ServiceDefinition)
+
+	// RegisterPromptSection registers a PromptSection into the shared Pipeline.
+	// Sections contribute to the system prompt WITHOUT occupying a tool slot.
+	//
+	// Aligned with OpenClaw's registerMemoryCapability({ promptBuilder }) and
+	// Claude Code's systemPromptSection('memory', ...).
+	RegisterPromptSection(section prompt.PromptSection)
+
+	// RegisterAfterTurnHook registers a hook that runs after each successful
+	// agent turn. This is the post-turn processing point for automatic memory
+	// flush, session summary, and other turn-level housekeeping.
+	//
+	// Aligned with OpenClaw's ContextEngine.afterTurn() and Claude Code's
+	// PostSamplingHook.
+	RegisterAfterTurnHook(hook AfterTurnHook)
 }
 
 // pluginAPIImpl implements PluginAPI, collecting registrations into the Registry.
 // This follows the K8s pattern where framework internals implement the
 // public interfaces, keeping the implementation private.
 type pluginAPIImpl struct {
-	registry   *Registry
-	pluginName string
+	registry       *Registry
+	pluginName     string
+	promptPipeline *prompt.Pipeline
 }
 
 var _ PluginAPI = (*pluginAPIImpl)(nil)
 
-func newPluginAPI(registry *Registry, pluginName string) *pluginAPIImpl {
+func newPluginAPI(registry *Registry, pluginName string, pipeline *prompt.Pipeline) *pluginAPIImpl {
 	return &pluginAPIImpl{
-		registry:   registry,
-		pluginName: pluginName,
+		registry:       registry,
+		pluginName:     pluginName,
+		promptPipeline: pipeline,
 	}
 }
 
@@ -95,6 +113,16 @@ func (a *pluginAPIImpl) RegisterHook(event HookEvent, handler HookHandler) {
 
 func (a *pluginAPIImpl) RegisterService(svc ServiceDefinition) {
 	a.registry.addService(a.pluginName, svc)
+}
+
+func (a *pluginAPIImpl) RegisterPromptSection(section prompt.PromptSection) {
+	if a.promptPipeline != nil {
+		a.promptPipeline.RegisterSection(section)
+	}
+}
+
+func (a *pluginAPIImpl) RegisterAfterTurnHook(hook AfterTurnHook) {
+	a.registry.addAfterTurnHook(a.pluginName, hook)
 }
 
 // handleImpl implements Handle, providing plugins access to runtime resources.

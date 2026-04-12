@@ -18,6 +18,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/mcp"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/subagent/observer"
+	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	"github.com/kiosk404/echoryn/pkg/paths"
 )
@@ -132,9 +133,10 @@ func (c *Config) Complete() CompletedConfig {
 
 // Dependencies holds the external modules required by the Agents module.
 type Dependencies struct {
-	LLM     *llm.Module
-	Plugins *plugin.Framework
-	MCP     mcp.Manager // MCP tool provider (maybe nil if no MCP servers configured)
+	LLM          *llm.Module
+	Plugins      *plugin.Framework
+	MCP          mcp.Manager // MCP tool provider (maybe nil if no MCP servers configured)
+	ToolsOptions genericoptions.ToolsOptions
 }
 
 // ensureDefaultAgent checks if the default "main" agent exists in the store;
@@ -279,6 +281,7 @@ func (c CompletedConfig) New(ctx context.Context, deps Dependencies) (*Module, e
 			KeepRecentTurns:     c.KeepRecentTurns,
 			LoopDetection:       c.LoopDetection.toToolloopConfig(),
 			WorkspaceDir:        workspaceDir,
+			ToolsOptions:        deps.ToolsOptions,
 		},
 	)
 

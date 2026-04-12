@@ -256,9 +256,10 @@ func InitAgents() InitFunc {
 		// 2. Create agents module
 		agentsCfg := &agents.Config{}
 		agentsModule, err := agentsCfg.Complete().New(ctx, agents.Dependencies{
-			LLM:     deps.LLM,
-			Plugins: deps.Plugin,
-			MCP:     deps.MCP.Manager,
+			LLM:          deps.LLM,
+			Plugins:      deps.Plugin,
+			MCP:          deps.MCP.Manager,
+			ToolsOptions: deps.Config.PluginOptions.Tools,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to create Agents module: %w", err)

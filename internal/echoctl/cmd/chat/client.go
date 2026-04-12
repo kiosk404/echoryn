@@ -47,6 +47,12 @@ type chatChunk struct {
 		} `json:"delta,omitempty"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
+	// Usage is populated only on the final chunk (finish_reason != null).
+	Usage *struct {
+		PromptTokens     int64 `json:"prompt_tokens"`
+		CompletionTokens int64 `json:"completion_tokens"`
+		TotalTokens      int64 `json:"total_tokens"`
+	} `json:"usage,omitempty"`
 }
 
 // toolCallChunk matches the OpenAI tool_call delta in streaming mode.
@@ -65,12 +71,23 @@ type chatError struct {
 	Type    string `json:"type"`
 }
 
+// ChatStreamResult holds the result of a streaming chat interaction.
+type ChatStreamResult struct {
+	Content          string
+	PromptTokens     int64
+	CompletionTokens int64
+	TotalTokens      int64
+}
+
 // HivemindClient is the HTTP client for hivemind /v1/chat/completions.
 type HivemindClient struct {
 	BaseURL    string
 	SessionKey string
 	Model      string
 	HTTPClient *http.Client
+
+	// lastRunID stores the run ID from the most recent request response header.
+	lastRunID string
 }
 
 // NewHivemindClient creates a new client.
@@ -87,6 +104,9 @@ func NewHivemindClient(baseURL, sessionKey, model string, httpClient *http.Clien
 	}
 }
 
+// LastRunID returns the run ID of the most recent chat request.
+func (c *HivemindClient) LastRunID() string { return c.lastRunID }
+
 // StreamCallback is called for each text delta during streaming.
 type StreamCallback func(delta string)
 
@@ -96,20 +116,20 @@ type ToolCallCallback func(name string)
 
 // ChatStream sends messages and streams the response, calling cb for each delta.
 // toolCb is called when a tool call is detected (may be nil).
-// Returns the full assistant reply when done.
-func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage, cb StreamCallback, toolCb ToolCallCallback) (string, error) {
+// Returns a ChatStreamResult with content and token usage when done.
+func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage, cb StreamCallback, toolCb ToolCallCallback) (*ChatStreamResult, error) {
 	body, err := json.Marshal(chatRequest{
 		Model:    c.Model,
 		Messages: messages,
 		Stream:   true,
 	})
 	if err != nil {
-		return "", fmt.Errorf("marshal request: %w", err)
+		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/v1/chat/completions", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if c.SessionKey != "" {
@@ -118,19 +138,26 @@ func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage,
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("http request: %w", err)
+		return nil, fmt.Errorf("http request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	// Extract Run ID from response header for later abort capability.
+	if rid := resp.Header.Get("X-Run-ID"); rid != "" {
+		c.lastRunID = rid
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("server returned %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("server returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var fullContent strings.Builder
 	scanner := bufio.NewScanner(resp.Body)
 	// Increase buffer for large chunks
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	result := &ChatStreamResult{}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -145,6 +172,13 @@ func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage,
 		var chunk chatChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
+		}
+
+		// Extract usage from final chunk (when present).
+		if chunk.Usage != nil {
+			result.PromptTokens = chunk.Usage.PromptTokens
+			result.CompletionTokens = chunk.Usage.CompletionTokens
+			result.TotalTokens = chunk.Usage.TotalTokens
 		}
 
 		for _, choice := range chunk.Choices {
@@ -168,10 +202,12 @@ func (c *HivemindClient) ChatStream(ctx context.Context, messages []ChatMessage,
 	}
 
 	if err := scanner.Err(); err != nil {
-		return fullContent.String(), fmt.Errorf("read stream: %w", err)
+		result.Content = fullContent.String()
+		return result, fmt.Errorf("read stream: %w", err)
 	}
 
-	return fullContent.String(), nil
+	result.Content = fullContent.String()
+	return result, nil
 }
 
 // Chat sends messages and returns the full response (non-streaming).
@@ -223,4 +259,34 @@ func (c *HivemindClient) Chat(ctx context.Context, messages []ChatMessage) (stri
 	}
 
 	return chatResp.Choices[0].Message.Content, nil
+}
+
+// Abort sends a DELETE request to cancel the currently running agent execution.
+func (c *HivemindClient) Abort(ctx context.Context) error {
+	runID := c.lastRunID
+	if runID == "" {
+		return fmt.Errorf("no active run to abort")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		c.BaseURL+"/v1/runs/"+runID, nil)
+	if err != nil {
+		return fmt.Errorf("create abort request: %w", err)
+	}
+	if c.SessionKey != "" {
+		req.Header.Set("X-Session-Key", c.SessionKey)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("abort request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("abort failed (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return nil
 }

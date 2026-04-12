@@ -36,6 +36,9 @@ type MemoryConfig struct {
 
 	// Cache holds the embedding cache configuration.
 	Cache CacheConfig `json:"cache"`
+
+	// SessionMemory configures automatic post-turn memory extraction.
+	SessionMemory SessionMemoryConfig `json:"session_memory"`
 }
 
 // EmbeddingConfig configures the embedding provider.
@@ -113,6 +116,40 @@ type CacheConfig struct {
 	MaxEntries int `json:"max_entries,omitempty"`
 }
 
+// SessionMemoryConfig holds configuration for automatic post-turn
+// session memory extraction (PostSamplingHook).
+type SessionMemoryConfig struct {
+	// Enabled activates the post-turn memory extraction hook.
+	Enabled bool `json:"enabled"`
+
+	// TurnThreshold is the number of turns after which extraction is triggered.
+	// Default: 10.
+	TurnThreshold int `json:"turn_threshold"`
+
+	// TokenThreshold is the cumulative token count that triggers extraction.
+	// Default: 8192 (~8K tokens).
+	TokenThreshold int `json:"token_threshold"`
+
+	// MinMessages is the minimum active messages required before extraction.
+	// Prevents extracting from trivially short sessions. Default: 4.
+	MinMessages int `json:"min_messages"`
+
+	// MinIntervalSec is the minimum seconds between extractions for the same
+	// session. Prevents rapid-fire extraction in edge cases. Default: 30.
+	MinIntervalSec int `json:"min_interval_sec"`
+}
+
+// DefaultSessionMemoryConfig returns sensible defaults for session memory extraction.
+func DefaultSessionMemoryConfig() SessionMemoryConfig {
+	return SessionMemoryConfig{
+		Enabled:        true,
+		TurnThreshold:  10,
+		TokenThreshold: 8192,
+		MinMessages:    4,
+		MinIntervalSec: 30,
+	}
+}
+
 // DefaultMemoryConfig returns a sensible default memory configuration.
 // Paths are resolved from the centralized ~/.echoryn state directory.
 func DefaultMemoryConfig() *MemoryConfig {
@@ -144,5 +181,6 @@ func DefaultMemoryConfig() *MemoryConfig {
 			Enabled:    true,
 			MaxEntries: 10000,
 		},
+		SessionMemory: DefaultSessionMemoryConfig(),
 	}
 }

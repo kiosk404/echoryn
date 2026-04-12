@@ -74,6 +74,8 @@ func installController(g *gin.Engine, deps *routerDeps) {
 		apiV1.GET("/sessions/:id", sessionHandler.Get)
 		apiV1.DELETE("/sessions/:id", sessionHandler.Delete)
 
+		// Run lifecycle (abort)
+
 		// Team management (only registered when team subsystem is available).
 		if deps.teamOrchestrator != nil && deps.teamTemplateService != nil {
 			teamHandler := v1.NewTeamHandler(deps.teamOrchestrator, deps.teamTemplateService, deps.teamMessageBus, deps.teamPublisher)

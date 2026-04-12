@@ -71,3 +71,11 @@ func (a agentServiceImpl) GetRun(ctx context.Context, id string) (*entity.Run, e
 func (a agentServiceImpl) ListRunsBySession(ctx context.Context, sessionID string) ([]*entity.Run, error) {
 	return a.runRepo.ListBySession(ctx, sessionID)
 }
+
+func (a agentServiceImpl) AbortRun(ctx context.Context, runID string) error {
+	return a.runner.Abort(ctx, runID)
+}
+
+func (a agentServiceImpl) LastRunID(sessionID string) string {
+	return a.runner.LastRunID(sessionID)
+}

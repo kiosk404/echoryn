@@ -88,7 +88,7 @@ func (s *ClusterAwarenessSection) Render(_ context.Context, pc *PromptContext) (
 	var buf strings.Builder
 	buf.WriteString("## Cluster Topology\n\n")
 	buf.WriteString(fmt.Sprintf("Echoryn Hivemind `%s` (version: %s)\n\n", pc.ClusterInfo.HivemindID, pc.ClusterInfo.Version))
-	
+
 	// When no Golem nodes are connected, render a clear notice so the LLM
 	// knows NOT to call cluster_dispatch_task / cluster_execute_skill.
 	if len(pc.ClusterInfo.Golems) == 0 {
@@ -127,7 +127,7 @@ func (s *ClusterAwarenessSection) Render(_ context.Context, pc *PromptContext) (
 	}
 
 	buf.WriteString("\nWhen a task requires capabilities beyond direct LLM interaction ")
-	buf.WriteString("(e.g., browsing the web, editing code on a remote machine), ")
+	buf.WriteString("(e.g., editing code on a remote machine), ")
 	buf.WriteString("you can dispatch it to the appropriate Golem node that has the matching skill. ")
 	buf.WriteString("Use `cluster_list_nodes` to see node details, and `cluster_dispatch_task` to send work.")
 

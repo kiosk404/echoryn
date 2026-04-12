@@ -45,6 +45,9 @@ type Registry struct {
 	// services holds all background services in registration order.
 	services []serviceEntry
 
+	// afterTurnHooks holds post-turn hook functions registered by plugins
+	afterTurnHooks []afterTurnEntry
+
 	// --- Slot management ---
 
 	// slots maps kind → active plugin name.
@@ -67,6 +70,12 @@ type hookEntry struct {
 type serviceEntry struct {
 	pluginName string
 	service    ServiceDefinition
+}
+
+// afterTurnEntry tracks which plugin registered an after-turn hook.
+type afterTurnEntry struct {
+	pluginName string
+	hook       AfterTurnHook
 }
 
 // NewRegistry creates an empty plugin registry.
@@ -123,6 +132,26 @@ func (r *Registry) addService(pluginName string, svc ServiceDefinition) {
 		pluginName: pluginName,
 		service:    svc,
 	})
+}
+
+func (r *Registry) addAfterTurnHook(pluginName string, hook AfterTurnHook) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.afterTurnHooks = append(r.afterTurnHooks, afterTurnEntry{
+		pluginName: pluginName,
+		hook:       hook,
+	})
+}
+
+// GetAfterTurnHooks returns all registered after-turn hooks in registration order.
+func (r *Registry) GetAfterTurnHooks() []AfterTurnHook {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	hooks := make([]AfterTurnHook, 0, len(r.afterTurnHooks))
+	for _, e := range r.afterTurnHooks {
+		hooks = append(hooks, e.hook)
+	}
+	return hooks
 }
 
 // --- Query methods ---

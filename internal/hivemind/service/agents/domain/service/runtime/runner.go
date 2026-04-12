@@ -21,6 +21,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/llm"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/mcp"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
+	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
 	"github.com/kiosk404/echoryn/pkg/logger"
 	"github.com/kiosk404/echoryn/pkg/utils/safego"
 )
@@ -89,6 +90,7 @@ type AgentRunner struct {
 	windowGuard     *ContextWindowGuard
 	compactor       *Compactor
 	loopDetectCfg   toolloop.Config
+	toolPolicy      *plugin.ToolPolicyPipeline
 	runTimeout      time.Duration
 
 	// subAgentMgr provides access to the Announcer for
@@ -107,6 +109,9 @@ type AgentRunner struct {
 	mu         sync.Mutex
 	activeRuns map[string]*AbortController
 
+	// lastRunIDs maps sessionID → most recent run ID (for HTTP header exposure).
+	lastRunIDs sync.Map // string → string
+
 	// sessionActors provides per-session serialization using the Actor model.
 	//
 	// Aligned with OpenClaw's session lane pattern (session:<key>, maxConcurrent=1):
@@ -122,6 +127,15 @@ type AgentRunner struct {
 	sessionActors *sessionActorPool
 }
 
+// LastRunID returns the most recently created run ID for the given session.
+// This is used by the HTTP handler layer to set X-Run-ID response headers.
+func (r *AgentRunner) LastRunID(sessionID string) string {
+	if id, ok := r.lastRunIDs.Load(sessionID); ok {
+		return id.(string)
+	}
+	return ""
+}
+
 // AgentRunnerConfig holds configuration for the AgentRunner.
 type AgentRunnerConfig struct {
 	RunTimeout          time.Duration
@@ -134,6 +148,10 @@ type AgentRunnerConfig struct {
 	// Convention prompt files (SOUL.md, IDENTITY.md, AGENTS.md, prompts/*.md)
 	// are read directly from this directory.
 	WorkspaceDir string
+
+	// ToolsOptions holds tool-level policy configuration (profile, allow/deny, per-provider rules).
+	// Applied to every agent turn via the ToolPolicyPipeline.
+	ToolsOptions genericoptions.ToolsOptions
 }
 
 // NewAgentRunner creates a new AgentRunner with all dependencies.
@@ -196,6 +214,11 @@ func NewAgentRunner(
 	flowBuilder := agentflow.NewAgentFlowBuilder()
 	turnExecutor := NewTurnExecutor(flowBuilder, llmModule.Fallback, contextBuilder, cfg.MaxRetries)
 
+	// Build the 6-layer ToolPolicyPipeline from ToolsOptions config.
+	// This replaces the hardcoded subagent.FilterDeniedTools with a unified,
+	// configurable policy pipeline (Profile → Provider → Global → Agent → Channel → SubAgent).
+	toolPolicy := buildToolPolicyPipeline(cfg.ToolsOptions)
+
 	return &AgentRunner{
 		agentRepo:       agentRepo,
 		sessionRepo:     sessionRepo,
@@ -208,6 +231,7 @@ func NewAgentRunner(
 		windowGuard:     windowGuard,
 		compactor:       compactor,
 		loopDetectCfg:   loopCfg,
+		toolPolicy:      toolPolicy,
 		runTimeout:      cfg.RunTimeout,
 		activeRuns:      make(map[string]*AbortController),
 		sessionActors:   newSessionActorPool(),
@@ -419,6 +443,9 @@ func (r *AgentRunner) runInActor(
 	// Register run for external abort support.
 	r.registerRun(run.ID, abort)
 
+	// Store session -> run ID mapping for X-Run-ID response header exposure.
+	r.lastRunIDs.Swap(req.SessionID, run.ID)
+
 	// Emit initial run status event.
 	sw.Send(&entity.AgentEvent{
 		Type:      entity.EventRunStatus,
@@ -489,8 +516,19 @@ func (r *AgentRunner) executeRun(
 	// Resolve context window.
 	windowInfo := r.resolveWindowInfo(ctx, agent)
 
-	// Adapt plugin tools to Eino tools.
-	pluginTools := agentflow.AdaptPluginTools(r.pluginFramework.Registry(), agent.Tools)
+	// Apply 6-layer ToolPolicyPipeline on raw ToolDefinitions BEFORE adaptation.
+	// This replaces the old hardcoded subagent.FilterDeniedTools with a unified,
+	// configurable pipeline (Profile → Provider → Global → Agent → Channel → SubAgent).
+	policyCtx := plugin.PolicyContext{
+		AgentID:    agent.ID,
+		IsSubAgent: isSubAgentRun(ctx),
+	}
+	filteredDefs := r.applyToolPolicy(policyCtx)
+
+	// Adapt policy-filtered plugin tools to Eino tools.
+	// AdaptResult separates active (full schema) from deferred (name-only) tools.
+	adaptResult := agentflow.AdaptPluginToolsFromDefs(filteredDefs)
+	pluginTools := adaptResult.ActiveTools
 
 	// Merge MCP tools, filtered by agent.MCPServers (empty = all servers).
 	tools := pluginTools
@@ -505,19 +543,14 @@ func (r *AgentRunner) executeRun(
 		}
 		if len(mcpToolsList) > 0 {
 			tools = append(tools, mcpToolsList...)
-			logger.DebugX(pkg.ModuleName, "[AgentRunner] merged %d plugin tools + %d MCP tools", len(pluginTools), len(mcpToolsList))
+			logger.DebugX(pkg.ModuleName, "[AgentRunner] merged %d plugin tools + %d MCP tools (deferred=%d)",
+				len(pluginTools), len(mcpToolsList), len(adaptResult.DeferredNames))
 		}
 	}
 
-	// Filter denied tools for sub-agent runs (security policy enforcement).
-	// Sub-agents must not access orchestration tools (sessions_spawn, etc.)
-	// to prevent recursive spawning and privilege escalation.
-	if isSubAgentRun(ctx) {
-		tools = subagent.FilterDeniedTools(tools)
-	}
-
 	// Build PromptContext with tool summaries for the PromptPipeline.
-	promptCtx := r.buildPromptContext(agent, session, tools)
+	// Inject deferred tool names so ToolingSection can list them in the system prompt.
+	promptCtx := r.buildPromptContext(agent, session, tools, adaptResult.DeferredNames)
 	logger.InfoX(pkg.ModuleName, "[AgentRunner] promptCtx built: mode=%s tools=%d clusterInfo=%v agent=%v",
 		promptCtx.Mode, len(promptCtx.Tools), promptCtx.ClusterInfo != nil, promptCtx.Agent != nil)
 
@@ -757,6 +790,40 @@ func (r *AgentRunner) fireAgentEnd(ctx context.Context, agent *entity.Agent, ses
 	}
 }
 
+// fireAfterTurnHooks fires all registered after-turn hooks.
+// These run after a successful turn, before the Done event is emitted.
+// Hook failures are logged but do not fail the run.
+//
+// Aligned with OpenClaw's ContextEngine.afterTurn() and Claude Code's PostSamplingHook.
+func (r *AgentRunner) fireAfterTurnHooks(
+	ctx context.Context,
+	agent *entity.Agent,
+	session *entity.Session,
+	run *entity.Run,
+	usage *entity.TokenUsage,
+) {
+	hooks := r.pluginFramework.Registry().GetAfterTurnHooks()
+	if len(hooks) == 0 {
+		return
+	}
+
+	data := plugin.AfterTurnData{
+		AgentID:   agent.ID,
+		SessionID: session.ID,
+		RunID:     run.ID,
+		Messages:  session.ActiveMessages(),
+	}
+	if usage != nil {
+		data.TokensUsed = int(usage.TotalTokens)
+	}
+
+	for _, hook := range hooks {
+		if err := hook(ctx, data); err != nil {
+			logger.WarnX(pkg.ModuleName, "[AgentRunner] after-turn hook error: %v", err)
+		}
+	}
+}
+
 // registerRun adds an abort controller to the active runs map.
 func (r *AgentRunner) registerRun(runID string, ac *AbortController) {
 	r.mu.Lock()
@@ -817,6 +884,7 @@ func (r *AgentRunner) buildPromptContext(
 	agent *entity.Agent,
 	session *entity.Session,
 	tools []tool.BaseTool,
+	deferredNames []string,
 ) *prompt.PromptContext {
 	// Build base PromptContext from agent/session using the shared helper.
 	pc := BuildPromptContextFromAgent(agent, session)
@@ -840,6 +908,14 @@ func (r *AgentRunner) buildPromptContext(
 				Source:      source,
 			})
 		}
+	}
+
+	// Inject deferred tool names so ToolingSection can list them as "available via tool_search".
+	if len(deferredNames) > 0 {
+		if pc.Extra == nil {
+			pc.Extra = make(map[string]interface{})
+		}
+		pc.Extra["deferred_tools"] = deferredNames
 	}
 
 	return pc
@@ -919,4 +995,49 @@ func (a *agentExecutorAdapter) RunSubAgent(ctx context.Context, req *subagent.Ex
 // Uses the AgentRunner's triggerAgentTurn which has IsTrigger semantics.
 func (a *agentExecutorAdapter) TriggerParentTurn(ctx context.Context, parentSessionID, triggerMessage string) {
 	a.runner.triggerAgentTurn(ctx, parentSessionID, triggerMessage)
+}
+
+// buildToolPolicyPipeline constructs a 6-layer ToolPolicyPipeline from ToolsOptions.
+// This converts the config-level ToolsOptions (with JSON-friendly ToolAllowDeny)
+// to the plugin-level AllowDeny types used by the pipeline layers.
+func buildToolPolicyPipeline(opts genericoptions.ToolsOptions) *plugin.ToolPolicyPipeline {
+	// Convert by_provider map from config types to plugin types.
+	byProvider := make(map[string]plugin.AllowDeny, len(opts.ByProvider))
+	for providerID, ad := range opts.ByProvider {
+		byProvider[providerID] = plugin.AllowDeny{
+			Allow: ad.Allow,
+			Deny:  ad.Deny,
+		}
+	}
+
+	globalAD := plugin.AllowDeny{
+		Allow: opts.Allow,
+		Deny:  opts.Deny,
+	}
+
+	return plugin.NewDefaultPolicyPipeline(globalAD, byProvider)
+}
+
+// applyToolPolicy runs the ToolPolicyPipeline on all registered plugin tools,
+// returning the policy-filtered ToolDefinition list. The pipeline applies
+// Profile, Provider, Global, Agent, Channel, and SubAgent layers in order.
+func (r *AgentRunner) applyToolPolicy(policyCtx plugin.PolicyContext) []plugin.ToolDefinition {
+	allTools := r.pluginFramework.Registry().GetTools()
+
+	// Collect all tool definitions into a slice for the pipeline.
+	defs := make([]plugin.ToolDefinition, 0, len(allTools))
+	for _, def := range allTools {
+		defs = append(defs, def)
+	}
+
+	if r.toolPolicy == nil {
+		return defs
+	}
+
+	filtered := r.toolPolicy.Apply(defs, policyCtx)
+	if dropped := len(defs) - len(filtered); dropped > 0 {
+		logger.DebugX(pkg.ModuleName, "[AgentRunner] ToolPolicyPipeline: %d/%d tools passed (dropped %d)",
+			len(filtered), len(defs), dropped)
+	}
+	return filtered
 }

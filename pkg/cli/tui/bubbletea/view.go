@@ -148,6 +148,7 @@ func renderHints(m InputModel) string {
 
 	hints := []string{
 		"Enter: Send",
+		"Esc: Abort",
 		"Alt+Enter: Newline",
 		"Tab: Accept",
 		"↑↓: Navigate",

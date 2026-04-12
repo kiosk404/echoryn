@@ -18,6 +18,7 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langfuse-tracing"
 	langsmithtracing "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langsmith-tracing"
+	webfetch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-fetch"
 	ddgsearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/duckduckgo-web-search"
 	geminisearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/gemini-web-search"
 	genericoptions "github.com/kiosk404/echoryn/internal/pkg/options"
@@ -110,6 +111,14 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		skillsplugin.Factory,
 		plugin.PluginArgs{
 			"config": skillsplugin.ResolveSkillsConfig(opts),
+		})
+
+	// --- web-fetch: HTTP fetch + readable content extraction (HTML + markdown/text) ---
+	registry.Register(
+		webfetch.PluginDefinition(),
+		webfetch.Factory,
+		plugin.PluginArgs{
+			"config": webfetch.ResolveWebFetchConfig(opts),
 		})
 
 	// --- web-search (gemini): web search via Gemini Google search grounding ---

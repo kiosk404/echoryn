@@ -2,6 +2,8 @@ package plugin
 
 import (
 	"context"
+
+	agentEntity "github.com/kiosk404/echoryn/internal/hivemind/service/agents/domain/entity"
 )
 
 // HookEvent identifies a lifecycle event that plugins can subscribe to.
@@ -38,6 +40,11 @@ const (
 	// Plugins can perform post-compaction actions (e.g., workspace context refresh.)
 	// Data: {"agent", "session", "summary", "compaction_count"}
 	HookAfterCompaction HookEvent = "after_compaction"
+
+	// HookAfterTurn is fired after each agent turn completes successfully.
+	// Data: {"agent", "session", "run", "token_usage"}
+	// Aligned with OpenClaw's ContextEngine.afterTurn() and Claude Code's PostSamplingHook.
+	HookAfterTurn HookEvent = "after_turn"
 )
 
 // HookHandler is the callback function for lifecycle hooks.
@@ -51,4 +58,24 @@ type HookProvider interface {
 	Plugin
 	// Hooks returns a mapping of events to handlers.
 	Hooks() map[HookEvent]HookHandler
+}
+
+// AfterTurnHook is a function called after each successful agent turn.
+// It receives the turn context including session, agent, and token usage info.
+//
+// Aligned with OpenClaw's ContextEngine.afterTurn() and Claude Code's PostSamplingHook.
+type AfterTurnHook func(ctx context.Context, data AfterTurnData) error
+
+// AfterTurnData carries context for after-turn hooks.
+type AfterTurnData struct {
+	AgentID    string
+	SessionID  string
+	RunID      string
+	TokensUsed int
+	MaxTokens  int
+
+	// Messages are the session's active messages at turn completion.
+	// Populated by AgentRunner.fireAfterTurnHooks from session.ActiveMessages().
+	// Used by memory-core's post-turn extraction hook to analyze conversation context.
+	Messages []*agentEntity.Message
 }
