@@ -16,7 +16,8 @@ import (
 	memorycore "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory/memory-core"
 	skillsplugin "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/skills"
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
-	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langfuse-tracing"
+	toolsearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tool-search"
+	langfusetracing "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langfuse-tracing"
 	langsmithtracing "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langsmith-tracing"
 	webfetch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-fetch"
 	ddgsearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/web-search/duckduckgo-web-search"
@@ -111,6 +112,14 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		skillsplugin.Factory,
 		plugin.PluginArgs{
 			"config": skillsplugin.ResolveSkillsConfig(opts),
+		})
+
+	// --- tool-search: deferred tool discovery (ToolSearch à la Claude Code) ---
+	registry.Register(
+		toolsearch.PluginDefinition(),
+		toolsearch.Factory,
+		plugin.PluginArgs{
+			"config": toolsearch.ResolveToolSearchConfig(opts),
 		})
 
 	// --- web-fetch: HTTP fetch + readable content extraction (HTML + markdown/text) ---

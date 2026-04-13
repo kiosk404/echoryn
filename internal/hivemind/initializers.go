@@ -310,6 +310,18 @@ func InitPluginLifecycle() InitFunc {
 			return false
 		}, "SubAgentManager")
 
+		// Inject Registry into tool-search plugin (RegistrySetter pattern).
+		// The Searcher needs access to the full Registry to discover tools.
+		injectInterface(deps.Plugin, func(p plugin.Plugin) bool {
+			if setter, ok := p.(interface {
+				SetRegistry(registry *plugin.Registry)
+			}); ok {
+				setter.SetRegistry(deps.Plugin.Registry())
+				return true
+			}
+			return false
+		}, "Registry")
+
 		// Inject Team dependencies
 		if err := injectTeamDependencies(deps); err != nil {
 			return err
