@@ -22,7 +22,7 @@ var slotDefaults = map[string]string{
 	"subagent":   "subagent",
 	"tracing":    "",
 	"channel":    "",
-	"web-search": "",
+	"web-search": "duckduckgo-web-search",
 }
 
 // ResolveSlot determines whether a plugin should be activated based on

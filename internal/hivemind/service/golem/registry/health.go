@@ -2,7 +2,6 @@ package registry
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/kiosk404/echoryn/pkg/logger"
@@ -12,7 +11,6 @@ import (
 func (m *InMemoryRegistry) healthCheckLoop(ctx context.Context) {
 	defer close(m.stopped)
 
-	fmt.Println(m)
 	ticker := time.NewTicker(m.cfg.CleanupInternal)
 	defer ticker.Stop()
 

@@ -325,10 +325,10 @@ make help       # 显示帮助
 | 文档 | 说明 |
 |------|------|
 | [ECHORYN_SPEC](docs/ECHORYN_SPEC.md) | 项目总体技术规范 |
-| [Agents 运行时引擎](docs/ECHORYN_HIVEMIND_AGENTS_SPEC.md) | AgentRunner、上下文构建、Eino DAG 编排 |
-| [LLM 多模型管理](docs/ECHORYN_HIVEMIND_LLM_SPEC.md) | SPI 架构、8 Provider、Fallback 降级 |
-| [记忆系统](docs/ECHORYN_HIVEMIND_MEMORY_SPEC.md) | SQLite FTS5 + 向量搜索、混合检索 |
-| [插件框架](docs/ECHORYN_HIVEMIND_PLUGIN_SPEC.md) | Slot 互斥、生命周期、5 种能力注入 |
+| [Agents 运行时引擎](docs/ECHORYN_HIVEMIND_AGENTS.md) | AgentRunner、上下文构建、Eino DAG 编排 |
+| [LLM 多模型管理](docs/ECHORYN_HIVEMIND_LLM.md) | SPI 架构、8 Provider、Fallback 降级 |
+| [记忆系统](docs/ECHORYN_HIVEMIND_MEMORY.md) | SQLite FTS5 + 向量搜索、混合检索 |
+| [插件框架](docs/ECHORYN_HIVEMIND_PLUGIN.md) | Slot 互斥、生命周期、5 种能力注入 |
 | [MCP 工具协议](docs/ECHORYN_HIVEMIND_MCP_SPEC.md) | stdio/SSE 传输、Claude Desktop 兼容 |
 | [Team 团队协作](docs/ECHORYN_TEAM_SPEC.md) | 多 Agent 协同、协作策略、MessageBus |
 | [Golem 工作节点](docs/ECHORYN_GOLEM_SPEC.md) | 心跳注册、技能执行、分布式调度 |

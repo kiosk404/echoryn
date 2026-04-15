@@ -1,11 +1,17 @@
 package render
 
 import (
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/muesli/termenv"
 )
+
+// DetectColorProfile returns the terminal's color profile.
+func DetectColorProfile() termenv.Profile {
+	return termenv.NewOutput(os.Stdout).Profile
+}
 
 // MarkdownRenderer converts markdown text to ANSI-styled terminal output.
 //

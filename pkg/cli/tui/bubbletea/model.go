@@ -7,6 +7,16 @@ import (
 	"github.com/kiosk404/echoryn/pkg/cli/tui/command"
 )
 
+// InputBuffer is an alias for textbuffer.Buffer, exposed for cross-round
+// history sharing without requiring the parent package to import textbuffer.
+type InputBuffer = textbuffer.Buffer
+
+// NewSharedBuffer creates a new text buffer suitable for sharing across
+// multiple input rounds (preserving history)
+func NewSharedBuffer() *InputBuffer {
+	return textbuffer.NewBuffer()
+}
+
 // InputResult is the outcome of a single input round.
 type InputResult struct {
 	// Content is the submitted text (empty if user quit).
@@ -49,11 +59,17 @@ type InputModel struct {
 }
 
 // NewInputModel creates a new InputModel for one input round.
-func NewInputModel(registry *command.Registry, prompt, multilinePrompt string) InputModel {
+func NewInputModel(registry *command.Registry, prompt, multilinePrompt string, sharedBuf *textbuffer.Buffer) InputModel {
 	t := theme.GetTheme()
 	s := theme.GetStyles()
 
-	buf := textbuffer.NewBuffer()
+	buf := sharedBuf
+	if buf == nil {
+		buf = textbuffer.NewBuffer()
+	} else {
+		// Reuse the buffer but clear the current input text (keep history).
+		buf.Clear()
+	}
 
 	// Create completion manager from command registry
 	compMgr := completion.NewManager()

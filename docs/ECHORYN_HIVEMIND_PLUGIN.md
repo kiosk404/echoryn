@@ -316,7 +316,7 @@ Echoryn 随 Hivemind 二进制发行 **9 个内置插件**，在编译时链接�
 
 ### 8.1 memory-core (记忆系统) ⭐
 
-> 详见 [ECHORYN_HIVEMIND_MEMORY_SPEC.md](./ECHORYN_HIVEMIND_MEMORY_SPEC.md)
+> 详见 [ECHORYN_HIVEMIND_MEMORY_SPEC.md](ECHORYN_HIVEMIND_MEMORY.md)
 
 | 属性 | 值 |
 |------|---|

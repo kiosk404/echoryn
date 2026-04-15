@@ -12,10 +12,10 @@
 
 | 文档 | 模块 | 核心内容 |
 |------|------|---------|
-| [ECHORYN_HIVEMIND_AGENTS_SPEC.md](./ECHORYN_HIVEMIND_AGENTS_SPEC.md) | Agents 运行时引擎 | AgentRunner 编排流程、TurnExecutor 重试/Fallback、ContextBuilder/Pruner 两阶段裁剪、PromptPipeline Section 化系统提示词、Compactor 多轮压缩、AgentFlow Eino DAG、SubAgent 接口预留、Store 层 |
-| [ECHORYN_HIVEMIND_LLM_SPEC.md](./ECHORYN_HIVEMIND_LLM_SPEC.md) | LLM 多模型管理 | SPI 四层插件架构、8 个 Provider 实现（两种模式）、ModelManager 四阶段初始化、FallbackExecutor 四层错误分类、ModelProber 并发扫描、CompatManager 规则引擎 |
-| [ECHORYN_HIVEMIND_MEMORY_SPEC.md](./ECHORYN_HIVEMIND_MEMORY_SPEC.md) | 记忆系统 | 插件注册（4 工具 + 2 钩子 + PromptProvider）、Manager 索引核心、混合搜索流程（向量 + 关键词融合）、SQLite 5 表 Schema、OpenAI/Gemini Embedding、Memory Flush、安全机制 |
-| [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](./ECHORYN_HIVEMIND_PLUGIN_SPEC.md) | 插件框架 | 三层基础接口、5 种能力注入（Tool/Hook/Service/CLI/PromptSection）、Slot 互斥、生命周期管理、Registry 中心仓、Interface Probe、3 个内置插件 |
+| [ECHORYN_HIVEMIND_AGENTS_SPEC.md](ECHORYN_HIVEMIND_AGENTS.md) | Agents 运行时引擎 | AgentRunner 编排流程、TurnExecutor 重试/Fallback、ContextBuilder/Pruner 两阶段裁剪、PromptPipeline Section 化系统提示词、Compactor 多轮压缩、AgentFlow Eino DAG、SubAgent 接口预留、Store 层 |
+| [ECHORYN_HIVEMIND_LLM_SPEC.md](ECHORYN_HIVEMIND_LLM.md) | LLM 多模型管理 | SPI 四层插件架构、8 个 Provider 实现（两种模式）、ModelManager 四阶段初始化、FallbackExecutor 四层错误分类、ModelProber 并发扫描、CompatManager 规则引擎 |
+| [ECHORYN_HIVEMIND_MEMORY_SPEC.md](ECHORYN_HIVEMIND_MEMORY.md) | 记忆系统 | 插件注册（4 工具 + 2 钩子 + PromptProvider）、Manager 索引核心、混合搜索流程（向量 + 关键词融合）、SQLite 5 表 Schema、OpenAI/Gemini Embedding、Memory Flush、安全机制 |
+| [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](ECHORYN_HIVEMIND_PLUGIN.md) | 插件框架 | 三层基础接口、5 种能力注入（Tool/Hook/Service/CLI/PromptSection）、Slot 互斥、生命周期管理、Registry 中心仓、Interface Probe、3 个内置插件 |
 | [ECHORYN_HIVEMIND_MCP_SPEC.md](./ECHORYN_HIVEMIND_MCP_SPEC.md) | MCP 工具调用 | Claude Desktop 兼容配置、Manager 接口、并发初始化、MCPServer 连接流程、工具聚合到 AgentRunner、重连/关闭 |
 
 ---
@@ -827,11 +827,11 @@ echoctl 已从节点管理工具重构为**客户端交互工具**，核心是 `
 | `internal/pkg/server` | ✅ 完成 | 100% | Gin + gRPC 双协议服务器 |
 | `internal/pkg/options` | ✅ 完成 | 100% | 通用选项（含 Model/Plugin/MCP） |
 | Hivemind 基础框架 | ✅ 完成 | 100% | App/Server/Config/Router/Gateway/Middleware/Handler |
-| **Agents Module** | ⭐ 完成 | **95%** | 完整 CRUD + Runtime 引擎（Runner/Executor/Context/Compaction/AgentFlow）+ **PromptPipeline**。详见 [ECHORYN_HIVEMIND_AGENTS_SPEC.md](./ECHORYN_HIVEMIND_AGENTS_SPEC.md) |
-| **LLM Module** | ⭐ 完成 | **95%** | 完整 SPI 体系，8 个 Provider，Manager/Prober/Fallback。详见 [ECHORYN_HIVEMIND_LLM_SPEC.md](./ECHORYN_HIVEMIND_LLM_SPEC.md) |
-| **Plugin Framework** | ⭐ 完成 | **95%** | 完整生命周期，Slot 互斥，**5 种能力注入**（Tool/CLI/Hook/Service/Prompt），10+ 内置插件。详见 [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](./ECHORYN_HIVEMIND_PLUGIN_SPEC.md) |
+| **Agents Module** | ⭐ 完成 | **95%** | 完整 CRUD + Runtime 引擎（Runner/Executor/Context/Compaction/AgentFlow）+ **PromptPipeline**。详见 [ECHORYN_HIVEMIND_AGENTS_SPEC.md](ECHORYN_HIVEMIND_AGENTS.md) |
+| **LLM Module** | ⭐ 完成 | **95%** | 完整 SPI 体系，8 个 Provider，Manager/Prober/Fallback。详见 [ECHORYN_HIVEMIND_LLM_SPEC.md](ECHORYN_HIVEMIND_LLM.md) |
+| **Plugin Framework** | ⭐ 完成 | **95%** | 完整生命周期，Slot 互斥，**5 种能力注入**（Tool/CLI/Hook/Service/Prompt），10+ 内置插件。详见 [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](ECHORYN_HIVEMIND_PLUGIN.md) |
 | **MCP Module** | ⭐ 完成 | **90%** | stdio/SSE 传输，并发初始化，工具聚合，Claude Desktop 兼容。详见 [ECHORYN_HIVEMIND_MCP_SPEC.md](./ECHORYN_HIVEMIND_MCP_SPEC.md) |
-| **Memory 系统** | ✅ 完成 | **90%** | SQLite + 混合搜索 + OpenAI/Gemini Embedding + Flush 钩子。详见 [ECHORYN_HIVEMIND_MEMORY_SPEC.md](./ECHORYN_HIVEMIND_MEMORY_SPEC.md) |
+| **Memory 系统** | ✅ 完成 | **90%** | SQLite + 混合搜索 + OpenAI/Gemini Embedding + Flush 钩子。详见 [ECHORYN_HIVEMIND_MEMORY_SPEC.md](ECHORYN_HIVEMIND_MEMORY.md) |
 | **Team 多智能体** | ⭐ 完成 | **90%** | 完整团队编排：Orchestrator/Template/EventBridge/MessageBus。支持 HTTP API CRUD |
 | **echoctl CLI** | ✅ chat 完成 | **50%** | chat TUI (Bubbletea + SSE 流式) 已完成，kubectl 风格资源管理命令待实现|
 | **SubAgent 编排** | ⭐ 完成 | **85%** | K8s Controller 模式：SubAgentManager/SubAgentScheduler/AnnounceController + 双存储后端（InMemory/BoltDB）+ 工具黑名单 + 恢复机制。Cleanup 待完善 |

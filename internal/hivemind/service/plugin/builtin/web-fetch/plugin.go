@@ -18,7 +18,7 @@ func PluginDefinition() plugin.Definition {
 	return plugin.Definition{
 		ID:          PluginName,
 		Name:        "Web Fetch",
-		Kind:        "web-fetch",
+		Kind:        "general",
 		Description: "Fetch and extract readable content from URLs (HTML → markdown/text) with SSRF protection, caching, and invisible-content stripping",
 	}
 }

@@ -8,10 +8,10 @@ Echoryn 是用 Go 编写的分布式 AI 虚拟角色容器平台。
 | 类别 | 文档 |
 |------|------|
 | 项目总体规范 | [docs/ECHORYN_SPEC.md](docs/ECHORYN_SPEC.md) |
-| 智能体引擎 | [docs/ECHORYN_HIVEMIND_AGENTS_SPEC.md](docs/ECHORYN_HIVEMIND_AGENTS_SPEC.md) |
-| 插件框架 | [docs/ECHORYN_HIVEMIND_PLUGIN_SPEC.md](docs/ECHORYN_HIVEMIND_PLUGIN_SPEC.md) |
-| LLM 多模型管理 | [docs/ECHORYN_HIVEMIND_LLM_SPEC.md](docs/ECHORYN_HIVEMIND_LLM_SPEC.md) |
-| 记忆系统 | [docs/ECHORYN_HIVEMIND_MEMORY_SPEC.md](docs/ECHORYN_HIVEMIND_MEMORY_SPEC.md) |
+| 智能体引擎 | [docs/ECHORYN_HIVEMIND_AGENTS_SPEC.md](docs/ECHORYN_HIVEMIND_AGENTS.md) |
+| 插件框架 | [docs/ECHORYN_HIVEMIND_PLUGIN_SPEC.md](docs/ECHORYN_HIVEMIND_PLUGIN.md) |
+| LLM 多模型管理 | [docs/ECHORYN_HIVEMIND_LLM_SPEC.md](docs/ECHORYN_HIVEMIND_LLM.md) |
+| 记忆系统 | [docs/ECHORYN_HIVEMIND_MEMORY_SPEC.md](docs/ECHORYN_HIVEMIND_MEMORY.md) |
 | Golem 工作节点 | [docs/ECHORYN_GOLEM_SPEC.md](docs/ECHORYN_GOLEM_SPEC.md) |
 | 团队协作 | [docs/ECHORYN_TEAM_SPEC.md](docs/ECHORYN_TEAM_SPEC.md) |
 | 上下文管理研究 | [docs/BLOG_CONTEXT_SPEC.md](docs/BLOG_CONTEXT_SPEC.md) |
