@@ -48,6 +48,7 @@ airi-go/
 .env.local
 /_test
 frontend/common
+_bmad/
 .qwen
 # Storage
 BIZ_BOT_ICON/
