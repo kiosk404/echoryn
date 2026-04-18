@@ -99,6 +99,7 @@ func (p *subagentPlugin) Init(api plugin.PluginAPI) error {
 			{Name: "model", Type: "string", Description: "Optional model override (e.g., 'openai:gpt-4o-mini')", Required: false},
 		},
 		Handler: p.handleSessionsSpawn,
+		Category: "agent",
 	})
 
 	// Register sessions_status tool.
@@ -109,6 +110,7 @@ func (p *subagentPlugin) Init(api plugin.PluginAPI) error {
 			{Name: "subagent_id", Type: "string", Description: "Specific sub-agent ID to query (default: list all)", Required: false},
 		},
 		Handler: p.handleSessionsStatus,
+		Category: "agent",
 	})
 
 	// Register agent_end hook to drain pending announcements.

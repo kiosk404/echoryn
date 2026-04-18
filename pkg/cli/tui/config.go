@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kiosk404/echoryn/pkg/cli/tui/command"
+	"github.com/kiosk404/echoryn/pkg/cli/tui/render"
 )
 
 // Config holds all configurable options for the TUI.
@@ -35,6 +36,12 @@ type Config struct {
 	// after a team is created. Different implementations can be used for TUI(SSE)
 	// GUI (websocket), or testing (in-memory channel)
 	TeamEventSubscriber command.TeamEventSubscriber
+
+
+	// BannerTools, BannerNodes, BannerSkills hold pre-fetched info for the banner.
+	BannerTools  []render.ToolGroupInfo
+	BannerNodes  []render.GolemNodeInfo
+	BannerSkills []render.SkillGroupInfo
 }
 
 // DefaultConfig returns a Config with production-ready defaults.
@@ -72,4 +79,13 @@ func WithTeamAPI(api command.TeamAPI) Option {
 
 func WithTeamEventSubscriber(sub command.TeamEventSubscriber) Option {
 	return func(c *Config) { c.TeamEventSubscriber = sub }
+}
+
+// WithBannerData sets pre-fetched banner data (tools, nodes, skills).
+func WithBannerData(tools []render.ToolGroupInfo, nodes []render.GolemNodeInfo, skills []render.SkillGroupInfo) Option {
+	return func(c *Config) {
+		c.BannerTools = tools
+		c.BannerNodes = nodes
+		c.BannerSkills = skills
+	}
 }

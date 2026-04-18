@@ -19,6 +19,7 @@ import (
 	"github.com/kiosk404/echoryn/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"github.com/kiosk404/echoryn/internal/hivemind/service/golem/registry"
 )
 
 type apiServer struct {
@@ -182,4 +183,13 @@ func buildExtraConfig(cfg *config.Config) (*ExtraConfig, error) {
 		Addr:       fmt.Sprintf("%s:%d", cfg.GRPCOptions.BindAddress, cfg.GRPCOptions.BindPort),
 		MaxMsgSize: cfg.GRPCOptions.MaxMsgSize,
 	}, nil
+}
+
+// golemRegistryOrNil safely extracts the Registry from a golem Module,
+// returning nil if the module is nil.
+func golemRegistryOrNil(m *golem.Module) registry.Registry {
+	if m == nil {
+		return nil
+	}
+	return m.Registry
 }

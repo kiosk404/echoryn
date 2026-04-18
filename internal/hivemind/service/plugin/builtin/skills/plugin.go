@@ -142,6 +142,13 @@ func buildLoaderOptions(cfg *Config) []pkgskills.LoaderOption {
 
 func (p *skillsPlugin) Name() string { return PluginName }
 
+// SkillsRegistry returns the underlying skills registry (if initialized).
+// This is used by InfoHandler to query skills metadata without importing
+// internal plugin types. The router discovers this via interface assertion.
+func (p *skillsPlugin) SkillsRegistry() *pkgskills.Registry {
+	return p.registry
+}
+
 // --- InitPlugin interface ---
 
 // Init registers list_skills and view_skill tools via the PluginAPI.
@@ -170,6 +177,7 @@ func (p *skillsPlugin) Init(api plugin.PluginAPI) error {
 			},
 		},
 		Handler: p.handleListSkills,
+		Category: "skills",
 	})
 
 	api.RegisterTool(plugin.ToolDefinition{
@@ -197,6 +205,7 @@ func (p *skillsPlugin) Init(api plugin.PluginAPI) error {
 			},
 		},
 		Handler: p.handleViewSkill,
+		Category: "skills",
 	})
 
 	logger.Info("[skills] registered list_skills and view_skill tools")

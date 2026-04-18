@@ -375,6 +375,12 @@ func handleToolCall(m *ChatModel, name string) tea.Cmd {
 func finishStreaming(m *ChatModel, done StreamDoneMsg) tea.Cmd {
 	m.lastUsage = done.Usage
 
+	// Update cumulative token counts for persistent status bar.
+	if done.Usage != nil {
+		m.cumulativePromptTokens = done.Usage.PromptTokens
+		m.cumulativeOutputTokens = done.Usage.CompletionTokens
+	}
+
 	// Merge fullContent (flushed before tool calls) + streamContent (remaining live text).
 	m.fullContent.WriteString(m.streamContent.String())
 	content := m.fullContent.String()
@@ -384,9 +390,15 @@ func finishStreaming(m *ChatModel, done StreamDoneMsg) tea.Cmd {
 
 	if done.Err != nil {
 		m.phase = PhaseInput
-		if content != "" {
-			m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: content})
+		// Always record the error in conversation history so the Agent knows
+		// what happened in the previous turn (e.g., tool call failure).
+		errContent := content
+		if errContent == "" {
+			errContent = "[Error] " + done.Err.Error()
+		} else {
+			errContent += "\n\n[Error] " + done.Err.Error()
 		}
+		m.messages = append(m.messages, ChatMessage{Role: "assistant", Content: errContent})
 		return tea.Println("Error: " + done.Err.Error())
 	}
 

@@ -134,6 +134,9 @@ func (t *TUI) Run(_ context.Context) error {
 		Model:      t.client.Model(),
 		ServerAddr: t.client.BaseURL(),
 		SessionKey: t.client.SessionKey(),
+		Tools:      t.cfg.BannerTools,
+		GolemNodes: t.cfg.BannerNodes,
+		Skills:     t.cfg.BannerSkills,
 	}, width)
 
 	// --- Create the single long-lived ChatModel ---

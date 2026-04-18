@@ -131,6 +131,7 @@ func (p *memoryCorePlugin) Init(api plugin.PluginAPI) error {
 			{Name: "query", Type: "string", Description: "The search query text", Required: true},
 		},
 		Handler: p.handleMemorySearch,
+		Category: "memory",
 	})
 
 	// Register memory_read tool.
@@ -143,6 +144,7 @@ func (p *memoryCorePlugin) Init(api plugin.PluginAPI) error {
 			{Name: "lines", Type: "number", Description: "Number of lines to read (default: all)", Required: false},
 		},
 		Handler: p.handleMemoryRead,
+		Category: "memory",
 	})
 
 	// Register memory_write tool.
@@ -155,6 +157,7 @@ func (p *memoryCorePlugin) Init(api plugin.PluginAPI) error {
 			{Name: "append", Type: "boolean", Description: "If true, append to existing file instead of overwriting (default: true)", Required: false},
 		},
 		Handler: p.handleMemoryWrite,
+		Category: "memory",	
 	})
 
 	// Register memory_delete tool.
@@ -165,6 +168,7 @@ func (p *memoryCorePlugin) Init(api plugin.PluginAPI) error {
 			{Name: "path", Type: "string", Description: "Relative file path of the memory file to delete", Required: true},
 		},
 		Handler: p.handleMemoryDelete,
+		Category: "memory",
 	})
 
 	// Register lifecycle hooks.

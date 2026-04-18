@@ -47,6 +47,11 @@ export USAGE_OPTIONS
 build:
 	@$(MAKE) go.build
 
+## build.%: Build source code for specific platform (e.g. make build.linux-amd64).
+.PHONY: build.%
+build.%:
+	@$(MAKE) go.build.$(PLATFORM).$*
+
 ## tidy: Run go mod tidy.
 .PHONY: tidy
 tidy:

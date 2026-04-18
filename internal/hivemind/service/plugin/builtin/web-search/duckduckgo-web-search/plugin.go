@@ -101,6 +101,7 @@ func (p *duckDuckGoPlugin) Init(api plugin.PluginAPI) error {
 			{Name: "query", Type: "string", Description: "The search query", Required: true},
 		},
 		Handler: p.handleWebSearch,
+		Category: "web",
 	})
 
 	return nil

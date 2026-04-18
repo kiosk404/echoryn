@@ -96,6 +96,7 @@ func (p *llmTaskPlugin) Init(api plugin.PluginAPI) error {
 			{Name: "timeout_ms", Type: "number", Description: "Timeout in milliseconds", Required: false},
 		},
 		Handler: p.handleLLMTask,
+		Category: "agent",
 	})
 
 	return nil

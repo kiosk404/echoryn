@@ -236,3 +236,50 @@ const timeFormat = time.RFC3339
 func FormatTime(t time.Time) string {
 	return t.Format(timeFormat)
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Info endpoint types (GET /v1/info, /v1/tools, /v1/nodes, /v1/skills)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// SystemInfoResponse is the response for GET /v1/info.
+type SystemInfoResponse struct {
+	DefaultModel string `json:"default_model"`
+}
+
+// ToolGroupResponse represents a group of tools by category.
+type ToolGroupResponse struct {
+	Category string   `json:"category"`
+	Tools    []string `json:"tools"`
+}
+
+// ToolsListResponse is the response for GET /v1/tools.
+type ToolsListResponse struct {
+	Groups []ToolGroupResponse `json:"groups"`
+	Total  int                 `json:"total"`
+}
+
+// NodeInfoResponse represents a single Golem node in the info response.
+type NodeInfoResponse struct {
+	ID     string            `json:"id"`
+	Name   string            `json:"name"`
+	Status string            `json:"status"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// NodesListResponse is the response for GET /v1/nodes.
+type NodesListResponse struct {
+	Nodes []NodeInfoResponse `json:"nodes"`
+	Total int                `json:"total"`
+}
+
+// SkillGroupResponse represents a group of skills by source.
+type SkillGroupResponse struct {
+	Source string   `json:"source"`
+	Skills []string `json:"skills"`
+}
+
+// SkillsListResponse is the response for GET /v1/skills.
+type SkillsListResponse struct {
+	Groups []SkillGroupResponse `json:"groups"`
+	Total  int                  `json:"total"`
+}

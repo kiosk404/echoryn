@@ -3,6 +3,7 @@ package bubbletea
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/kiosk404/echoryn/pkg/cli/tui/bubbletea/components/completion"
 	"github.com/kiosk404/echoryn/pkg/cli/tui/bubbletea/components/textbuffer"
@@ -151,6 +152,12 @@ type ChatModel struct {
 	teamState    *command.TeamState
 	teamAPI      command.TeamAPI
 	setTeamState func(state *command.TeamState)
+
+	// === Status Bar (persistent across turns) ===
+	cumulativePromptTokens int64 // total prompt tokens across turns
+	cumulativeOutputTokens int64 // total output tokens across turns
+	contextTotal           int64 // total context tokens
+	sessionStart           int64 // unix nano, when the session started
 }
 
 // ChatModelConfig holds the configuration for creating a ChatModel.
@@ -203,5 +210,6 @@ func NewChatModel(cfg ChatModelConfig) *ChatModel {
 		client:          cfg.Client,
 		commands:        cfg.Commands,
 		teamAPI:         cfg.TeamAPI,
+		sessionStart:    time.Now().UnixNano(),
 	}
 }

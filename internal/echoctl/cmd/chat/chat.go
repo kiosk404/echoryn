@@ -106,10 +106,21 @@ func (o *ChatOptions) Run(ctx context.Context, args []string) error {
 	adapter := newClientAdapter(client)
 	teamAPI := NewTeamHTTPClient(o.ServerAddr, o.Session, client.HTTPClient)
 	teamSub := NewTeamHTTPSubscriber(o.ServerAddr, o.ServerAddr, client.HTTPClient)
+	
+	// Fetch banner data (tools, nodes, skills) from Hivemind in parallel.
+	tools, nodes, skillGroups, defaultModel := fetchBannerData(ctx, o.ServerAddr, client.HTTPClient)
+
+	// Override the placeholder model name with the real one from the server.
+	if defaultModel != "" {
+		adapter.ModelName = defaultModel
+	}
+
 	ui := chatui.New(adapter,
 		chatui.WithProgramName("echoctl"),
 		chatui.WithTeamAPI(teamAPI),
-		chatui.WithTeamEventSubscriber(teamSub))
+		chatui.WithTeamEventSubscriber(teamSub),
+		chatui.WithBannerData(tools, nodes, skillGroups))
+
 
 	return ui.Run(ctx)
 }

@@ -122,6 +122,7 @@ func (p *golemClusterPlugin) Init(api plugin.PluginAPI) error {
 			},
 		},
 		Handler: p.handleListNodes,
+		Category: "cluster",
 	})
 
 	api.RegisterTool(plugin.ToolDefinition{
@@ -206,6 +207,7 @@ func (p *golemClusterPlugin) Init(api plugin.PluginAPI) error {
 			},
 		},
 		Handler: p.handleExecuteSkill,
+		Category: "cluster",
 	})
 
 	return nil

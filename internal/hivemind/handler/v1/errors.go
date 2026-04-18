@@ -50,6 +50,11 @@ const (
 	ErrTeamTemplateList   = 100505
 	ErrTeamMemberNotFound = 100506
 	ErrTeamSSE            = 100507
+
+	// Info errors (1103xx).
+	ErrListTools 		  	= 110301
+	ErrListNodes 		  	= 110302
+	ErrListSkills 			= 110303
 )
 
 func init() {
@@ -89,6 +94,12 @@ func init() {
 	errorx.MustRegister(newCoder(ErrTeamTemplateList, http.StatusInternalServerError, "Failed to list team templates"))
 	errorx.MustRegister(newCoder(ErrTeamMemberNotFound, http.StatusNotFound, "Team member not found"))
 	errorx.MustRegister(newCoder(ErrTeamSSE, http.StatusInternalServerError, "Team SSE stream error"))
+
+
+	// Info.
+	errorx.MustRegister(newCoder(ErrListTools, http.StatusInternalServerError, "Failed to list tools"))
+	errorx.MustRegister(newCoder(ErrListNodes, http.StatusInternalServerError, "Failed to list nodes"))
+	errorx.MustRegister(newCoder(ErrListSkills, http.StatusInternalServerError, "Failed to list skills"))
 }
 
 type coder struct {

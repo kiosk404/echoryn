@@ -68,6 +68,7 @@ func (p *webSearchPlugin) Init(api plugin.PluginAPI) error {
 			{Name: "query", Type: "string", Description: "The search query to look up on the web", Required: true},
 		},
 		Handler: p.handleWebSearch,
+		Category: "web",
 	})
 
 	return nil

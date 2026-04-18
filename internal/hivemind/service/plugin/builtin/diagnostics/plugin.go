@@ -85,6 +85,7 @@ func (p *diagnosticsPlugin) Init(api plugin.PluginAPI) error {
 		Description: "Query system diagnostics: uptime, counters, health metrics, and LLM trace statistics.",
 		Parameters:  []plugin.ParameterDef{},
 		Handler:     p.handleDiagnosticsStatus,
+		Category:    "system",
 	})
 
 	// Register lifecycle hooks for tracing.

@@ -88,6 +88,7 @@ func (p *webFetchPlugin) Init(api plugin.PluginAPI) error {
 			},
 		},
 		Handler: p.handleWebFetch,
+		Category: "web",
 	})
 
 	return nil
