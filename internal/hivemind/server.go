@@ -115,6 +115,8 @@ func (s *apiServer) PrepareRun() preparedAPIServer {
 		llmManager:          s.llmModule.Manager,
 		authConfig:          &gatewayCfg.Auth,
 		gatewayConfig:       gatewayCfg,
+		pluginFramework:     s.pluginFramework,
+		golemRegistry:       golemRegistryOrNil(s.golemModule),
 		teamOrchestrator:    s.teamOrchestrator,
 		teamTemplateService: s.teamTemplateService,
 		teamMessageBus:      s.teamMessageBus,

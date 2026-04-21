@@ -15,8 +15,7 @@
 | [ECHORYN_HIVEMIND_AGENTS_SPEC.md](ECHORYN_HIVEMIND_AGENTS.md) | Agents 运行时引擎 | AgentRunner 编排流程、TurnExecutor 重试/Fallback、ContextBuilder/Pruner 两阶段裁剪、PromptPipeline Section 化系统提示词、Compactor 多轮压缩、AgentFlow Eino DAG、SubAgent 接口预留、Store 层 |
 | [ECHORYN_HIVEMIND_LLM_SPEC.md](ECHORYN_HIVEMIND_LLM.md) | LLM 多模型管理 | SPI 四层插件架构、8 个 Provider 实现（两种模式）、ModelManager 四阶段初始化、FallbackExecutor 四层错误分类、ModelProber 并发扫描、CompatManager 规则引擎 |
 | [ECHORYN_HIVEMIND_MEMORY_SPEC.md](ECHORYN_HIVEMIND_MEMORY.md) | 记忆系统 | 插件注册（4 工具 + 2 钩子 + PromptProvider）、Manager 索引核心、混合搜索流程（向量 + 关键词融合）、SQLite 5 表 Schema、OpenAI/Gemini Embedding、Memory Flush、安全机制 |
-| [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](ECHORYN_HIVEMIND_PLUGIN.md) | 插件框架 | 三层基础接口、5 种能力注入（Tool/Hook/Service/CLI/PromptSection）、Slot 互斥、生命周期管理、Registry 中心仓、Interface Probe、3 个内置插件 |
-| [ECHORYN_HIVEMIND_MCP_SPEC.md](./ECHORYN_HIVEMIND_MCP_SPEC.md) | MCP 工具调用 | Claude Desktop 兼容配置、Manager 接口、并发初始化、MCPServer 连接流程、工具聚合到 AgentRunner、重连/关闭 |
+| [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](ECHORYN_HIVEMIND_PLUGIN.md) | 插件框架 | 三层基础接口、5 种能力注入（Tool/Hook/Service/CLI/PromptSection）、Slot 互斥、生命周期管理、Registry 中心仓、Interface Probe、11 个内置插件（memorycore/diagnostics/llmtask/subagent/skills/golem-cluster/channel-feishu/channel-telegram/web-search/web-fetch/tool-search/tracing） |
 
 ---
 
@@ -84,14 +83,14 @@ Echoryn 参考了 OpenClaw（TypeScript 编写的 AI Agent 平台），但在架
 |---------------|-------------|------|---------|
 | Agent 服务 | `service/agents` | ✅ 已实现 | 增加了完整的 Runtime 编排引擎（Runner → Executor → AgentFlow） |
 | LLM Provider | `service/llm/provider` | ✅ 已实现 | 从简单封装升级为 SPI 插件体系，8 个 Provider，支持 Probe/Fallback/Compat |
-| Channel 通道 | `service/channels` | ❌ 未实现 | 相同理念，计划支持 Telegram/飞书/Web 等 |
+| Channel 通道 | `service/gateway` + `plugin/builtin/channel/` | ✅ 已实现 | Gateway Dispatcher + Telegram 长轮询 + 飞书 WebSocket 双模式 |
 | MCP 工具调用 | `service/mcp` | ✅ 已实现 | 支持 stdio/SSE 传输，Claude Desktop 兼容配置格式，并发初始化 |
 | Memory 系统 | `plugin/builtin/memorycore` | ✅ 已实现 | SQLite + 混合搜索（关键词 + 向量语义），OpenAI/Gemini 双 Embedding Provider |
 | 对话压缩 | `agents/runtime/compaction` | ✅ 已实现 | 在 Hivemind 中心节点统一处理，集成上下文裁剪 + Token 估算 |
 | 任务调度 | Scheduler（已实现） | ⭐ 已实现 | OpenClaw 无此概念。Echoryn 的分布式任务调度引擎：PriorityQueue + AISelector 6 维评分 + Monitor + StatsCollector |
 | Gateway 配置 | `gateway_config.go` | ✅ 已实现 | Auth 令牌、Store 选择、默认模型配置 |
 | Sub-Agent 派生 | `service/agents/subagent` | ⭐ 已实现 | OpenClaw 有 `sessions_spawn/send`；Echoryn 完整实现 SubAgentManager/Scheduler/AnnounceController + 双存储后端 |
-| — | Golem 工作节点 | 🟡 骨架 | OpenClaw 无对应。Echoryn 独创的远程执行体 |
+| — | Golem 工作节点 | ✅ 已实现 | Echoryn 独创的远程执行体：gRPC 客户端、双向流心跳、节点注册/注销、任务分发/取消/排空/关闭、Skill 扫描 |
 | CLI 工具 | `echoctl` | ✅ 已实现 | echoctl 提供 Bubbletea TUI 交互式聊天 |
 
 ### 2.3 Echoryn 独有的设计
@@ -149,13 +148,15 @@ Echoryn 参考了 OpenClaw（TypeScript 编写的 AI Agent 平台），但在架
                     │  └───────────────────────────────────────────┘  │
                     │                                                  │
                     │  ┌───────────────────────────────────────────┐  │
-                    │  │          ⭐ Plugin Framework               │  │
+  │  │          ⭐ Plugin Framework               │  │
                     │  │  ├─ Slot 互斥 + 生命周期 (Init/Start/Stop)│  │
-                    │  │  ├─ 4 能力: Tool/CLI/Hook/Service         │  │
-                    │  │  └─ 内置插件:                              │  │
-                    │  │      ├─ memorycore (SQLite + 混合搜索)     │  │
-                    │  │      ├─ diagnostics (OTEL 可观测)          │  │
-                    │  │      └─ llm-task (JSON LLM 工具)           │  │
+                    │  │  ├─ 5 能力: Tool/CLI/Hook/Service/Prompt  │  │
+                    │  │  └─ 内置插件 (11 个):                     │  │
+                    │  │      ├─ memorycore / diagnostics / llmtask│  │
+                    │  │      ├─ subagent / skills / golem-cluster  │  │
+                    │  │      ├─ channel-feishu / channel-telegram  │  │
+                    │  │      ├─ web-search / web-fetch / tool-search│  │
+                    │  │      └─ tracing (langfuse + langsmith)     │  │
                     │  └───────────────────────────────────────────┘  │
                     │                                                  │
                     │  ┌───────────────────────────────────────────┐  │
@@ -166,8 +167,10 @@ Echoryn 参考了 OpenClaw（TypeScript 编写的 AI Agent 平台），但在架
                     │  └───────────────────────────────────────────┘  │
                     │                                                  │
                     │  ┌───────────────────────────────────────────┐  │
-                    │  │  Scheduler (已实现)    │ channels (待实现)│  │
-                    │  │  routing (待实现)        │ Store: BoltDB   │  │
+                    │  │  Scheduler/Gateway (已实现)              │  │
+                    │  │  Scheduler: PriorityQueue+AISelector     │  │
+                    │  │  Gateway: Dispatcher+ChannelManager      │  │
+                    │  │  Store: BoltDB                           │  │
                     │  └───────────────────────────────────────────┘  │
                     └──┬──────────┬──────────┬─────────────────────┘
                        │          │          │
@@ -192,7 +195,7 @@ Echoryn 参考了 OpenClaw（TypeScript 编写的 AI Agent 平台），但在架
 ### 3.2 通信协议
 
 - **Client → Hivemind**: HTTP REST (Gin) + SSE (流式推送)，OpenAI 兼容格式
-- **Hivemind → Golem**: gRPC **单向控制**（Hivemind 下发指令，Golem 上报结果/心跳）
+- **Hivemind → Golem**: gRPC **双向流**（GolemNodeService 心跳流 + 任务分发/取消/排空/关闭）
 - **Golem ↔ Golem**: **无通信**（各节点完全独立，互不感知）
 - **MCP Tools**: stdio 进程管道 / SSE HTTP（Model Context Protocol）
 
@@ -210,14 +213,16 @@ echoryn/
 ├── conf/
 │   ├── hivemind-server.json              # Hivemind 默认配置
 │   └── mcp.json                          # MCP 工具配置（Claude Desktop 格式）
+│   └── golem-worker.json                 # Golem Worker 配置
 │
-├── idl/                                  # Protobuf IDL 定义
-│   ├── base.proto                        # 基础 RPC 消息 (Base/BaseResp/TrafficEnv)
-│   ├── api.proto                         # [待实现] API 服务定义
-│   └── app/common_struct/
-│       ├── common_struct.proto           # 用户/连接器/空间/变量/资源/权限
-│       ├── intelligence_common_struct.proto # 智能体状态/类型/基础信息
-│       └── golem_node_common_struct.proto  # [待实现] Golem 节点结构
+├── idl/                                  # Protobuf IDL 定义（按域分包）
+│   ├── base/base.proto                   # 基础 RPC 消息 ✅
+│   ├── api/api.proto                     # [已实现] GolemNodeService + HivemindControlService + HivemindAdminService
+│   ├── app/common_struct/
+│   │   ├── common_struct.proto           # 用户/连接器等 ✅
+│   │   └── intelligence_common_struct.proto # 智能体状态 ✅
+│   ├── golem/golem.proto                 # [已实现] Golem 节点协议 (369行)
+│   └── team/team.proto                   # [已实现] 团队协作 (258行)
 │
 ├── internal/                             # 内部实现（不可外部引用）
 │   ├── hivemind/                         # ⭐ Hivemind 服务实现（核心）
@@ -279,10 +284,20 @@ echoryn/
 │   │       │   ├── registry.go / slots.go # 注册表 + Slot 互斥
 │   │       │   ├── tools.go / hooks.go   # ToolProvider / HookProvider
 │   │       │   ├── services.go / cli.go  # ServiceProvider / CLIProvider
-│   │       │   └── builtin/              # 3 个内置插件
+│   │       │   └── builtin/              # 11 个内置插件
 │   │       │       ├── memorycore/       # Memory 插件 (SQLite + 混合搜索 + Embedding)
 │   │       │       ├── diagnostics/      # 诊断插件 (OTEL 可观测性)
-│   │       │       └── llmtask/          # LLM-Task 插件 (JSON-only LLM 工具)
+│   │       │       ├── llmtask/          # LLM-Task 插件 (JSON-only LLM 工具)
+│   │       │       ├── subagent/         # 子智能体工具
+│   │       │       ├── skills/           # 技能加载管理
+│   │       │       ├── golem-cluster/    # Golem 集群管理
+│   │       │       ├── channel/          # IM 通道插件
+│   │       │       │   ├── feishu/       #   飞书 WebSocket
+│   │       │       │   └── telegram/     #   Telegram 长轮询
+│   │       │       ├── web-search/       # Web 搜索 (Gemini + DuckDuckGo)
+│   │       │       ├── web-fetch/        # Web 内容抓取
+│   │       │       ├── tool-search/      # 工具搜索
+│   │       │       └── tracing/          # 追踪 (Langfuse + Langsmith)
 │   │       │
 │   │       ├── mcp/                      # ⭐ MCP 协议模块
 │   │       │   ├── module.go             # 模块入口
@@ -291,15 +306,20 @@ echoryn/
 │   │       │   ├── manager_impl.go       # 并发初始化 + 工具聚合 + 重连
 │   │       │   └── server.go             # MCPServer (stdio/SSE)
 │   │       │
-│   │       ├── scheduler/                # ⭐ Scheduler 调度引擎 (已实现)
-│   │       │   ├── scheduler.go         # Scheduler 接口 + defaultScheduler 实现
-│   │       │   ├── task.go              # ScheduleRequest/Decision/Event 类型 + Builder
-│   │       │   ├── queue.go             # PriorityQueue (heap-based, 线程安全)
-│   │       │   ├── selector.go          # NodeSelector (Direct/AI/Composite/Filter)
-│   │       │   └── monitor.go           # Monitor (超时/停滞检测) + StatsCollector
+│   │       ├── golem/                    # ⭐ Golem 子系统 (已实现，作为调度引擎一部分)
+│   │       │   ├── module.go            # Golem 模块入口（Registry+Dispatcher+Scheduler+TokenManager）
+│   │       │   ├── scheduler/           # 调度器（从 service/scheduler/ 迁入）
+│   │       │   └── ...                  # Registry, Dispatcher, TokenManager
 │   │       │
-│   │       ├── channels/                 # [待实现] 通道管理
-│   │       └── routing/                  # [待实现] 智能路由
+│   │       ├── gateway/                  # ⭐ IM 网关 (已实现)
+│   │       │   ├── dispatcher.go        # Dispatcher 消息路由
+│   │       │   ├── channel_manager.go   # ChannelManager 通道管理
+│   │       │   ├── deliverer.go         # Deliverer 消息投递
+│   │       │   └── types.go             # 类型定义
+│   │       │
+│   │       ├── subagent/                 # ⭐ SubAgent 基础设施 (已实现)
+│   │       │   ├── executor/            # 执行器
+│   │       │   └── observer/            # 观察器
 │   │
 
 │   ├── echoctl/                          # 客户端 CLI (Bubbletea TUI)
@@ -315,13 +335,20 @@ echoryn/
 │   │   ├── types/                        # 常量定义
 │   │   └── utils/                        # 模板/中断/终端工具
 │   │
-│   ├── golem/                            # Golem 工作节点 [骨架]
-│   │   └── app.go                        # 仅 App 初始化
+│   ├── golem/                            # Golem 工作节点 [已实现核心功能]
+│   │   ├── config/config.go              # 配置结构
+│   │   ├── options/options.go            # 命令行选项
+│   │   ├── handler/handler.go            # gRPC Handler 接口定义
+│   │   └── service/node/                 # 节点服务（已实现）
+│   │       ├── module.go                 # K8s 式模块入口
+│   │       ├── service.go                # NodeService 实现
+│   │       └── heartbeat.go              # 双向流心跳
 │   │
 │   └── pkg/                              # 内部共享包
 │       ├── core/                         # HTTP 响应写入
 │       ├── options/                      # 通用选项 (gRPC/HTTP/Model/Plugin/MCP)
-│       └── server/                       # 通用服务器 (Gin + gRPC + Viper)
+│       ├── server/                       # 通用服务器 (Gin + gRPC + Viper)
+│       └── protocol/                     # 协议类型转换（convert.go/types.go）
 │
 ├── pkg/                                  # 公共库（可被外部引用）
 │   ├── app/                              # Cobra 应用框架封装
@@ -464,10 +491,11 @@ NewApp("hivemind-server")
 
 #### gRPC 服务
 
-| 服务 | 说明 |
-|------|------|
-| `GolemNodeService` | Golem 节点注册、心跳、任务流 |
-| `HivemindAdminService` | Token 管理、集群管理 |
+| 服务 | RPC 数量 | 说明 |
+|------|---------|------|
+| `GolemNodeService` | 5 | Register / Heartbeat(stream) / DispatchTask / CancelTask / Drain |
+| `HivemindControlService` | 3 | ListNodes / GetNode / DrainNode |
+| `HivemindAdminService` | 7 | Token 管理 (Create/Revoke/List) + 集群管理 (Info/Status) |
 
 **默认端口**: `:11788` (gRPC)、`:11789` (HTTP)
 
@@ -623,7 +651,7 @@ Plugin Framework (编译时插件)
   │   ├─ CLIProvider      — 扩展 CLI 命令
   │   └─ PromptProvider   — 注册 PromptSection/Mutator 到系统提示词管线
   │
-  └── 10+ 个内置插件:
+  └── 11 个内置插件:
       ├── memorycore   — 记忆系统 (SQLite + 混合搜索)
       │   ├─ memory_write / memory_read / memory_delete 工具
       │   ├─ 关键词搜索 + 向量语义搜索 混合
@@ -638,9 +666,12 @@ Plugin Framework (编译时插件)
       ├── subagent      — 子智能体管理工具 (sessions_spawn/sessions_send)
       ├── skills        — 技能加载管理
       ├── golem-cluster — Golem 集群管理工具
-      ├── channel-feishu — 飞书 IM 渠道集成
-      ├── channel-telegram — Telegram IM 渠道集成
-      ├── web-search    — Web 搜索工具 (Gemini)
+      ├── channel-feishu — 飞书 IM 渠道集成 (WebSocket)
+      ├── channel-telegram — Telegram IM 渠道集成 (长轮询)
+      ├── web-search    — Web 搜索工具 (Gemini + DuckDuckGo)
+      ├── web-fetch     — Web 内容抓取
+      ├── tool-search   — 工具搜索
+      ├── tracing       — 分布式追踪 (Langfuse + Langsmith)
       └── [可插拔扩展] — 用户自定义插件注册点
 ```
 
@@ -702,13 +733,21 @@ Scheduler (defaultScheduler)
 - **ProfileProvider**: 提供 Golem 节点画像列表（待 Golem 通信层就绪后接入）
 - **TaskDispatcher**: 向目标节点下发任务（待 gRPC 传输层就绪后接入）
 
-### 5.7 Golem — 工作节点
+### 5.7 Golem — 工作节点（已实现核心功能）
 
-当前为骨架阶段。设计意图：
+Golem 已从骨架阶段进入**核心功能已实现**状态。当前完成情况：
 
-- 作为 Skill 执行器，从 Hivemind 接收任务
-- 通过 gRPC 与 Hivemind 保持连接、汇报心跳
-- 本地维护 workspace/skills/data 目录结构
+**已实现**：
+- **配置与选项**: `config/config.go` + `options/options.go`，支持 hivemind-address、心跳间隔、节点标签等
+- **gRPC 客户端连接**: 通过 `service/node/service.go` 连接 Hivemind
+- **双向流心跳**: `service/node/heartbeat.go` 实现基于 gRPC streaming 的心跳上报循环
+- **节点注册/注销**: 向 Hivemind 注册节点信息 (ID/Skills/Labels/CPU/Mem)，退出时注销
+- **任务分发接口**: 定义 TaskHandler 接口，支持 DISPATCH_TASK/CANCEL_TASK/DRAIN/SHUTDOWN 消息类型
+- **Skill 扫描**: 启动时扫描本地 skills 目录
+
+**待完善**：
+- Skill 执行沙箱：实际的任务执行引擎（接收任务后调用具体 Skill）
+- executor/ 和 skill/ 子模块的完整实现
 
 #### 运行时状态目录布局（NodeRole 机制）
 
@@ -830,16 +869,17 @@ echoctl 已从节点管理工具重构为**客户端交互工具**，核心是 `
 | **Agents Module** | ⭐ 完成 | **95%** | 完整 CRUD + Runtime 引擎（Runner/Executor/Context/Compaction/AgentFlow）+ **PromptPipeline**。详见 [ECHORYN_HIVEMIND_AGENTS_SPEC.md](ECHORYN_HIVEMIND_AGENTS.md) |
 | **LLM Module** | ⭐ 完成 | **95%** | 完整 SPI 体系，8 个 Provider，Manager/Prober/Fallback。详见 [ECHORYN_HIVEMIND_LLM_SPEC.md](ECHORYN_HIVEMIND_LLM.md) |
 | **Plugin Framework** | ⭐ 完成 | **95%** | 完整生命周期，Slot 互斥，**5 种能力注入**（Tool/CLI/Hook/Service/Prompt），10+ 内置插件。详见 [ECHORYN_HIVEMIND_PLUGIN_SPEC.md](ECHORYN_HIVEMIND_PLUGIN.md) |
-| **MCP Module** | ⭐ 完成 | **90%** | stdio/SSE 传输，并发初始化，工具聚合，Claude Desktop 兼容。详见 [ECHORYN_HIVEMIND_MCP_SPEC.md](./ECHORYN_HIVEMIND_MCP_SPEC.md) |
+| **MCP Module** | ⭐ 完成 | **90%** | stdio/SSE 传输，并发初始化，工具聚合，Claude Desktop 兼容 |
 | **Memory 系统** | ✅ 完成 | **90%** | SQLite + 混合搜索 + OpenAI/Gemini Embedding + Flush 钩子。详见 [ECHORYN_HIVEMIND_MEMORY_SPEC.md](ECHORYN_HIVEMIND_MEMORY.md) |
 | **Team 多智能体** | ⭐ 完成 | **90%** | 完整团队编排：Orchestrator/Template/EventBridge/MessageBus。支持 HTTP API CRUD |
 | **echoctl CLI** | ✅ chat 完成 | **50%** | chat TUI (Bubbletea + SSE 流式) 已完成，kubectl 风格资源管理命令待实现|
 | **SubAgent 编排** | ⭐ 完成 | **85%** | K8s Controller 模式：SubAgentManager/SubAgentScheduler/AnnounceController + 双存储后端（InMemory/BoltDB）+ 工具黑名单 + 恢复机制。Cleanup 待完善 |
-| Golem 工作节点 | 🟡 骨架 | 10% | 仅 App 初始化，无业务逻辑 |
-| Scheduler 调度引擎 | ⭐ 完成 | **95%** | 完整调度器：PriorityQueue + AISelector 6 维评分 + Monitor 超时检测 + StatsCollector。待接入 ProfileProvider/TaskDispatcher |
-| Channels 模块 | ❌ 未开始 | 0% | 空目录 |
-| Routing 模块 | ❌ 未开始 | 0% | 空目录 |
-| Proto 定义 | 🟡 部分完成 | 30% | base + common 已定义，api + golem_node 为空 |
+| Golem 工作节点 | ✅ 核心已实现 | **~70%** | gRPC 客户端、双向流心跳、节点注册/注销、TaskHandler 接口（DISPATCH_TASK/CANCEL_TASK/DRAIN/SHUTDOWN）、Skill 扫描已实现；待完善 Skill 执行沙箱 |
+| Scheduler 调度引擎 | ⭐ 完成 | **95%** | 已迁移至 `service/golem/scheduler/`，完整调度器：PriorityQueue + AISelector 6 维评分 + Monitor 超时检测 + StatsCollector。待接入 ProfileProvider/TaskDispatcher |
+| Channels / Gateway | ✅ 已实现 | **85%** | `service/gateway/` Dispatcher + ChannelManager + Deliverer 已实现；`plugin/builtin/channel/` 含 feishu (WebSocket) 和 telegram (长轮询) 插件 |
+| Routing 智能路由 | ✅ 基本实现 | **60%** | Dispatcher 消息路由 + 执行策略选择器已在 `service/gateway/dispatcher.go` 中实现；独立 routing 模块仍为空目录 |
+| Proto 定义 (IDL) | ✅ 大部分完成 | **85%** | `golem/golem.proto` (369行, GolemNodeService + HivemindAdminService)、`team/team.proto` (258行) 已完整实现；`api/api.proto` 已有内容 |
+| Hivemind-Golem 通信 | ✅ 核心已实现 | **80%** | golem.proto Proto 定义完整、Golem gRPC 双向流心跳已实现、Hivemind StreamDispatcher 任务分发已实现、control_handler.go 服务端处理已实现 |
 
 ---
 
@@ -865,11 +905,13 @@ echoctl 已从节点管理工具重构为**客户端交互工具**，核心是 `
     - SSE 流式实时渲染、会话管理、ASCII 艺术欢迎页
     - 支持交互式和单次消息两种模式
 
-项目最大的特色——Hivemind-Golem 分布式架构——目前处于调度引擎已就绪、传输层待接通阶段：
-- Scheduler 调度器已完整实现（优先级队列 + AI 选择器 + 监控），但缺少 ProfileProvider/TaskDispatcher 具体实现
-- Golem 只有骨架，无法接收和执行任务
-- gRPC 通信层（心跳/任务下发/结果回传）未实现
+项目最大的特色——Hivemind-Golem 分布式架构——核心通信链路已打通：
+- Scheduler 调度器已完整实现（优先级队列 + AI 选择器 + 监控），已迁移至 `service/golem/scheduler/`
+- **Golem 核心功能已实现**（~70%）：gRPC 客户端连接、双向流心跳、节点注册/注销、TaskHandler 接口、Skill 扫描
+- **gRPC 通信层已基本完成**：`idl/golem/golem.proto` 完整定义(369行)、Golem 心跳流已实现、Hivemind StreamDispatcher 已实现
 - SubAgent 编排已完整实现（Manager + Scheduler + AnnounceController + 双存储后端）
+- Channels/Gateway IM 通道已实现（Telegram 长轮询 + 飞书 WebSocket）
+- **待完善**：Golem Skill 执行沙箱、Scheduler 接入 ProfileProvider/TaskDispatcher
 
 ### 9.3 与同类项目的差异化定位
 
@@ -895,26 +937,30 @@ echoctl 已从节点管理工具重构为**客户端交互工具**，核心是 `
 
 | 模块 | 完成度 | 已有资产 | 核心缺失 |
 |------|--------|---------|---------|
-| **Golem 工作节点** | ~5% | `app.go` 空壳 | gRPC 客户端、心跳、任务执行、Skill 引擎 |
-| **Hivemind-Golem 通信协议** | 0% | 无 | Proto 定义、gRPC Service、`protocol` 包 |
-| **Scheduler 调度引擎** | ~95% | 完整实现：Scheduler + PriorityQueue + AISelector + Monitor + StatsCollector (5 文件 ~2000 行) | ProfileProvider/TaskDispatcher 注入（依赖 Golem 通信层） |
+| **Golem 工作节点** | ~70% | `config/options/handler/service/node/` 完整实现（gRPC客户端+双向流心跳+节点注册注销+TaskHandler接口+Skill扫描） | Skill 执行沙箱（executor/skill 子模块） |
+| **Hivemind-Golem 通信协议** | ~80% | `idl/golem/golem.proto` 完整定义(369行)、`internal/pkg/protocol/` 已存在、Golem 心跳流已实现、Hivemind StreamDispatcher 已实现、control_handler.go 已实现 | 端到端集成测试 |
+| **Scheduler 调度引擎** | ~95% | 完整实现：Scheduler + PriorityQueue + AISelector + Monitor + StatsCollector (~2000 行)。已迁移至 `service/golem/scheduler/` | ProfileProvider/TaskDispatcher 注入（依赖 Golem 通信层完全就绪） |
 | **SubAgent 编排** | ~85% | Manager + Scheduler + AnnounceController + Policy + 双存储后端 (9 文件) | Cleanup 实现、延迟队列忙碌检测 |
-| **Channels 通道** | 0% | 空目录 (`.keep`) | 全部 |
-| **Routing 路由** | 0% | 空目录 (`.keep`) | 全部 |
+| **Channels / Gateway** | ~85% | `service/gateway/` (Dispatcher/ChannelManager/Deliverer/types) + `plugin/builtin/channel/feishu/` + `channel-telegram/` 完整实现 | 更多渠道适配器（Web/WeChat） |
+| **Routing 智能路由** | ~60% | Dispatcher 消息路由 + 执行策略选择器已在 `service/gateway/dispatcher.go` 中实现 | 独立 routing 模块仍为空目录，策略扩展 |
 | **echoctl CLI** | ~50% | chat TUI 完整 | kubectl 风格资源管理命令 |
-| **Proto/IDL 定义** | ~25% | `base.proto` + `common_struct.proto` | `api.proto` 空、`golem_node` 空、无 gRPC service |
-| **Agent Runtime 补全** | ~90% | Runner/Flow/Pruner/Compaction 完整 | `Abort()` 未实现 |
-| **Plugin 补全** | ~90% | 框架 + 3 内置插件完整 | llm-task 用 placeholder caller |
+| **Proto/IDL 定义** | ~85% | `base.proto` ✅、`common_struct.proto` ✅、`intelligence_common_struct.proto` ✅、`golem/golem.proto` ✅(369行)、`team/team.proto` ✅(258行)、`api/api.proto` ✅ | — |
+| **Agent Runtime 补全** | ~90% | Runner/Flow/Pruner/Compaction/PromptPipeline/SubAgent/ToolLoop 完整 | `Abort()` 未完整实现 |
+| **Plugin 补全** | ~90% | 框架 + 11 内置插件完整 | llm-task 用 placeholder caller |
 
 ### 10.2 Golem 工作节点
 
-**当前文件**: `internal/golem/app.go`（仅 40 行）
+**当前状态**: **已实现核心功能（~70%），不再是骨架。
 
-**已有**:
-- `NewApp("golem")` 启动入口
-- `run()` 函数（仅初始化日志，立即 `return nil`）
+**已有资产**: `internal/golem/` 目录（14 个文件）：
+- `config/config.go` — 配置结构
+- `options/options.go` — 命令行选项
+- `handler/handler.go` — gRPC Handler 接口
+- `service/node/module.go` — 模块入口
+- `service/node/service.go` — NodeService（gRPC 连接/注册/注销）
+- `service/node/heartbeat.go` — 双向流心跳
 
-**缺失项**:
+**待完善** (Skill 执行沙箱):
 
 ```
 internal/golem/
@@ -953,7 +999,16 @@ Golem Node 启动
 
 ### 10.3 Hivemind-Golem 通信协议
 
-**当前状态**: `idl/api.proto` 和 `idl/app/common_struct/golem_node_common_struct.proto` 均为空文件。项目中不存在 Go `protocol` 包。
+**当前状态**: **已基本实现（~80%）**。Proto 定义完整，Go protocol 包已存在，Golem 心跳流和 Hivemind StreamDispatcher 均已实现。
+
+- `idl/golem/golem.proto` — **已完整实现** (369行)，定义了 GolemNodeService (5个RPC) 和 HivemindAdminService (7个RPC，含 Token 管理)
+- `idl/api/api.proto` — **已实现**，包含 GolemNodeService + HivemindControlService + HivemindAdminService
+- `internal/pkg/protocol/` — **已存在**（含 convert.go、doc.go、types.go）
+- Golem 双向流心跳 — **已实现** (`service/node/heartbeat.go`)
+- Hivemind StreamDispatcher — **已实现** (基于心跳流的任务分发)
+- control_handler.go — **已实现** 服务端处理
+
+**待完善**: 端到端集成测试
 
 **需要定义的 Proto**:
 
@@ -1033,7 +1088,7 @@ pkg/protocol/                    # 或 internal/pkg/protocol/
 
 **当前状态**: 已完整实现（5 个文件，~2000 行代码），采用 K8s 风格初始化。
 
-**已实现的文件** (`internal/hivemind/service/scheduler/`):
+**已实现的文件** (`internal/hivemind/service/golem/scheduler/`，**注意路径变更**: 已从 `service/scheduler/` 迁入 `service/golem/scheduler/` 作为 Golem 子系统的一部分):
 
 ```
 internal/hivemind/service/scheduler/
@@ -1109,7 +1164,7 @@ pkg/errno/
 
 ### 10.6 Channels 通道模块
 
-**当前状态**: `internal/hivemind/service/channels/` 仅含 `.keep` 空文件。
+**当前状态**: **已实现（~85%）**。`internal/hivemind/service/gateway/` 目录下有完整实现（Dispatcher/ChannelManager/Deliverer/types），`plugin/builtin/channel/` 下有 feishu (WebSocket) 和 telegram (长轮询) 两个完整插件。
 
 **目标架构**:
 
@@ -1132,7 +1187,7 @@ internal/hivemind/service/channels/
 
 ### 10.7 Routing 路由模块
 
-**当前状态**: `internal/hivemind/service/routing/` 仅含 `.keep` 空文件。
+**当前状态**: **基本实现（~60%）**。`internal/hivemind/service/routing/` 仍为空目录（仅 `.keep`），但路由功能已在 `service/gateway/dispatcher.go` 中以 Dispatcher 形式实现（消息路由 + 执行策略选择器）。独立 routing 模块尚未建立。
 
 **目标架构**:
 
@@ -1181,13 +1236,14 @@ type Factory interface{}
 
 ### 10.9 Proto/IDL 补全
 
-| 文件 | 当前状态 | 需要添加 |
-|------|---------|---------|
-| `idl/api.proto` | **空文件** | `GolemNodeService` + `HivemindControlService` gRPC 定义 |
-| `idl/app/common_struct/golem_node_common_struct.proto` | **空文件** | `NodeInfo`, `NodeResources`, `NodeLoadInfo`, `TaskAssignment`, `TaskResult`, `TaskStatus` |
-| `idl/base.proto` | ✅ 已完成 | — |
-| `idl/app/common_struct/common_struct.proto` | ✅ 已完成 | — |
-| `idl/app/common_struct/intelligence_common_struct.proto` | ✅ 已完成 | — |
+| 文件 | 当前状态 |
+|------|---------|
+| `idl/base/base.proto` | ✅ 已完成 |
+| `idl/api/api.proto` | ✅ **已实现** (GolemNodeService + HivemindControlService + HivemindAdminService) |
+| `idl/app/common_struct/common_struct.proto` | ✅ 已完成 |
+| `idl/app/common_struct/intelligence_common_struct.proto` | ✅ 已完成 |
+| `idl/golem/golem.proto` | ✅ **已完整实现** (369行，GolemNodeService + HivemindAdminService 含 Token 管理) |
+| `idl/team/team.proto` | ✅ **已完整实现** (258行，团队协作消息定义) |
 
 ### 10.11 已实现模块中的待补全项
 
@@ -1207,31 +1263,31 @@ type Factory interface{}
 
 ## 十一、后续开发路线图
 
-### P0 — Golem 通信层（打通 Hivemind ↔ Golem）
+### P0 — Golem 执行沙箱（补全 Skill 执行能力）
 
-1. **定义 `protocol` 包** — 核心类型：Task, NodeInfo, NodeLoadInfo, TaskStatus（→ 10.3）
-2. **完善 Proto 定义** — `golem_node_common_struct.proto` + `api.proto`（→ 10.10）
-3. **实现 Golem 核心**：gRPC 连接 Hivemind、心跳上报、任务接收与执行、Skill 加载（→ 10.2）
+1. **实现 Golem executor** — 任务执行引擎，接收 DISPATCH_TASK 后调用具体 Skill
+2. **实现 Skill 沙箱** — 进程隔离的 Skill 执行环境
+3. **接入 Scheduler** — 实现 ProfileProvider/TaskDispatcher，将 Scheduler 接入 Golem 通信层
 
 ### P1 — 调度接入与补全
 
-5. **接入 Scheduler** — 实现 ProfileProvider/TaskDispatcher，将 Scheduler 接入 Golem 通信层（→ 10.4）
-6. **~~实现 SubAgent 编排~~** — ✅ 已完成：Manager/Scheduler/AnnounceController/Policy + 双存储后端（→ 10.5）
-7. **~~实现 PromptPipeline P1~~** — ✅ 已完成：WorkspaceLoader (fsnotify 热更新) + memorycore PromptProvider (MemorySection P:400)
-8. **补全 Agent Runtime** — `Abort()` 实现 + llm-task caller 接入（→ 10.11）
+4. **补全 Agent Runtime** — `Abort()` 完整实现 + llm-task caller 接入
+5. **~~实现 SubAgent 编排~~** — ✅ 已完成：Manager/Scheduler/AnnounceController/Policy + 双存储后端
+6. **~~实现 PromptPipeline P1~~** — ✅ 已完成：WorkspaceLoader (fsnotify 热更新) + memorycore PromptProvider (MemorySection P:400)
+7. **Routing 完善** — 从 Dispatcher 中提取独立 routing 模块，扩展路由策略
 
 ### P2 — 通道与运维
 
-10. **Channels 实现**: Telegram / 飞书 / Web 通道适配（→ 10.6）
-11. **Routing 实现**: 消息路由 + Agent 匹配（→ 10.7）
-12. **echoctl 补全**: kubectl 风格资源管理命令 get/describe/create/delete（→ 10.8）
-13. **~~echoctl chat~~** — ✅ 已完成：Bubbletea TUI + SSE 流式 + 会话管理 + 单次消息模式
+8. **~~Channels 实现~~** — ✅ 已完成：Telegram 长轮询 + 飞书 WebSocket + Gateway Dispatcher
+9. **更多渠道适配**: Web WebSocket / WeChat 等
+10. **echoctl 补全**: kubectl 风格资源管理命令 get/describe/create/delete
+11. **~~echoctl chat~~** — ✅ 已完成：Bubbletea TUI + SSE 流式 + 会话管理 + 单次消息模式
 
 ### P3 — 生态扩展
 
-13. **更多内置插件**: Web 搜索、代码执行、文件管理
-14. **前端 UI**: Agent 管理 Dashboard
-15. **多租户**: 用户/组织/权限体系
+12. **更多内置插件**: 代码执行、文件管理等
+13. **前端 UI**: Agent 管理 Dashboard
+14. **多租户**: 用户/组织/权限体系
 
 ---
 
@@ -1324,15 +1380,19 @@ Client POST /v1/chat/completions
       → Memory Flush（会话结束时自动存储记忆）
 ```
 
-### 13.2 Golem 注册流（待实现）
+### 13.2 Golem 注册流（已实现）
 
 ```
 golem (启动工作节点)
-  → 读取 ~/.echoryn/golem.json 配置
-  → 连接 Hivemind gRPC
-  → 提交节点信息 (CPU/Mem/IP/OS/Skills)
-  → Hivemind 验证 + 注册节点
-  → Golem 进入主循环：心跳上报 + 任务接收 + 执行返回
+  → 读取配置 (conf/golem-worker.json 或 --config 指定)  ← service/node/service.go
+  → gRPC Dial 连接 Hivemind (:11788)
+  → Register(token, NodeInfo{ID, Skills, Labels, CPU, Mem})  ← service/node/service.go
+  → Hivemind 验证 token → 返回 ACK
+  → 进入主循环:
+    ├─ 心跳协程 (每 N 秒): Heartbeat(NodeLoadInfo{CPU%, Mem%, ActiveTasks})  ← service/node/heartbeat.go (双向流 gRPC streaming)
+    ├─ 任务接收 (gRPC stream): WaitForTask() → OnDispatchTask / OnCancelTask / OnDrain / OnShutdown  ← handler/handler.go TaskHandler 接口
+    ├─ Skill 扫描: 启动时扫描本地 skills 目录
+    └─ 信号处理: SIGTERM → graceful drain → Deregister()
 ```
 
 ### 13.3 SSE 流式回复
@@ -1402,6 +1462,6 @@ stream.Broadcast("update", data)
 
 > **本文档为 Echoryn 项目的顶层 SPEC，各 Hivemind 核心模块的详解请参阅对应的子文档（见第一章文档索引）。**
 >
-> **最后更新**: 2026-03-31 | **综合审查**: ✅ 完成。已删除所有 echoadm 过时设计、修复 2 个已知 bug（token list 注册、team GET 路由）
+> **最后更新**: 2026-04-21 | **综合审查**: ✅ 完成。全面更新所有过时内容：Golem 从骨架→核心功能已实现(70%)、Channels/Routing 从未实现→已实现、Proto 从空文件→完整定义(85%)、Scheduler 路径变更、Plugin 内置插件从3→11个、通信协议从0%→80%、移除不存在的 MCP SPEC 引用
 
 

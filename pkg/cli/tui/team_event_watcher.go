@@ -3,9 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 
+	btea "github.com/kiosk404/echoryn/pkg/cli/tui/bubbletea"
 	"github.com/kiosk404/echoryn/pkg/cli/tui/command"
 	"github.com/kiosk404/echoryn/pkg/logger"
 )
@@ -133,9 +133,11 @@ func (h *tuiEventHandler) OnTeamEvent(event command.TeamEvent) {
 		suffix = event.EventType
 	}
 
-	// Write to stdout with carriage return to handle mid-input display.
-	fmt.Fprintf(os.Stdout, "\r%s [Team] %s\n", icon, suffix)
-	os.Stdout.Sync()
+	// Deliver the notification through BubbleTea's update loop
+	// so it renders cleanly into scroll-back without garbling the TUI.
+	if btea.ChatProgram() != nil {
+		btea.ChatProgram().Send(btea.TeamEventMsg{Icon: icon, Text: suffix})
+	}
 }
 
 // formatMemberInfo builds a display string for member-level events.

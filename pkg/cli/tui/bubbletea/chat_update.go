@@ -1,8 +1,9 @@
 package bubbletea
 
 import (
+	"bytes"
 	"context"
-	"os"
+	"fmt"
 	"strings"
 	"time"
 
@@ -46,6 +47,11 @@ func chatUpdate(m *ChatModel, msg tea.Msg) tea.Cmd {
 		return updateStreaming(m, msg)
 	case PhaseRendering:
 		return updateRendering(m, msg)
+	}
+
+	// Handle team events in any phase — render notification to scroll-back.
+	if te, ok := msg.(TeamEventMsg); ok {
+		return tea.Println(fmt.Sprintf("%s [Team] %s", te.Icon, te.Text))
 	}
 
 	return nil
@@ -260,9 +266,13 @@ func handleSlashCommand(m *ChatModel, rawInput string) tea.Cmd {
 		return tea.Println("Unknown command: " + rawInput + " (type /help for available commands)")
 	}
 
-	// Execute the command synchronously (commands are fast).
+	// Capture command output in a buffer so we can render it via tea.Println
+	// instead of writing directly to stdout (which would conflict with
+	// BubbleTea's inline rendering and cause garbled output).
+	var buf bytes.Buffer
+
 	env := &command.Env{
-		Out:          os.Stdout,
+		Out:          &buf,
 		ClearHistory: func() { m.messages = nil },
 		Model:        m.client.Model,
 		SessionKey:   m.client.SessionKey,
@@ -276,6 +286,11 @@ func handleSlashCommand(m *ChatModel, rawInput string) tea.Cmd {
 			return tea.Quit
 		}
 		return tea.Println("Error: " + err.Error())
+	}
+
+	// Render captured output through BubbleTea.
+	if buf.Len() > 0 {
+		return tea.Println(buf.String())
 	}
 
 	return nil

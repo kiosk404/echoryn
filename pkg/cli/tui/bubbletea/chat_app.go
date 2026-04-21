@@ -19,6 +19,13 @@ func SetChatProgram(p *tea.Program) {
 	chatProgram = p
 }
 
+// ChatProgram returns the current tea.Program reference (nil before SetChatProgram).
+// Used by external packages (e.g. team_event_watcher) to send messages
+// into the BubbleTea update loop from background goroutines.
+func ChatProgram() *tea.Program {
+	return chatProgram
+}
+
 // Init implements tea.Model. It fires the welcome banner and window title.
 func (m *ChatModel) Init() tea.Cmd {
 	var cmds []tea.Cmd

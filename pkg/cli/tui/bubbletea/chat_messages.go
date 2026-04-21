@@ -65,3 +65,14 @@ type ChatTokenUsage struct {
 	CompletionTokens int64
 	TotalTokens      int64
 }
+
+// --- Team events ---
+
+// TeamEventMsg carries a team collaboration event (e.g. member_spawned,
+// member_completed) from the background SSE watcher into the BubbleTea
+// update loop so it can be rendered safely via tea.Println instead of
+// writing directly to stdout (which garbles the inline TUI display).
+type TeamEventMsg struct {
+	Icon   string // e.g. "🚀", "✅", "❌"
+	Text   string // human-readable description
+}
