@@ -10,7 +10,7 @@
   Organizes Skills, Sub-Agents, Memory, Plugins, and distributed execution nodes together,<br/>giving your AI agents "soul" and "body".
 </p>
 
-![Header](./docs/assets/github-header-banner.png)
+![Header](./docs/assets/github-header-banner-1.png)
 
 <div align="center">
 

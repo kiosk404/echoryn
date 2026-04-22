@@ -21,7 +21,7 @@
   <a href="docs/README_EN.md">English</a> · <a href="./README.md">中文</a> · <a href="docs/ECHORYN_SPEC.md">技术规范</a> · <a href="docs/TODO_SPEC.md">开发路线</a>
 </p>
 
-![echoryn](docs/assets/github-header-banner.png)
+![echoryn](docs/assets/github-header-banner-1.png)
 
 > [!NOTE]
 > **Echoryn** 是一个开源的分布式 AI Agent 基础设施。不同于单体式 AI 框架，Echoryn 将**推理决策**与**任务执行**分离到不同节点 —— Hivemind（蜂巢智心）负责思考与调度，Golem（傀儡）负责在边缘执行技能。就像《复仇者联盟》中的奥创，一个统一的 AI 心智同时驱动分布在不同位置的多个躯体。
