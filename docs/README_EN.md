@@ -168,7 +168,7 @@ make run.golem
 ./output/platforms/linux/amd64/echoctl chat --server localhost:11789
 ```
 
-![echoryn-cli](./docs/assets/echo-cli-en.png)
+![echoryn-cli](./assets/echo-cli-cn.jpg)
 
 ## 📦 Build Options
 
