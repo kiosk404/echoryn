@@ -13,6 +13,7 @@ import (
 	"github.com/kiosk404/echoryn/pkg/http/shutdown"
 	"github.com/kiosk404/echoryn/pkg/http/shutdown/posixsignal"
 	"github.com/kiosk404/echoryn/pkg/logger"
+	"github.com/kiosk404/echoryn/pkg/fileops"
 	"github.com/kiosk404/echoryn/pkg/paths"
 )
 
@@ -86,6 +87,7 @@ func createGolemServer(cfg *config.Config) (*golemServer, error) {
 		WorkspaceDir:       workspaceDir,
 		SkillsDir:          skillsDir,
 		JoinToken:          cfg.JoinToken,
+		FileOpsEnabled:     cfg.FileOps.Enabled,
 	}
 	nodeService, err := nodeCfg.Complete().New()
 	if err != nil {
@@ -94,7 +96,8 @@ func createGolemServer(cfg *config.Config) (*golemServer, error) {
 	logger.Info("[Golem] node service initialized (name=%s, hivemind=%s)", nodeName, cfg.HivemindAddress)
 
 	// Create Task Executor (handles tasks dispatched via heartbeat stream).
-	taskExecutor := handler.NewTaskExecutor(nodeService)
+	sandbox := buildFileOpsSandbox(cfg, workspaceDir)
+	taskExecutor := handler.NewTaskExecutor(nodeService, sandbox)
 	nodeService.SetTaskHandler(taskExecutor)
 	logger.Info("[Golem] task executor registered (stream-based, no local gRPC server)")
 
@@ -142,4 +145,33 @@ func (s preparedGolemServer) Run() error {
 
 	// Block forever (shutdown manager handles exit).
 	select {}
+}
+
+
+
+// buildFileOpsSandbox translates the golem FileOpsConfig into the runtime
+// *fileops.Sandbox injected into the TaskExecutor. Returns nil when fileops
+// is disabled so callers can skip capability reporting.
+func buildFileOpsSandbox(cfg *config.Config, workspaceDir string) *fileops.Sandbox {
+	if !cfg.FileOps.Enabled {
+		logger.Info("[Golem] fileops disabled; file_* skills will reject tasks")
+		return nil
+	}
+	sb := &fileops.Sandbox{
+		WriteEnabled:    true, // Golem is an execution node; writes default on.
+		DenyPathsExact:  cfg.FileOps.DenyExact,
+		DenyPathsPrefix: cfg.FileOps.DenyPrefix,
+	}
+	if cfg.FileOps.Sandboxed {
+		roots := cfg.FileOps.AllowedRoots
+		if len(roots) == 0 {
+			roots = []string{workspaceDir}
+		}
+		sb.ReadAllowedRoots = roots
+		sb.WriteAllowedRoots = roots
+		logger.Info("[Golem] fileops sandboxed to roots: %v", roots)
+	} else {
+		logger.Info("[Golem] fileops running in open mode (deny list only)")
+	}
+	return sb
 }

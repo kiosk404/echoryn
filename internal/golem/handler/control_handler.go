@@ -13,12 +13,15 @@ import (
 	"github.com/kiosk404/echoryn/pkg/logger"
 	pb "github.com/kiosk404/echoryn/pkg/proto/golem"
 	"github.com/kiosk404/echoryn/pkg/utils/json"
+	"github.com/kiosk404/echoryn/pkg/fileops"
+	fileopsskill "github.com/kiosk404/echoryn/internal/golem/skills/fileops"
 )
 
 // TaskExecutor implements node.TaskHandler.
 // It executes tasks dispatched from Hivemind via the heartbeat stream.
 type TaskExecutor struct {
 	nodeService *node.Service
+	sandbox  *fileops.Sandbox  // nil when fileops is disabled for this node 
 
 	mu        sync.Mutex
 	cancelFns map[string]context.CancelFunc // taskID → cancel function
@@ -26,10 +29,13 @@ type TaskExecutor struct {
 
 var _ node.TaskHandler = (*TaskExecutor)(nil)
 
-// NewTaskExecutor creates a new TaskExecutor.
-func NewTaskExecutor(nodeService *node.Service) *TaskExecutor {
+// NewTaskExecutor creates a new TaskExecutor. The sandbox parameter is used
+// for file_* skill dispatch; pass nil to disable file operations entirely
+// (dispatched file_* tasks will then return "writes are disabled" errors).
+func NewTaskExecutor(nodeService *node.Service, sandbox *fileops.Sandbox) *TaskExecutor {
 	return &TaskExecutor{
 		nodeService: nodeService,
+		sandbox:     sandbox,
 		cancelFns:   make(map[string]context.CancelFunc),
 	}
 }
@@ -90,7 +96,17 @@ func (h *TaskExecutor) executeTask(ctx context.Context, task *pb.Task) {
 	switch task.SkillName {
 	case "shell":
 		output, execErr = h.executeShell(taskCtx, task.Payload)
+	case fileopsskill.SkillFileRead:
+		output, execErr = fileopsskill.HandleRead(taskCtx, task.Payload, h.sandbox)
+	case fileopsskill.SkillFileWrite:
+		output, execErr = fileopsskill.HandleWrite(taskCtx, task.Payload, h.sandbox)
+	case fileopsskill.SkillFilePatch:
+		output, execErr = fileopsskill.HandlePatch(taskCtx, task.Payload, h.sandbox)
+	case fileopsskill.SkillFileSearch:
+		output, execErr = fileopsskill.HandleSearch(taskCtx, task.Payload, h.sandbox)
 	case "fileops":
+		// Legacy skill name kept for backward compatibility. Use the
+		// typed file_* skills above for new integrations.
 		output, execErr = h.executeFileOps(taskCtx, task.Payload)
 	default:
 		execErr = fmt.Errorf("unknown skill: %s", task.SkillName)

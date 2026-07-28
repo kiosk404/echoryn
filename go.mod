@@ -37,6 +37,7 @@ require (
 	github.com/mitchellh/go-wordwrap v1.0.1
 	github.com/moby/term v0.5.2
 	github.com/muesli/termenv v0.16.0
+	github.com/pmezard/go-difflib v1.0.0
 	github.com/russross/blackfriday v1.6.0
 	github.com/sirupsen/logrus v1.9.4
 	github.com/spf13/cobra v1.10.2

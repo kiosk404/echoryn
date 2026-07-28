@@ -49,6 +49,34 @@ type Options struct {
 	LogMaxSize    int64 `json:"log-max-size" mapstructure:"log-max-size"`
 	LogMaxBackups int   `json:"log-max-backups" mapstructure:"log-max-backups"`
 	LogMaxAge     int   `json:"log-max-age" mapsturcture:"json:"log-max-age"`
+	
+	// FileOps controls the file-operation sandbox for file_read / file_write
+	// / file_patch / file_search skills on this Golem node.
+	FileOps FileOpsConfig `json:"fileops" mapstructure:"fileops"`
+}
+
+// FileOpsConfig controls the file-operation sandbox for this Golem.
+type FileOpsConfig struct {
+	// Enabled toggles the fileops skills on this node. When false the
+	// file_* capabilities are not reported to Hivemind and dispatched tasks
+	// are rejected with an "unknown skill" error. Default: true.
+	Enabled bool `json:"enabled" mapstructure:"enabled"`
+
+	// Sandboxed, when true, restricts all file operations to AllowedRoots.
+	// When false (default), only the builtin deny list applies -- Golem can
+	// read/write anywhere the process user has permission.
+	Sandboxed bool `json:"sandboxed" mapstructure:"sandboxed"`
+
+	// AllowedRoots lists root directories under which reads/writes are
+	// permitted when Sandboxed=true. Empty + Sandboxed=true defaults to the
+	// resolved WorkspaceDir at server startup.
+	AllowedRoots []string `json:"allowed_roots" mapstructure:"allowed_roots"`
+
+	// DenyExact adds extra exact paths to the builtin deny list.
+	DenyExact []string `json:"deny_exact" mapstructure:"deny_exact"`
+
+	// DenyPrefix adds extra prefix paths to the builtin deny list.
+	DenyPrefix []string `json:"deny_prefix" mapstructure:"deny_prefix"`
 }
 
 // NewOptions creates default Options for a Golem worker.
@@ -68,6 +96,10 @@ func NewOptions() *Options {
 		LogMaxSize:         10,
 		LogMaxBackups:      3,
 		LogMaxAge:          7,
+		FileOps: FileOpsConfig{
+			Enabled: true,
+			Sandboxed: false,
+		},
 	}
 }
 

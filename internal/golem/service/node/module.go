@@ -16,6 +16,7 @@ type Config struct {
 	WorkspaceDir       string
 	SkillsDir          string
 	JoinToken          string // Bootstrap Token for registration; empty = no auth (local dev)
+	FileOpsEnabled     bool   // Advertise file operations capability file_read, file_write, file_patch
 }
 
 // CompletedConfig is the result of calling Complete on Config.

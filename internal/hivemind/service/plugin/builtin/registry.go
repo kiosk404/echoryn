@@ -10,12 +10,13 @@ import (
 	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin"
 	feishuchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/feishu"
 	telegramchannel "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/channel/telegram"
-	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics"
+	diagnostics "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/diagnostics"
+	localfileops "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/local-fileops"
 	golemcluster "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/golem-cluster"
-	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask"
+	llmtask "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/llmtask"
 	memorycore "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/memory/memory-core"
 	skillsplugin "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/skills"
-	"github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
+	subagent "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/subagent"
 	toolsearch "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tool-search"
 	langfusetracing "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langfuse-tracing"
 	langsmithtracing "github.com/kiosk404/echoryn/internal/hivemind/service/plugin/builtin/tracing/langsmith-tracing"
@@ -113,6 +114,14 @@ func NewInTreeRegistry(opts *genericoptions.PluginsOptions, golemModule *golem.M
 		plugin.PluginArgs{
 			"config": skillsplugin.ResolveSkillsConfig(opts),
 		})
+
+	// --- local-fileops: Hivemind-local file operations (read/write/patch/search) ---
+	registry.Register(
+		localfileops.PluginDefinition(),
+		localfileops.Factory,
+		plugin.PluginArgs{
+			"config": localfileops.ResolveLocalFileOpsConfig(opts),
+		})	
 
 	// --- tool-search: deferred tool discovery (ToolSearch à la Claude Code) ---
 	registry.Register(

@@ -210,6 +210,76 @@ func (p *golemClusterPlugin) Init(api plugin.PluginAPI) error {
 		Category: "cluster",
 	})
 
+		// --- Typed file-op shortcuts over cluster_dispatch_task ---
+	// These are thin, type-safe wrappers around cluster_dispatch_task that
+	// dispatch the canonical file_* skills to a named Golem node. They exist
+	// so the LLM gets schema-level guidance for each operation instead of
+	// having to craft a free-form payload.
+
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "golem_read_file",
+		Description: "Read a file on a remote Golem node's local filesystem. Returns numbered lines and metadata (binary/size/truncation).",
+		Parameters: []plugin.ParameterDef{
+			{Name: "node_id", Type: "string", Description: "Target Golem node ID or name (use cluster_list_nodes to find)", Required: true},
+			{Name: "path", Type: "string", Description: "Path on the Golem node", Required: true},
+			{Name: "offset", Type: "number", Description: "1-indexed start line (default 1)"},
+			{Name: "limit", Type: "number", Description: "Max lines (default 500, cap 2000)"},
+			{Name: "timeout", Type: "string", Description: "Per-task timeout (default '30s')"},
+		},
+		Handler:    p.handleGolemFileOp("file_read", []string{"path", "offset", "limit"}),
+		Category:   "cluster",
+		IsReadOnly: true,
+	})
+
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "golem_write_file",
+		Description: "Write content to a file on a remote Golem node's local filesystem (auto-mkdir; overwrites existing).",
+		Parameters: []plugin.ParameterDef{
+			{Name: "node_id", Type: "string", Description: "Target Golem node", Required: true},
+			{Name: "path", Type: "string", Description: "Path on the Golem node", Required: true},
+			{Name: "content", Type: "string", Description: "File content", Required: true},
+			{Name: "timeout", Type: "string", Description: "Per-task timeout (default '30s')"},
+		},
+		Handler:  p.handleGolemFileOp("file_write", []string{"path", "content"}),
+		Category: "cluster",
+	})
+
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "golem_patch",
+		Description: "Find-and-replace edit in a file on a remote Golem node with fuzzy matching. `old_string` must be unique unless `replace_all=true`.",
+		Parameters: []plugin.ParameterDef{
+			{Name: "node_id", Type: "string", Description: "Target Golem node", Required: true},
+			{Name: "path", Type: "string", Description: "Path on the Golem node", Required: true},
+			{Name: "old_string", Type: "string", Description: "Text to find", Required: true},
+			{Name: "new_string", Type: "string", Description: "Replacement text (may be empty)"},
+			{Name: "replace_all", Type: "boolean", Description: "Replace every occurrence"},
+			{Name: "timeout", Type: "string", Description: "Per-task timeout (default '30s')"},
+		},
+		Handler:  p.handleGolemFileOp("file_patch", []string{"path", "old_string", "new_string", "replace_all"}),
+		Category: "cluster",
+	})
+
+	api.RegisterTool(plugin.ToolDefinition{
+		Name:        "golem_search_files",
+		Description: "Search file contents (regex) or find files by name (glob) on a remote Golem node.",
+		Parameters: []plugin.ParameterDef{
+			{Name: "node_id", Type: "string", Description: "Target Golem node", Required: true},
+			{Name: "pattern", Type: "string", Description: "Regex (content) or glob (files)", Required: true},
+			{Name: "target", Type: "string", Description: "'content' (default) or 'files'"},
+			{Name: "path", Type: "string", Description: "Search root on the node"},
+			{Name: "file_glob", Type: "string", Description: "File filter in content mode"},
+			{Name: "limit", Type: "number", Description: "Max results"},
+			{Name: "offset", Type: "number", Description: "Skip first N"},
+			{Name: "output_mode", Type: "string", Description: "'content' | 'files_only' | 'count'"},
+			{Name: "context", Type: "number", Description: "Context lines"},
+			{Name: "timeout", Type: "string", Description: "Per-task timeout (default '30s')"},
+		},
+		Handler:    p.handleGolemFileOp("file_search", []string{"pattern", "target", "path", "file_glob", "limit", "offset", "output_mode", "context"}),
+		Category:   "cluster",
+		IsReadOnly: true,
+	})
+
+
 	return nil
 }
 
@@ -801,4 +871,30 @@ func installedSkillInfos(n *registry.NodeState) []nodeSkillInfo {
 		}
 	}
 	return skills
+}
+
+
+// handleGolemFileOp builds a closure that dispatches a file_* skill to the
+// given node, forwarding the specified payload keys from the tool params.
+// This lets the typed golem_* tools share the generic dispatch + error
+// handling logic of handleDispatchTask without re-implementing it.
+func (p *golemClusterPlugin) handleGolemFileOp(skillName string, payloadKeys []string) plugin.ToolHandler {
+	return func(ctx context.Context, params map[string]interface{}) (interface{}, error) {
+		nodeID, _ := params["node_id"].(string)
+		if nodeID == "" {
+			return nil, fmt.Errorf("node_id is required")
+		}
+		payload := make(map[string]interface{}, len(payloadKeys))
+		for _, k := range payloadKeys {
+			if v, ok := params[k]; ok {
+				payload[k] = v
+			}
+		}
+		return p.handleDispatchTask(ctx, map[string]interface{}{
+			"node_id":    nodeID,
+			"skill_name": skillName,
+			"payload":    payload,
+			"timeout":    params["timeout"],
+		})
+	}
 }

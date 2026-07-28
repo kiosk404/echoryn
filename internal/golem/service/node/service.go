@@ -156,10 +156,21 @@ func (s *Service) register(ctx context.Context) error {
 		RegisteredAt: timestamppb.Now(),
 	}
 
-	// Builtin capabilities always present.
+		// Builtin capabilities always present.
 	capMap := map[string]*pb.Capability{
 		"shell":   {Name: "shell", Version: "1.0", Description: "Execute shell commands"},
-		"fileops": {Name: "fileops", Version: "1.0", Description: "File operations (read/write/delete/search)"},
+		"fileops": {Name: "fileops", Version: "1.0", Description: "Legacy file operations (read/write/delete/search) -- superseded by file_* skills"},
+	}
+
+	// Advertise typed file_* skills when fileops is enabled for this Golem.
+	// These are the canonical skill names that the Hivemind golem_* tools
+	// and cluster_dispatch_task target; the legacy "fileops" capability is
+	// kept for backward compatibility with older Hivemind dispatchers.
+	if s.cfg.FileOpsEnabled {
+		capMap["file_read"] = &pb.Capability{Name: "file_read", Version: "1.0", Description: "Read files (paginated, binary-aware)"}
+		capMap["file_write"] = &pb.Capability{Name: "file_write", Version: "1.0", Description: "Write files (auto-mkdir)"}
+		capMap["file_patch"] = &pb.Capability{Name: "file_patch", Version: "1.0", Description: "Find-and-replace edit with fuzzy matching"}
+		capMap["file_search"] = &pb.Capability{Name: "file_search", Version: "1.0", Description: "Ripgrep-like content/file search"}
 	}
 
 	// Scan skills directory to discover installed skills and their capabilities.
